@@ -51,10 +51,19 @@ const CREATE_MEAL_PLANS = `
     week_start TEXT NOT NULL,
     item_ids TEXT NOT NULL,
     meals TEXT NOT NULL DEFAULT '[]',
+    dietary_filter TEXT NOT NULL DEFAULT 'none',
     total_regular_price INTEGER NOT NULL,
     total_sale_price INTEGER NOT NULL,
     estimated_savings INTEGER NOT NULL,
     created_at INTEGER NOT NULL
+  )
+`;
+
+const CREATE_USER_SETTINGS = `
+  CREATE TABLE IF NOT EXISTS user_settings (
+    user_id TEXT PRIMARY KEY DEFAULT 'dimitar',
+    dietary_restriction TEXT NOT NULL DEFAULT 'none',
+    updated_at INTEGER NOT NULL
   )
 `;
 
@@ -83,10 +92,18 @@ export function createDb(dbPath: string): DbClient {
   sqlite.exec(CREATE_SCRAPE_JOBS);
   sqlite.exec(CREATE_DISCOUNT_ITEMS);
   sqlite.exec(CREATE_MEAL_PLANS);
+  sqlite.exec(CREATE_USER_SETTINGS);
 
   // Idempotent migration: add meals column if the table pre-dates it
   try {
     sqlite.exec("ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
+  // Idempotent migration: add dietary_filter column if the table pre-dates it
+  try {
+    sqlite.exec("ALTER TABLE meal_plans ADD COLUMN dietary_filter TEXT NOT NULL DEFAULT 'none'");
   } catch {
     // Column already exists — expected for fresh databases created with the current schema
   }

@@ -7,6 +7,14 @@
 /** Dietary restriction set by user in UserPreferences. */
 export type DietaryRestriction = "vegetarian" | "vegan" | "none";
 
+/**
+ * Household preferences (increment 1: single dietary dimension).
+ * budgetCapCents / household / kid-friendly are deferred until their effect ships.
+ */
+export interface UserPreferences {
+  dietaryRestriction: DietaryRestriction;
+}
+
 /** Dietary classification tag applied at scrape time by catalogue-normalizer. */
 export type DietaryTag = "vegetarian" | "vegan" | "contains-meat" | "contains-fish" | "unknown";
 

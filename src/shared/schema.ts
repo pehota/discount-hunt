@@ -37,10 +37,17 @@ export const mealPlans = sqliteTable("meal_plans", {
   weekStart: text("week_start").notNull(), // ISO Monday
   itemIds: text("item_ids").notNull(), // JSON array
   meals: text("meals").notNull().default("[]"), // JSON array of Meal objects
+  dietaryFilter: text("dietary_filter").notNull().default("none"), // snapshotted restriction (D25)
   totalRegularPrice: integer("total_regular_price").notNull(), // cents
   totalSalePrice: integer("total_sale_price").notNull(), // cents
   estimatedSavings: integer("estimated_savings").notNull(), // cents — D23 atomic
   createdAt: integer("created_at").notNull(), // ms since epoch
+});
+
+export const userSettings = sqliteTable("user_settings", {
+  userId: text("user_id").primaryKey().default("dimitar"), // single-user singleton (D9)
+  dietaryRestriction: text("dietary_restriction").notNull().default("none"), // 'none'|'vegetarian'|'vegan'
+  updatedAt: integer("updated_at").notNull(), // ms since epoch
 });
 
 export const savingsLog = sqliteTable("savings_log", {
