@@ -31,15 +31,23 @@ export class DiscountHandler {
     const weekStart = getCurrentWeekStart();
     const items = await this.discountService.getWeeklyItems(weekStart, "none");
 
-    const itemsHtml =
-      items.length === 0
-        ? `<p class="empty-state">No discounts available this week</p>`
-        : items
+    let itemsHtml: string;
+    if (items.length === 0) {
+      itemsHtml = `<p class="empty-state">No discounts available this week</p>`;
+    } else {
+      const byStore = new Map<string, typeof items>();
+      for (const item of items) {
+        const group = byStore.get(item.store) ?? [];
+        group.push(item);
+        byStore.set(item.store, group);
+      }
+      itemsHtml = Array.from(byStore.entries())
+        .map(([storeName, storeItems]) => {
+          const storeItemsHtml = storeItems
             .map(
               (item) => `
       <article class="discount-item">
-        <h2 class="item-name">${item.name}</h2>
-        <p class="item-store">${item.store}</p>
+        <h3 class="item-name">${item.name}</h3>
         <p class="item-price">
           <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
           <span class="sale-price">€${centsToEuros(item.salePrice)}</span>
@@ -47,6 +55,13 @@ export class DiscountHandler {
       </article>`
             )
             .join("\n");
+          return `<section class="store-group">
+      <h2 class="store-name">${storeName}</h2>
+      ${storeItemsHtml}
+    </section>`;
+        })
+        .join("\n");
+    }
 
     const html = `<!DOCTYPE html>
 <html lang="en">

@@ -25,11 +25,11 @@ export class ScrapingService {
     private readonly discountService: DiscountService,
   ) {}
 
-  async run(store: string = "aldi-sud"): Promise<void> {
+  async run(store: string = "Aldi Süd"): Promise<void> {
     const jobId = await this.scrapeJobRepository.startJob(store);
     try {
       const rawItems = await this.catalogueFetcher.fetchCurrentWeek();
-      const normalizedItems = this.catalogueNormalizer.normalize(rawItems);
+      const normalizedItems = this.catalogueNormalizer.normalize(rawItems, store);
       for (const item of normalizedItems) {
         await this.discountService.registerDiscountItem(item, jobId);
       }

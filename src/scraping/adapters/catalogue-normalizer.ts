@@ -23,13 +23,13 @@ interface RawAldiItem {
 }
 
 export class CatalogueNormalizer {
-  normalize(rawItems: unknown[]): NormalizedItem[] {
+  normalize(rawItems: unknown[], store: string = "Aldi Süd"): NormalizedItem[] {
     const items = rawItems as RawAldiItem[];
     return items
       .filter((item) => item.discountedPrice !== undefined && item.discountedPrice !== "")
       .map((item) => ({
         externalId: item.id,
-        store: "aldi-sud",
+        store,
         name: item.title,
         category: item.productType,
         regularPrice: Math.round(parseFloat(item.price) * 100),
