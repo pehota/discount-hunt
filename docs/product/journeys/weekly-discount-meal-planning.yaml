@@ -1,0 +1,287 @@
+---
+# docs/product/journeys/weekly-discount-meal-planning.yaml
+# SSOT journey schema for discount-hunt
+# Bootstrapped during DISCUSS wave 2026-07-13
+schema_version: 1
+
+journey:
+  name: "Weekly Discount Meal Planning"
+  goal: "Dimitar opens the app on Monday morning and walks away with a 7-day meal plan built around this week's supermarket discounts, knowing exactly how much he will save vs full-price shopping."
+  persona: "dimitar"
+  jobs:
+    - JOB-001
+    - JOB-002
+    - JOB-003
+
+  emotional_arc:
+    start: "Curious but mildly sceptical — will the discounts be real and useful?"
+    middle: "Engaged and hopeful as the plan takes shape around real prices"
+    end: "Satisfied and motivated — concrete savings number closes the loop"
+
+steps:
+
+  - id: 1
+    name: "View this week's discounts"
+    trigger: "Monday morning; Dimitar opens the app (browser tab)"
+    action: "Navigate to the app; dashboard loads with this week's discount feed"
+
+    ui_mockup: |
+      +-- Discount Hunt — Week of 14 Jul 2026 --------------------------------+
+      |                                                                        |
+      |  THIS WEEK'S DEALS                             Last refreshed: Mon 06:00  |
+      |  ─────────────────────────────────────────────────────────────────    |
+      |  Aldi Süd                                                              |
+      |    Bio Haferflocken 500g        €1.49  (was €2.29)  save €0.80       |
+      |    Mozzarella 125g              €0.69  (was €0.99)  save €0.30       |
+      |    Rote Linsen 500g             €1.19  (was €1.79)  save €0.60       |
+      |                                                                        |
+      |  Edeka                                                                 |
+      |    Campari Tomaten 500g         €1.29  (was €1.99)  save €0.70       |
+      |    Gouda jung 400g              €2.49  (was €3.29)  save €0.80       |
+      |                                                                        |
+      |  V-Markt                                                               |
+      |    Basmati Reis 1kg             €2.19  (was €2.99)  save €0.80       |
+      |    Bio Paprika (3er)            €1.79  (was €2.49)  save €0.70       |
+      |                                                                        |
+      |  [ Generate Meal Plan ]                                                |
+      +------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "discount_feed"
+        source: "database: discount_items table (regular_price, sale_price, store, valid_until)"
+        displayed_as: "item name, sale price, was-price, savings"
+        consumers: ["step 2 (meal plan generation)", "step 4 (savings tracker)"]
+      - name: "refresh_timestamp"
+        source: "database: scrape_jobs table (last_successful_run)"
+        displayed_as: "Last refreshed: Mon 06:00"
+        consumers: ["step 1 (header)"]
+
+    emotional_state:
+      entry: "Curious — is anything useful on sale this week?"
+      exit: "Hopeful — several relevant items visible, discounts look real"
+
+    integration_checkpoint: |
+      discount_feed populated by scraper run (scheduled weekly).
+      Must display regular_price AND sale_price — both required for savings calculation.
+      If scraper failed: show last-known data with staleness warning.
+
+    failure_modes:
+      - "Scraper failed this week: show stale data with 'Last refreshed: 6 days ago — data may be outdated' warning"
+      - "No discounts match dietary restrictions: show 'No compatible discounts found this week' with manual refresh option"
+      - "One store unavailable: show available stores only, indicate which store is missing"
+
+    gherkin: |
+      Scenario: Dimitar sees this week's discount feed on Monday
+        Given it is Monday and the weekly scraper has completed successfully
+        And the scraper found at least one discounted item matching Dimitar's dietary restrictions
+        When Dimitar opens the app
+        Then the dashboard displays discounted items grouped by store
+        And each item shows both the sale price and the original regular price
+        And a "Last refreshed" timestamp shows when the data was fetched
+        And a "Generate Meal Plan" button is visible
+
+      Scenario: Discount feed is stale due to scraper failure
+        Given the weekly scraper has not run successfully in the past 5 days
+        When Dimitar opens the app
+        Then the dashboard shows the last-known discounts
+        And a warning banner reads "Data may be outdated — last refresh was {N} days ago"
+        And the "Generate Meal Plan" button remains available
+
+  - id: 2
+    name: "Generate discount-driven meal plan"
+    trigger: "Dimitar clicks 'Generate Meal Plan'"
+    action: "Backend builds a 7-day meal plan prioritising discounted ingredients; matches recipe for each day"
+
+    ui_mockup: |
+      +-- Meal Plan — Week of 14 Jul 2026 ------------------------------------+
+      |                                                                        |
+      |  MONDAY                                                                |
+      |    Lunch: Red Lentil Soup              🥕 Rote Linsen ON SALE €1.19  |
+      |    Dinner: Caprese Salad               🧀 Mozzarella ON SALE €0.69  |
+      |                                                                        |
+      |  TUESDAY                                                               |
+      |    Lunch: Tomato Rice Bowl             🍅 Campari Tomaten SALE €1.29 |
+      |    Dinner: Cheesy Pasta Bake           🧀 Gouda ON SALE €2.49       |
+      |                                                                        |
+      |  WEDNESDAY                                                             |
+      |    Lunch: Paprika & Rice Stir-fry      🫑 Bio Paprika ON SALE €1.79 |
+      |    Dinner: Lentil Dal                  🥕 Rote Linsen (from stock)  |
+      |  ...                                                                   |
+      |                                                                        |
+      |  Estimated savings this week: €8.40                                   |
+      |  [ View full recipes ]   [ Download shopping list ]                   |
+      +------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "meal_plan"
+        source: "database: meal_plans table (plan_id, week_start, meals JSON)"
+        displayed_as: "day-by-day meal schedule with ingredient highlight"
+        consumers: ["step 3 (recipe view)", "step 4 (savings tracker)"]
+      - name: "estimated_savings"
+        source: "computed: SUM(regular_price - sale_price) for all discounted items in plan"
+        displayed_as: "Estimated savings this week: €X.XX"
+        consumers: ["step 2 (meal plan footer)", "step 4 (savings tracker)"]
+      - name: "dietary_filter"
+        source: "database: user_settings table (dietary_restrictions array)"
+        displayed_as: "applied silently; restricts recipe and ingredient pool"
+        consumers: ["step 2 (meal plan generation)", "step 3 (recipe view)"]
+
+    emotional_state:
+      entry: "Expectant — will the plan be practical and edible?"
+      exit: "Pleased — plan is built around real discounts and matches dietary needs; savings estimate is visible"
+
+    integration_checkpoint: |
+      meal_plan references discount_feed items by item_id.
+      dietary_filter applied before recipe matching — no incompatible meals in output.
+      estimated_savings uses sale_price and regular_price from discount_items table.
+
+    failure_modes:
+      - "Too few discounted items to fill 7 days: fill remaining days with budget-friendly non-sale items; mark them differently"
+      - "No compatible recipe found for a discounted item: skip that item from plan; log for future recipe expansion"
+      - "Dietary restriction yields zero valid meals: show error 'Cannot generate plan with current restrictions — consider relaxing restrictions or checking settings'"
+
+    gherkin: |
+      Scenario: Dimitar generates a 7-day meal plan driven by this week's discounts
+        Given the discount feed contains at least 5 items compatible with Dimitar's dietary restrictions
+        When Dimitar clicks "Generate Meal Plan"
+        Then a 7-day meal plan is displayed
+        And at least 70% of meals highlight a discounted ingredient
+        And no meal contains ingredients excluded by Dimitar's dietary restrictions
+        And an estimated weekly savings amount is shown in euros
+
+      Scenario: Dietary restrictions filter the plan correctly
+        Given Dimitar has "vegetarian" set as his dietary restriction
+        And the discount feed includes both meat and vegetarian items
+        When Dimitar generates a meal plan
+        Then no meal plan entry includes meat or fish
+        And all suggested recipes are vegetarian
+
+  - id: 3
+    name: "View recipe for a meal"
+    trigger: "Dimitar clicks 'View full recipes' or a specific meal title"
+    action: "Recipe detail view opens with ingredients, preparation steps, and source link"
+
+    ui_mockup: |
+      +-- Recipe: Red Lentil Soup -----------------------------------------+
+      |                                                                      |
+      |  Source: AllRecipes  [ Open original recipe ↗ ]                     |
+      |                                                                      |
+      |  INGREDIENTS (serves 4)                                              |
+      |    ✓ Rote Linsen 500g          ON SALE at Aldi Süd — €1.19         |
+      |    ✓ Campari Tomaten 500g      ON SALE at Edeka — €1.29            |
+      |      Vegetable broth           (not on sale — pantry staple)       |
+      |      Cumin, paprika            (spices — pantry)                   |
+      |                                                                      |
+      |  PREPARATION                                                         |
+      |    1. Rinse lentils under cold water...                              |
+      |    2. Sauté onion and garlic...                                      |
+      |    ...                                                               |
+      |                                                                      |
+      |  [ ← Back to meal plan ]                                             |
+      +----------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "recipe_link"
+        source: "database: recipes table (recipe_id, title, source_url, ingredients JSON)"
+        displayed_as: "recipe title, ingredient list, source link"
+        consumers: ["step 3 (recipe detail view)", "step 2 (meal plan — linked)"]
+
+    emotional_state:
+      entry: "Practical — need to verify recipe is feasible before committing"
+      exit: "Confident — recipe is real, manageable, uses the sale items"
+
+    integration_checkpoint: |
+      recipe_link populated by recipe-matching engine (source API / static DB — TBD in DESIGN wave).
+      Ingredient list highlights which items are in discount_feed for this week.
+
+    failure_modes:
+      - "Recipe source link dead (404): show cached recipe data; display 'Original source unavailable — showing cached version'"
+      - "No recipe found for a meal: show 'Recipe not available — search manually' with ingredient list only"
+
+    gherkin: |
+      Scenario: Dimitar views a recipe linked from the meal plan
+        Given a meal plan has been generated and contains at least one meal
+        When Dimitar clicks on a meal title
+        Then a recipe detail view opens for that meal
+        And the ingredient list highlights which items are currently on sale
+        And the original recipe source is linked with a working URL
+        And a "Back to meal plan" link is visible
+
+  - id: 4
+    name: "Review weekly and monthly savings"
+    trigger: "Dimitar navigates to the Savings tab (or it is shown post-plan-generation)"
+    action: "Savings dashboard shows this week's savings, running monthly total, historical chart"
+
+    ui_mockup: |
+      +-- Savings Tracker --------------------------------------------------+
+      |                                                                      |
+      |  THIS WEEK (14–20 Jul 2026)                                          |
+      |    Items bought on discount:  7                                      |
+      |    Total paid (sale prices):  €12.33                                 |
+      |    Would have paid (regular): €20.73                                 |
+      |    SAVED:                     €8.40   ████████████░░░░░░░░          |
+      |                                                                      |
+      |  MONTH TO DATE (Jul 2026)                                            |
+      |    Saved so far:              €8.40                                  |
+      |    Projected (4 weeks):       €33.60                                 |
+      |                                                                      |
+      |  HISTORY                                                             |
+      |    Week of 7 Jul:    €11.20                                          |
+      |    Week of 30 Jun:   €9.80                                           |
+      |    Week of 23 Jun:   €7.60                                           |
+      |                                                                      |
+      +----------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "savings_record"
+        source: "database: savings_log table (week_start, items_used, total_sale, total_regular, saved)"
+        displayed_as: "weekly savings breakdown + monthly total + history list"
+        consumers: ["step 4 (savings dashboard)"]
+      - name: "regular_price_baseline"
+        source: "database: discount_items.regular_price (captured at scrape time)"
+        displayed_as: "Would have paid: €XX.XX"
+        consumers: ["step 4 (savings dashboard)", "step 2 (estimated savings footer)"]
+
+    emotional_state:
+      entry: "Curious — did I actually save anything meaningful?"
+      exit: "Motivated and satisfied — concrete number validates the effort of planning around discounts"
+
+    integration_checkpoint: |
+      savings_record populated when user confirms meal plan (or approximated from plan alone).
+      regular_price_baseline captured at scrape time — must persist even after promotional period ends.
+      History chart meaningful only after 2+ weeks of data.
+
+    failure_modes:
+      - "First week (no history): show 'This is your first week — history will build over time' with current week only"
+      - "No prices captured (scraper missing regular_price): show 'Savings comparison unavailable — regular prices not captured this week'"
+
+    gherkin: |
+      Scenario: Dimitar reviews his savings after the first week
+        Given a meal plan was generated and the discount data included regular prices
+        When Dimitar navigates to the Savings tab
+        Then this week's total savings are displayed in euros
+        And the comparison between total sale prices and total regular prices is visible
+        And a savings history section is shown (even if it contains only the current week)
+
+      Scenario: Savings history grows over multiple weeks
+        Given Dimitar has used the app for 3 consecutive weeks
+        When he views the Savings tab
+        Then the history section shows 3 weekly entries with individual savings amounts
+        And the month-to-date total is the sum of those weeks
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "regular_price"
+      must_match_across: [1, 2, 4]
+      failure_message: "Regular price shown in discount feed (step 1) must match the baseline used in savings calculation (step 4). Both read from discount_items.regular_price."
+    - artifact: "dietary_filter"
+      must_match_across: [2, 3]
+      failure_message: "Dietary restrictions applied during meal plan generation (step 2) must also filter ingredient lists in recipe view (step 3)."
+    - artifact: "estimated_savings"
+      must_match_across: [2, 4]
+      failure_message: "Savings estimate shown on meal plan (step 2) must equal actual savings record in savings tracker (step 4)."
+
+changelog:
+  - date: "2026-07-13"
+    feature: "discount-hunt"
+    change: "Initial journey schema bootstrapped during DISCUSS wave (greenfield)"

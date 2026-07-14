@@ -1,0 +1,48 @@
+---
+# docs/product/personas/dimitar.yaml
+# SSOT persona: Dimitar Apostolov — primary (and only) user of discount-hunt
+# Bootstrapped during DISCUSS wave 2026-07-13
+
+id: dimitar
+name: Dimitar Apostolov
+role: Software engineer, single-user app owner
+location: Munich, Germany
+language: English (app UI), German (supermarket context)
+
+goals:
+  - Minimize weekly grocery spend by shopping around discount promotions
+  - Cook real meals at home rather than ordering out
+  - Know exactly how much money the app saves him each week/month
+
+frustrations:
+  - Weekly flyer browsing across 3 supermarkets takes 30-45 minutes, mostly wasted effort
+  - Discount information is buried in JS-heavy, scraping-hostile interfaces
+  - No way to automatically connect "Aldi has oats on sale this week" to "I should make overnight oats on Monday"
+  - No savings tracking — benefit is invisible, motivation decays
+
+mental_model:
+  - Thinks of the app as a "discount meal planner" not a generic recipe app
+  - Expects the flow to be: discounts in → meal plan out (not: what do I want to eat → find ingredients)
+  - Understands scraping risk; won't be surprised if the scraper occasionally breaks
+  - Familiar with the concept of a "weekly flyer cycle" (German: Wochenangebote)
+
+vocabulary:
+  - Wochenangebote: weekly promotions / flyer deals
+  - Angebot: promotional offer / discount
+  - Stammpreis: regular price (used to compute savings)
+  - Preisvergleich: price comparison
+
+technical_profile:
+  - Software engineer: comfortable with the app's internals
+  - Will tolerate rough UI in v1 if core function works
+  - May inspect raw data directly if needed
+  - Expected to run the app locally; no multi-user requirements
+
+constraints:
+  - Dietary restrictions: vegetarian (no meat, no fish); to be stored as per-user setting
+  - Budget goal: reduce monthly grocery spend by 20-30% vs unplanned shopping
+
+jobs_referenced:
+  - JOB-001
+  - JOB-002
+  - JOB-003

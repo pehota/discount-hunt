@@ -1,0 +1,132 @@
+{
+  "roadmap": {
+    "project_id": "discount-hunt",
+    "created_at": "2026-07-13T20:49:27Z",
+    "total_steps": 5
+  },
+  "phases": [
+    {
+      "id": "01",
+      "name": "S01 Walking Skeleton",
+      "steps": [
+        {
+          "id": "01-01",
+          "name": "Shared foundation: schema, db, dietary, types",
+          "criteria": [
+            "createDb returns a live DbClient with WAL mode enabled and probe passes",
+            "discountItems, mealPlans, savingsLog, scrapeJobs tables defined in schema",
+            "isCompatible returns true/false per dietary restriction and tag set"
+          ],
+          "test_file": "",
+          "scenario_name": "",
+          "files_to_modify": [
+            "src/shared/types.ts",
+            "src/shared/schema.ts",
+            "src/shared/db.ts",
+            "src/shared/dietary.ts"
+          ],
+          "implementation_notes": "Implement Drizzle table definitions in schema.ts (sqliteTable, text, integer columns for all tables). createDb opens better-sqlite3 in WAL mode and runs write-read-delete probe before returning — throw on probe failure. isCompatible is a pure predicate: no I/O, no side-effects. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        },
+        {
+          "id": "01-02",
+          "name": "Scraping pipeline and discount registration",
+          "criteria": [
+            "FakeAldiCatalogueAdapter.fromFixtureFile reads fixture JSON and fetchCurrentWeek returns items",
+            "CatalogueNormalizer.normalize filters items missing both price and discountedPrice (D21)",
+            "CatalogueNormalizer.normalize maps price strings to integer cents and applies dietaryTags",
+            "scraper-runner exits 0 when CATALOGUE_SOURCE=fake and fixture contains valid items",
+            "Normalised items are stored via DiscountService.registerDiscountItem"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+          "scenario_name": "Walking Skeleton — Scenario 1: Shopper sees discounted items, generates a meal plan, and confirms savings match the estimate",
+          "files_to_modify": [
+            "tests/acceptance/support/fake-aldi-catalogue-adapter.ts",
+            "src/scraping/adapters/catalogue-normalizer.ts",
+            "src/scraping/adapters/sqlite-scrape-job-repository.ts",
+            "src/scraping/scraping-service.ts",
+            "src/scraping/scraper-runner.ts",
+            "src/discount/discount-service.ts",
+            "src/discount/adapters/sqlite-discount-item-repository.ts"
+          ],
+          "deps": ["01-01"],
+          "implementation_notes": "ScrapingService.run orchestrates: start job, fetch, normalize, registerDiscountItem for each item, complete job. scraper-runner reads CATALOGUE_SOURCE env var to select adapter: FakeAldiCatalogueAdapter.fromFixtureFile(FAKE_CATALOGUE_FIXTURE) or live fetcher. CatalogueNormalizer contract shape: pure-function / return-only — no DB writes, no I/O. DiscountService.registerDiscountItem is the only impure function in this boundary (writes to sqlite_discount_item_repository). D21: normalizer MUST drop items where discountedPrice is absent or empty. D22: regularPrice is written once; the repository must not allow updates. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        },
+        {
+          "id": "01-03",
+          "name": "Discount HTTP feed: GET /",
+          "criteria": [
+            "GET / returns 200 HTML containing item names and both regular and sale prices",
+            "Items missing either price are absent from the feed (D21 filter visible in output)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+          "scenario_name": "Walking Skeleton — Scenario 1: Shopper sees discounted items, generates a meal plan, and confirms savings match the estimate",
+          "files_to_modify": [
+            "src/discount/http/discount-handler.ts"
+          ],
+          "deps": ["01-02"],
+          "implementation_notes": "DiscountHandler.handleGet calls DiscountService.getWeeklyItems and renders HTMX HTML with item name, regular price (was €X.XX), and sale price. Handler is a thin driving adapter — no business logic, no DB access directly. Contract shape: bounded-change (reads discount_items, no writes). TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        },
+        {
+          "id": "01-04",
+          "name": "Plan generation and savings tracking (D23 atomic)",
+          "criteria": [
+            "POST /plan/generate returns 200 and GET /plan renders data-estimated-savings attribute in cents",
+            "GET /savings renders data-saved-amount attribute equal to data-estimated-savings (D23)",
+            "PlanService.savePlan writes meal_plans and savings_log in a single SQLite transaction"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+          "scenario_name": "Walking Skeleton — Scenario 1: Shopper sees discounted items, generates a meal plan, and confirms savings match the estimate",
+          "files_to_modify": [
+            "src/meal-planning/plan-service.ts",
+            "src/meal-planning/http/plan-handler.ts",
+            "src/meal-planning/adapters/sqlite-meal-plan-repository.ts",
+            "src/savings/savings-service.ts",
+            "src/savings/http/savings-handler.ts",
+            "src/savings/adapters/sqlite-savings-repository.ts"
+          ],
+          "deps": ["01-03"],
+          "implementation_notes": "PlanService.generatePlan is a pure function (plan-value pattern): takes weekStart + prefs, reads discount items via DiscountService, returns a MealPlan value — no DB writes. PlanService.savePlan is the ONLY impure function: opens a single SQLite transaction, writes meal_plans.estimated_savings and savings_log.saved_amount atomically — the D23 invariant means partial writes are structurally impossible. plan-handler renders estimated_savings as `data-estimated-savings=\"{cents}\"`. savings-handler renders saved_amount as `data-saved-amount=\"{cents}\"`. SavingsService.recordSavings is called by PlanService.savePlan inside the same tx — NOT via HTTP. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        },
+        {
+          "id": "01-05",
+          "name": "Server composition root (D35 wire order)",
+          "criteria": [
+            "createServer wires all services and routes in order: createDb, services, probe, routes",
+            "Server starts and acceptance test suite passes green end-to-end"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+          "scenario_name": "Walking Skeleton — Scenario 1: Shopper sees discounted items, generates a meal plan, and confirms savings match the estimate",
+          "files_to_modify": [
+            "src/server.ts"
+          ],
+          "deps": ["01-04"],
+          "implementation_notes": "createServer follows D35 wire order: (1) createDb(dbPath), (2) instantiate all SQLite adapters and services, (3) run probe — emit health.startup.refused and exit 1 on failure, (4) register routes: GET / → DiscountHandler, POST /plan/generate and GET /plan → PlanHandler, GET /savings → SavingsHandler. Returns ServerHandle with stop(). When CATALOGUE_SOURCE=fake the server does not wire the scraping pipeline — scraper-runner.ts is the separate entry point. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        }
+      ]
+    }
+  ],
+  "implementation_scope": {
+    "source_directories": [
+      "src/shared/",
+      "src/scraping/",
+      "src/discount/",
+      "src/meal-planning/",
+      "src/savings/",
+      "src/"
+    ],
+    "test_directories": [
+      "tests/acceptance/discount-hunt/",
+      "tests/acceptance/support/"
+    ],
+    "excluded_patterns": [
+      "src/recipe/**",
+      "src/scraping/adapters/aldi-sud-catalogue-fetcher.ts",
+      "src/scraping/probes/catalogue-probe.ts"
+    ]
+  },
+  "validation": {
+    "status": "pending",
+    "reviewer": "nw-solution-architect",
+    "approved_at": "TODO"
+  }
+}

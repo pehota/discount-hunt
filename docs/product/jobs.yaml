@@ -1,0 +1,125 @@
+---
+# docs/product/jobs.yaml
+# SSOT: validated job stories for discount-hunt
+# Bootstrapped during DISCUSS wave 2026-07-13
+# Format: each job has id, statement (job story format), dimensions, four_forces, opportunity_score
+
+jobs:
+
+  - id: JOB-001
+    title: "Weekly grocery planning driven by discounts"
+    statement: >
+      When I am planning my weekly grocery shopping and have no idea what discounts
+      are available this week, I want to see what is cheapest RIGHT NOW across Aldi Süd,
+      Edeka, and V-Markt in Munich and get a meal plan built around those discounts,
+      so I can cook real meals all week and spend significantly less than if I shopped
+      without looking at promotions first.
+    dimensions:
+      functional: >
+        Identify discounted items from this week's flyers across all 3 Munich supermarkets,
+        generate a 7-day meal plan based on those discounted items, filter by dietary restrictions,
+        provide recipe links for each meal.
+      emotional: >
+        Feel smart and resourceful — like I took the time to shop cleverly without
+        actually spending hours manually browsing flyer PDFs. Feel confident the plan
+        uses real, available ingredients, not hypotheticals.
+      social: >
+        This is a private tool; social dimension is: feel like someone who does not
+        waste money on full-price groceries when discounted alternatives are available.
+    four_forces:
+      push: >
+        Manually browsing promotional flyers across 3 supermarket websites each Monday
+        takes 30-45 minutes. The data is fragmented, JavaScript-heavy, mobile-hostile.
+        Often I give up and just buy at full price, which feels wasteful.
+      pull: >
+        If I had a weekly feed of discounted items mapped to recipes I can cook,
+        I would plan around those discounts automatically — saving money and decision
+        fatigue simultaneously.
+      anxiety: >
+        What if the scraper breaks when the supermarket changes their website?
+        What if the "discounted" price shown is wrong and I go to the store expecting
+        one price and find another? What if the meal plan includes ingredients I cannot eat?
+      habit: >
+        Current workflow is: open Aldi app on Monday, browse manually, maybe screenshot
+        a few items, then plan meals loosely around whatever I remembered. Very ad hoc.
+    opportunity_score:
+      importance: 5
+      current_satisfaction: 1
+      opportunity: 9
+      rationale: >
+        Extremely high importance (weekly recurring pain, real monetary impact) and
+        nearly zero satisfaction with current manual process. Strongest opportunity
+        in the product scope.
+
+  - id: JOB-002
+    title: "Track actual grocery savings vs full price"
+    statement: >
+      When I finish my weekly shopping based on the discount meal plan, I want to see
+      exactly how much money I saved compared to buying the same items at full price,
+      so I can validate the app is actually worth using and feel the concrete payoff
+      of planning around discounts.
+    dimensions:
+      functional: >
+        Store both regular price and discounted price for every identified item.
+        Calculate weekly and monthly savings totals. Display savings history over time.
+      emotional: >
+        Feel the reward of discipline — the number confirms the behavior was worth it.
+        Feel motivated to keep using the app when savings accumulate visibly.
+      social: >
+        Private satisfaction; knowing concretely "I saved €18.40 this week" vs vague
+        sense that discounts are good.
+    four_forces:
+      push: >
+        Without tracking, the benefit of planning around discounts is invisible.
+        It feels like effort with no proof of payoff. Easy to abandon the habit.
+      pull: >
+        A running total of monthly savings (e.g., "€74 saved in June") makes the
+        value proposition tangible and self-reinforcing.
+      anxiety: >
+        What if the "regular price" the app stores is stale or from a different store?
+        Is it comparing apples to apples across weeks?
+      habit: >
+        Currently: I have no savings tracking at all. I assume I am saving money
+        but have no evidence.
+    opportunity_score:
+      importance: 4
+      current_satisfaction: 0
+      opportunity: 8
+      rationale: >
+        High importance as a motivational reinforcer; zero current satisfaction since
+        no tracking exists. Strong opportunity, second after JOB-001.
+
+  - id: JOB-003
+    title: "Ensure meal plan respects dietary restrictions"
+    statement: >
+      When the app generates a weekly meal plan, I want it to automatically exclude
+      ingredients and recipes that violate my dietary restrictions,
+      so I do not have to manually review every suggested meal for compatibility.
+    dimensions:
+      functional: >
+        Store user dietary restrictions as a persistent setting. Filter both discounted
+        items and recipe suggestions against those restrictions before presenting.
+      emotional: >
+        Feel safe trusting the meal plan without double-checking every recipe.
+        Reduce cognitive load of "is this actually OK for me to eat?"
+      social: >
+        N/A for single-user tool.
+    four_forces:
+      push: >
+        A meal plan that includes foods I cannot eat is not just useless — it requires
+        me to redo the planning work manually, which is worse than not having the tool.
+      pull: >
+        A meal plan I can trust to be edible requires zero review before shopping.
+      anxiety: >
+        What if a recipe ingredient is incompatible but listed generically? What if
+        a restriction is partially honored (recipe is OK but suggested substitution is not)?
+      habit: >
+        Current workaround: manually verify every recipe. High effort, defeats the
+        purpose of automation.
+    opportunity_score:
+      importance: 5
+      current_satisfaction: 0
+      opportunity: 9
+      rationale: >
+        Tied with JOB-001 on importance (a meal plan that ignores restrictions is unsafe/
+        unusable). Zero satisfaction since no tool exists. Also 9.
