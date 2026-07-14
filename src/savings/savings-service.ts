@@ -11,13 +11,55 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { currentWeekMonday } from "../shared/week.ts";
 import type { SQLiteSavingsRepository, SavingsRecord } from "./adapters/sqlite-savings-repository.ts";
+
+/**
+ * View model powering the SLICE-04 savings UI. Aggregates the full history into
+ * the three UI surfaces: the current-week breakdown, the month-to-date total,
+ * and the set of weeks with no captured regular price ("savings unavailable").
+ */
+export interface SavingsSummary {
+  history: SavingsRecord[]; // all records, DESC by weekStart (unchanged getHistory contract)
+  thisWeek: SavingsRecord | null; // record whose weekStart === current week Monday
+  monthToDateCents: number; // sum of savedAmount over current-month weeks with a captured regular price
+  unavailableWeekStarts: string[]; // weekStarts where totalRegularPrice === 0 (savings not computable)
+}
 
 export class SavingsService {
   constructor(private readonly savingsRepository: SQLiteSavingsRepository) {}
 
   async getHistory(): Promise<SavingsRecord[]> {
     return this.savingsRepository.getAll();
+  }
+
+  async getSummary(): Promise<SavingsSummary> {
+    const history = await this.getHistory();
+    const currentWeek = currentWeekMonday();
+    const currentMonthPrefix = currentWeek.slice(0, 7);
+
+    const thisWeek = history.find((record) => record.weekStart === currentWeek) ?? null;
+
+    const monthToDateCents = history
+      .filter((record) => this.countsTowardMonthTotal(record, currentMonthPrefix))
+      .reduce((sum, record) => sum + record.savedAmount, 0);
+
+    const unavailableWeekStarts = history
+      .filter((record) => this.isSavingsUnavailable(record))
+      .map((record) => record.weekStart);
+
+    return { history, thisWeek, monthToDateCents, unavailableWeekStarts };
+  }
+
+  private countsTowardMonthTotal(record: SavingsRecord, currentMonthPrefix: string): boolean {
+    if (record.weekStart.slice(0, 7) !== currentMonthPrefix) {
+      return false;
+    }
+    return !this.isSavingsUnavailable(record);
+  }
+
+  private isSavingsUnavailable(record: SavingsRecord): boolean {
+    return record.totalRegularPrice === 0;
   }
 
   recordSavings(
