@@ -2,7 +2,7 @@
   "roadmap": {
     "project_id": "discount-hunt",
     "created_at": "2026-07-13T20:49:27Z",
-    "total_steps": 12
+    "total_steps": 28
   },
   "phases": [
     {
@@ -238,7 +238,9 @@
             "src/discount/adapters/sqlite-discount-item-repository.ts",
             "src/shared/db.ts"
           ],
-          "deps": ["02-04"],
+          "deps": [
+            "02-04"
+          ],
           "implementation_notes": "Two bug fixes found during /verify:\n\n1. getByWeek() currently does a full table scan ignoring weekStart. Fix: add a WHERE clause `valid_until >= weekStart` using Drizzle's gte() operator (import from drizzle-orm). This filters out items whose validUntil date is before the requested week started.\n\n2. createDb() uses CREATE TABLE IF NOT EXISTS which does not add new columns to existing databases. Fix: after the CREATE TABLE statements, run `ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'` wrapped in a try/catch — SQLite throws if the column already exists, which is the normal case for fresh databases.\n\nTEST PARADIGM: Unit/property-based test for the week filter invariant: for any item where validUntil < weekStart, it must be absent from the result; for validUntil >= weekStart, it must be present."
         },
         {
@@ -254,8 +256,353 @@
           "files_to_modify": [
             "tests/acceptance/discount-hunt/multi-store.test.ts"
           ],
-          "deps": ["02-06"],
+          "deps": [
+            "02-06"
+          ],
           "implementation_notes": "Add two new describe blocks to multi-store.test.ts:\n\n**Block 1 — prior-week filter**:\n- Compute current week Monday using the same formula as discount-handler (getUTCDay → daysToMonday). Also compute a past date (10 days ago) that is definitely before the current Monday.\n- Seed two scrape_jobs rows (one for Aldi Süd, one for V-Markt) and insert discount_items directly via the DB client (same pattern as staleness block). Two items with validUntil = pastDate (last week), two items with validUntil = futureDate (7 days from now).\n- Start the server.\n- GET / → assert past-week items (by name) are ABSENT. Assert future-week items ARE present.\n- No scraper subprocess needed — insert via db.insert(discountItems) directly.\n\n**Block 2 — schema migration boot**:\n- Open a raw bun:sqlite Database, create meal_plans WITHOUT the meals column (use `CREATE TABLE meal_plans (id TEXT PRIMARY KEY, week_start TEXT NOT NULL, item_ids TEXT NOT NULL, total_regular_price INTEGER NOT NULL, total_sale_price INTEGER NOT NULL, estimated_savings INTEGER NOT NULL, created_at INTEGER NOT NULL)`), close it.\n- Call createServer() against this DB path.\n- Assert server starts without throwing.\n- POST /plan/generate → assert response is not a 500 (accepts 303 redirect or 200).\n- Confirms the try/catch ALTER TABLE in createDb() handles pre-meals DBs.\n\nUse bun:sqlite's Database directly for the schema migration test (not createDb) so you can create the old schema without the meals column. Import: `import { Database } from 'bun:sqlite'`."
+        }
+      ]
+    },
+    {
+      "id": "03",
+      "name": "Slice-03 increment 1: dietary preference (Settings page + live filter + plan snapshot)",
+      "steps": [
+        {
+          "id": "03-01",
+          "name": "Schema foundation: user_settings singleton + meal_plans.dietary_filter snapshot column",
+          "criteria": [
+            "Given a fresh database, when createDb() runs, then a user_settings table exists with columns user_id (TEXT PK DEFAULT 'dimitar'), dietary_restriction (TEXT NOT NULL DEFAULT 'none'), updated_at (INTEGER NOT NULL)",
+            "Given a fresh database, when createDb() runs, then meal_plans has a dietary_filter column (TEXT NOT NULL DEFAULT 'none')",
+            "Given a pre-existing meal_plans table created before the dietary_filter column, when createDb() runs, then the column is added via a guarded ALTER TABLE and the app starts without error (mirrors the meals-column guard at db.ts:87-92)",
+            "Given the MealPlan type, when extended, then it carries a dietaryFilter field so the snapshotted restriction round-trips through save/load"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Saving a dietary restriction confirms and pre-fills on reload",
+          "files_to_modify": [
+            "src/shared/schema.ts",
+            "src/shared/db.ts",
+            "src/shared/types.ts",
+            "src/meal-planning/adapters/sqlite-meal-plan-repository.ts"
+          ],
+          "deps": [],
+          "implementation_notes": "Foundation step for SLICE-03 increment 1 (design-preferences-model.md §1). This step ships no user-visible behavior alone; it is a prerequisite for scenario 2 (persistence) going green.\n\n**schema.ts**: add the Drizzle `userSettings` sqliteTable — userId text PK with default 'dimitar', dietaryRestriction text NOT NULL default 'none', updatedAt integer NOT NULL. Add `dietaryFilter: text('dietary_filter').notNull().default('none')` to the existing mealPlans table definition.\n\n**db.ts**: add a `CREATE_USER_SETTINGS` constant (`CREATE TABLE IF NOT EXISTS user_settings (user_id TEXT PRIMARY KEY DEFAULT 'dimitar', dietary_restriction TEXT NOT NULL DEFAULT 'none', updated_at INTEGER NOT NULL)`) and exec it in createDb() alongside the other CREATE_* statements. Add `dietary_filter TEXT NOT NULL DEFAULT 'none'` to the CREATE_MEAL_PLANS constant (fresh DBs). Add a guarded idempotent migration for pre-existing DBs, EXACTLY mirroring the meals guard at db.ts:87-92: `try { sqlite.exec(\"ALTER TABLE meal_plans ADD COLUMN dietary_filter TEXT NOT NULL DEFAULT 'none'\"); } catch {}`. The user_settings singleton is guaranteed by the fixed PK 'dimitar' + upsert-on-conflict in the adapter (03-02), not by db.ts.\n\n**types.ts**: add the `UserPreferences` interface with a single `dietaryRestriction: DietaryRestriction` field (single enum 'none'|'vegetarian'|'vegan', NOT an array — design §8 INFO #6 reconciliation, v1 is single-value).\n\n**sqlite-meal-plan-repository.ts**: extend the `MealPlan` interface with `dietaryFilter: DietaryRestriction`; map the new column in save() (write) and findByWeek() (read) so the snapshot round-trips. Contract shape: bounded-change (reads/writes meal_plans; the dietary_filter value is snapshotted, never rewritten after save — design §5 D25).\n\nTEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers over a declared universe with strict=true. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. The schema-migration boot (pre-existing DB without dietary_filter → app starts) is a single-example integration test (mirror multi-store.test.ts Block 2 for the meals column). Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        },
+        {
+          "id": "03-02",
+          "name": "Preferences context: repository port + SQLite singleton adapter + service",
+          "criteria": [
+            "Given no user_settings row exists, when UserPreferencesRepository.get() is called, then it returns the honest default { dietaryRestriction: 'none' } (never null)",
+            "Given a dietary restriction is upserted, when get() is called afterward, then it returns the persisted value",
+            "Given upsert() is called twice, when the table is inspected, then it still holds exactly one row (fixed-PK 'dimitar' + INSERT ... ON CONFLICT(user_id) DO UPDATE — the singleton cannot grow)",
+            "Given a POST-then-GET round trip through the driving port, when the restriction is saved then re-read, then the saved value is returned (persistence, backs scenario 2)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Saving a dietary restriction confirms and pre-fills on reload",
+          "files_to_modify": [
+            "src/preferences/ports/preferences-repository.ts",
+            "src/preferences/adapters/sqlite-user-preferences-repository.ts",
+            "src/preferences/preferences-service.ts"
+          ],
+          "deps": [
+            "03-01"
+          ],
+          "implementation_notes": "New `src/preferences/` bounded context (design §3, Generic subdomain, no domain logic).\n\n**ports/preferences-repository.ts**: define and export `interface UserPreferencesRepository { get(): UserPreferences; upsert(prefs: UserPreferences): void }`. get() returns defaults if the row is unset (never null) — consumers never branch on 'is there a row'; the port hides single-row bootstrap. This is a genuine read+write CRUD port (settings page writes; plan-service and discount-handler read) — a single port is correct because the settings handler legitimately needs both (design §3 Port shape note; read/write split NOT required here).\n\n**adapters/sqlite-user-preferences-repository.ts**: implements the port over the shared DbClient. get() selects the single row by user_id='dimitar', returning { dietaryRestriction: 'none' } when absent. upsert() writes with the fixed PK using `INSERT INTO user_settings (user_id, dietary_restriction, updated_at) VALUES ('dimitar', ?, ?) ON CONFLICT(user_id) DO UPDATE SET dietary_restriction=excluded.dietary_restriction, updated_at=excluded.updated_at` — a second write updates the same row, so the table structurally cannot hold >1 settings row. Sets updated_at to Date.now() on every upsert. Substrate probe (Principle 13): NO new probe — this adapter inherits the shared WAL write-read-delete startup probe in db.ts (design §3); the composition-root wire→probe→use invariant (D35) already covers it via the shared DB client.\n\n**preferences-service.ts**: thin CRUD wrapper — `getPreferences(): UserPreferences` and `updatePreferences(prefs): void` delegating to the repository. No domain logic.\n\nTEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers over a declared universe with strict=true. Property for the singleton invariant: for any sequence of upserts with arbitrary restrictions, the row count stays exactly 1 and get() returns the last-written value. Property for get()-default: with no row, get() always returns { dietaryRestriction: 'none' }. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        },
+        {
+          "id": "03-03",
+          "name": "Settings handler + /settings route + Preferences page (GET pre-filled, POST upsert)",
+          "criteria": [
+            "Given GET /settings, when fetched, then it returns 200 HTML with a <select name=\"dietary\"> offering None, Vegetarian, and Vegan options",
+            "Given a previously-saved restriction (e.g. vegetarian), when GET /settings is fetched, then the matching <option value=\"vegetarian\"> carries the selected attribute (pre-fill sourced live from PreferencesRepository.get())",
+            "Given POST /settings with dietary=vegetarian (x-www-form-urlencoded), when submitted, then the row is upserted and the response contains the text 'Settings saved'",
+            "Given a POST /settings followed by a GET /settings, when re-read, then the just-saved value is pre-selected"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Settings page shows the current dietary restriction pre-selected",
+          "files_to_modify": [
+            "src/preferences/http/settings-handler.ts",
+            "src/server.ts"
+          ],
+          "deps": [
+            "03-02"
+          ],
+          "implementation_notes": "Satisfies acceptance scenarios 1 (@driving_port — Settings page shows the current dietary restriction pre-selected) AND 2 (@driving_port — Saving a dietary restriction confirms and pre-fills on reload).\n\n**http/settings-handler.ts**: thin driving adapter (no business logic; no direct DB). `handleGet()` reads PreferencesService.getPreferences() and server-renders (D31) a general 'Preferences' page — one field per LIVE dimension only, which in increment 1 is exactly one: a dietary dropdown `<select name=\"dietary\">` with options None/Vegetarian/Vegan, current value pre-selected via the `selected` attribute (design §4). No control for budget/household/kid-friendly — an inert control is testing theater (design §0). `handlePost()` parses the x-www-form-urlencoded `dietary` field, calls PreferencesService.updatePreferences(...), then re-renders the page with a 'Settings saved' confirmation banner and the just-saved value pre-selected. Note: the AT for scenario 2 asserts `response.ok` on POST (a 200 with the page + 'Settings saved'), so POST returns the rendered page, not a 303 redirect.\n\n**server.ts** (composition root, D35 wire order): instantiate SQLiteUserPreferencesRepository → PreferencesService → SettingsHandler; register `GET /settings` and `POST /settings` routing to the handler. Do NOT modify plan-service/discount-handler wiring here — that is 03-04/03-05.\n\nEXEMPT FROM PARADIGM: this step is HTTP route registration + server-rendered HTML (a single-shot UI flow with exact-string assertions 'Settings saved' and a `selected` option). # bypass: wiring test verifies composition and rendered output, not invariants. Compensate with the property-based singleton/persistence test at the unit level in 03-02. Integration/E2E (the two acceptance scenarios) REMAIN single-example."
+        },
+        {
+          "id": "03-04",
+          "name": "Dashboard live filter: un-hardcode discount-handler restriction read",
+          "criteria": [
+            "Given vegetarian is saved, when GET / is fetched, then the dashboard shows zero items tagged contains-meat/contains-fish immediately, with no regenerate step (live read)",
+            "Given vegan is saved, when GET / is fetched, then only the vegan-tagged item appears (vegetarian-only item is also filtered out)",
+            "Given the restriction is set back to none, when GET / is fetched, then all items including meat and fish reappear on the next load (anti-Fixture-Theater control proving the items exist)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Discount dashboard re-filters live when the restriction changes",
+          "files_to_modify": [
+            "src/discount/http/discount-handler.ts",
+            "src/server.ts"
+          ],
+          "deps": [
+            "03-02",
+            "03-03"
+          ],
+          "implementation_notes": "Satisfies acceptance scenario 3 (@driving_port — Discount dashboard re-filters live when the restriction changes). Design §2.1 (LIVE dashboard effect) + §6 dashboard-filter row.\n\n**discount-handler.ts**: inject UserPreferencesRepository into the constructor. In handleGet(), REPLACE the hardcoded `this.discountService.getWeeklyItems(weekStart, \"none\")` at discount-handler.ts:50 with a LIVE read: `const { dietaryRestriction } = this.preferencesRepository.get();` then `getWeeklyItems(weekStart, dietaryRestriction)`. The repo is read on EVERY request — no caching — so the feed re-filters the moment the setting changes (getByWeek already applies isCompatible() as an unconditional pre-filter, D33). Contract shape: bounded-change (reads discount_items + user_settings, no writes).\n\n**server.ts**: pass the already-wired SQLiteUserPreferencesRepository (from 03-03) into `new DiscountHandler(discountService, scrapeJobRepo, preferencesRepository)`.\n\nDeps: 03-03 because the scenario-3 beforeAll/tests call POST /settings (404 without the route); 03-02 for the repository. This step depends on 03-03 wiring existing, not on modifying the settings handler.\n\nEXEMPT FROM PARADIGM: this is a one-line un-hardcoding + constructor injection; its observable is the rendered dashboard HTML (single-shot flow, exact item-name presence/absence). # bypass: wiring test verifies composition, not invariants. isCompatible() is already property-covered at the unit level (step 01-01). Integration/E2E (scenario 3) REMAINS single-example."
+        },
+        {
+          "id": "03-05",
+          "name": "Plan generation: un-hardcode restriction, snapshot dietary_filter onto the plan",
+          "criteria": [
+            "Given vegetarian is saved and a plan is generated, when GET /plan is fetched, then no meal references a contains-meat or contains-fish item, and at least one vegetarian/vegan-compatible meal remains (filtered, not emptied)",
+            "Given a vegetarian plan was generated then the setting is switched to none, when GET /plan is fetched, then the existing plan still shows zero meat/fish (its dietary_filter is frozen at 'vegetarian' — snapshot immutability, D25)",
+            "Given the same setup, when GET / (dashboard, live) is fetched alongside GET /plan (snapshot), then the dashboard shows meat again while the plan still hides it — proving the plan is frozen, not coincidental"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — An existing vegetarian plan stays meat-free after the setting changes to none",
+          "files_to_modify": [
+            "src/meal-planning/plan-service.ts",
+            "src/server.ts"
+          ],
+          "deps": [
+            "03-03",
+            "03-04"
+          ],
+          "implementation_notes": "Satisfies acceptance scenarios 4 (@driving_port — Generated meal plan excludes meat/fish under a vegetarian restriction) AND 5 (@driving_port — An existing vegetarian plan stays meat-free after the setting changes to none). Design §2.1 (generation/snapshot) + §5 (snapshot vs live) + §6 plan-filter and snapshot-immutability rows.\n\n**plan-service.ts**: inject UserPreferencesRepository. Extend `generatePlan(weekStart, items)` → `generatePlan(weekStart, items, dietaryFilter)` — still a PURE function (plan-value pattern, D37): it writes the passed dietaryFilter into the returned MealPlan.dietaryFilter (the snapshot), no DB writes. In `getOrGenerateCurrentWeekPlan()`, REPLACE the hardcoded `getWeeklyItems(weekStart, \"none\")` at plan-service.ts:118 with `const { dietaryRestriction } = this.preferencesRepository.get();` then `getWeeklyItems(weekStart, dietaryRestriction)` and pass dietaryRestriction into generatePlan(...). getOrGenerateCurrentWeekPlan remains idempotent (returns the existing frozen plan for the current week, plan-service.ts:113-116) — so scenario 5's immutability is reachable via same-week GET /plan; NO regenerate endpoint is needed in increment 1. savePlan persists dietary_filter via the 03-01 repository mapping.\n\n**server.ts**: pass SQLiteUserPreferencesRepository into the PlanService construction.\n\nDeps: 03-04 is REQUIRED (not just 03-03) — scenario 5's third test asserts the LIVE dashboard shows meat again while the snapshot plan hides it, so the live dashboard filter from 03-04 must be working for that contrast assertion to be meaningful. 03-03 for the /settings route used by the scenario preconditions.\n\nTEST PARADIGM (mandatory): the snapshot invariant is a property — for any restriction R snapshotted at generation, subsequent setting changes to R' MUST NOT alter the frozen plan's composition. Where the generatePlan contract supports it, write a fast-check property over (items, R): every meal in the returned plan is isCompatible with R, and plan.dietaryFilter === R, asserted via state-delta over a declared universe (strict=true). Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. The acceptance scenarios (4 and 5) REMAIN single-example E2E through rendered HTML — they verify wiring, and assert only rendered output, never the internal dietary_filter column (Universe guard)."
+        },
+        {
+          "id": "03-06",
+          "name": "Empty-plan warning + link to /settings when no compatible items exist",
+          "criteria": [
+            "Given a vegetarian restriction and a week whose items are all meat/fish (zero compatible), when GET /plan is fetched, then the page shows 'No compatible meals found'",
+            "Given the same empty-plan condition, when GET /plan is fetched, then the page contains a direct link with href=\"/settings\"",
+            "Given the same condition, when GET /plan is fetched, then neither the meat nor the fish item appears as a meal"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Plan view warns and links to settings when no compatible items exist",
+          "files_to_modify": [
+            "src/meal-planning/http/plan-handler.ts"
+          ],
+          "deps": [
+            "03-05"
+          ],
+          "implementation_notes": "Satisfies acceptance scenario 6 (@driving_port — Plan view warns and links to settings when no compatible items exist). Design §4 (empty-plan warning) + §6 empty-plan-warning row (US-05 scenario-3/4 behavior).\n\n**plan-handler.ts**: in the plan render path, when the generated plan has zero compatible items (the active dietary restriction filters out every seeded item, so no meal references a real discount item), render the message 'No compatible meals found with your current restrictions' plus a direct anchor `<a href=\"/settings\">` so the user can change the restriction. Detect the empty condition from the plan's meals (all discountItemId null / no compatible items), not by re-querying. Thin driving adapter — no business logic; rendering only.\n\nEXEMPT FROM PARADIGM: this is server-rendered HTML with exact-string assertions ('No compatible meals found', `href=\"/settings\"`) — a single-shot UI flow. # bypass: rendering test verifies output, not invariants. The compatibility filter that produces the empty set is property-covered upstream (isCompatible at 01-01, plan filtering at 03-05). Integration/E2E (scenario 6) REMAINS single-example."
+        },
+        {
+          "id": "03-07",
+          "name": "Empty-state discriminator: no-data vs restriction-filtered",
+          "criteria": [
+            "Given an empty discount DB and the default 'none' restriction, when a plan is generated and GET /plan is fetched, then the view shows a no-discounts-available message and does NOT show 'No compatible meals found with your current restrictions'",
+            "Given a meat/fish-only DB and a 'vegetarian' restriction (0 compatible), when GET /plan is fetched, then the view still shows 'No compatible meals found' + a link to /settings (scenario 6 unchanged)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Empty plan distinguishes no-data from restriction-filtered",
+          "files_to_modify": [
+            "src/meal-planning/http/plan-handler.ts",
+            "tests/acceptance/discount-hunt/dietary-preferences.test.ts"
+          ],
+          "deps": [
+            "03-06"
+          ],
+          "implementation_notes": "Review-driven fix (adversarial review flag: empty-plan no-data/restriction conflation). plan-handler.ts:31-49 currently renders the restriction warning ('No compatible meals found with your current restrictions' + Change-your-dietary-restriction /settings link) for ANY empty plan, including a plan built from an empty DB (fresh install / failed scrape). Fix: branch the empty-state on plan.dietaryFilter (this also makes the snapshot column load-bearing, resolving the 'dietary_filter written-not-read' flag):\n- hasNoCompatibleItems(plan) AND plan.dietaryFilter === 'none' -> render a NO-DATA message, e.g. <p class=\"no-discounts-warning\">No discounts available this week - please check back after the next catalogue update.</p>  (NO 'change your dietary restriction' steer)\n- hasNoCompatibleItems(plan) AND plan.dietaryFilter !== 'none' -> keep the existing restriction warning + <a href=\"/settings\">Change your dietary restriction</a>.\nNew regression AT (add a describe to dietary-preferences.test.ts): seed an EMPTY db (no items), createServer, POST /settings none (default), POST /plan/generate, then GET /plan asserts: (1) contains the no-discounts message text; (2) does NOT contain 'No compatible meals found with your current restrictions'. Reuse the file's existing seed/server helpers (add a seedEmptyDb or just skip seeding). Do NOT modify scenario 6 assertions - they must stay green (vegetarian => dietaryFilter !== 'none' => restriction branch)."
+        },
+        {
+          "id": "03-08",
+          "name": "Harden dietary settings: input validation + snapshot-behavior AT + HTML escaping",
+          "criteria": [
+            "Given POST /settings with an invalid dietary value (e.g. 'banana'), when saved, then the persisted restriction is 'none' (rejected/defaulted) and GET /settings shows 'none' selected; the dashboard behaves as none (all items shown), never as vegan",
+            "Given a meat/fish-only DB with vegetarian saved and an (empty) plan generated, when the setting is switched to 'none' and GET /plan is fetched, then the plan STILL shows 'No compatible meals found' (snapshot=vegetarian drives the message), NOT 'No discounts available' — proving the discriminator reads the snapshot, not the live setting",
+            "Given a discount item whose name contains HTML special characters, when GET / or GET /plan renders it, then the characters are escaped (no raw <script> injection) — stored-XSS surface closed"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+          "scenario_name": "@driving_port — Settings input validation, snapshot-drives-message, HTML escaping",
+          "files_to_modify": [
+            "src/preferences/http/settings-handler.ts",
+            "src/shared/html.ts",
+            "src/discount/http/discount-handler.ts",
+            "src/meal-planning/http/plan-handler.ts",
+            "tests/acceptance/discount-hunt/dietary-preferences.test.ts"
+          ],
+          "deps": [
+            "03-07"
+          ],
+          "implementation_notes": "Three review findings folded into one hardening step.\n\nD1 (BLOCKER) input validation: settings-handler.ts handlePost currently does `const dietary = (form.get('dietary') ?? 'none') as DietaryRestriction` — the `as` cast is compile-only, so 'banana' persists and isCompatible treats it as vegan-only. Fix: whitelist against ['none','vegetarian','vegan']; on mismatch default to 'none' (do NOT persist garbage). Add an AT: POST /settings dietary=banana -> GET /settings shows none selected AND GET / shows all seeded items (behaves as none, not vegan).\n\nD2 (snapshot-behavior AT): add an AT proving the empty-state discriminator reads plan.dietaryFilter (snapshot), not the live setting. Seed meat/fish-only; save vegetarian; POST /plan/generate (empty plan, restriction message); switch setting to none; GET /plan MUST still contain 'No compatible meals found' and MUST NOT contain 'No discounts available'. (Kills the surviving mutant where the discriminator reads the live restriction.)\n\nD3 (HTML escaping): create src/shared/html.ts exporting `escapeHtml(s: string): string` (escape & < > \" '). Apply to item.name in discount-handler render and meal.name in plan-handler render (the untrusted scraped-data interpolation points). Add an AT: seed an item whose name contains '<b>x</b>' or similar; assert GET / / GET /plan HTML contains the escaped form and NOT the raw tag. Keep existing item-name assertions green (escaping a plain name like 'Rindersteak' is a no-op).\n\nDo NOT weaken any existing assertion. All prior dietary ATs + scenario 6 must stay green."
+        }
+      ]
+    },
+    {
+      "id": "04",
+      "name": "Increment 1.5: Budget cap (warn banner + snapshot, no regenerate)",
+      "steps": [
+        {
+          "id": "04-01",
+          "name": "Budget schema: budget_cap_cents on user_settings + meal_plans (guarded migration) + types/repo",
+          "criteria": [
+            "user_settings has a nullable budget_cap_cents column; meal_plans has a nullable budget_cap_cents column",
+            "Opening an existing S01-S03 DB (without these columns) does not crash — guarded ALTER TABLE adds them idempotently",
+            "UserPreferences gains budgetCapCents?: number|null; MealPlan gains budgetCapCents: number|null; repos read/write both"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/budget-cap.test.ts",
+          "scenario_name": "@driving_port — budget field persists / snapshot immutability (schema prerequisite)",
+          "files_to_modify": [
+            "src/shared/schema.ts",
+            "src/shared/db.ts",
+            "src/shared/types.ts",
+            "src/preferences/ports/preferences-repository.ts",
+            "src/preferences/adapters/sqlite-user-preferences-repository.ts",
+            "src/meal-planning/adapters/sqlite-meal-plan-repository.ts"
+          ],
+          "deps": [
+            "03-08"
+          ],
+          "implementation_notes": "Add budget_cap_cents (nullable INTEGER) to BOTH user_settings and meal_plans. In db.ts: add to the CREATE_ statements AND add guarded try/catch ALTER TABLE for EACH (two blocks), following the exact dietary_filter/meals idiom (db.ts existing guards). Extend UserPreferences type with budgetCapCents?: number|null (null = no cap). Extend MealPlan with budgetCapCents: number|null. Update SQLiteUserPreferencesRepository get()/upsert() to round-trip budget (default null). Update SQLiteMealPlanRepository save()/findByWeek() to round-trip budgetCapCents. NO regenerate logic. savePlan stays insert-only."
+        },
+        {
+          "id": "04-02",
+          "name": "Settings budget field: input + euros->cents validation + persistence",
+          "criteria": [
+            "GET /settings renders an <input name=\"budget\"> (euros); after saving a cap it echoes the saved euros value",
+            "POST /settings with a valid budget persists budget_cap_cents; invalid (non-numeric, negative) => no cap (NULL), never garbage",
+            "Dietary and budget are saved together from the one settings form"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/budget-cap.test.ts",
+          "scenario_name": "@driving_port — Settings exposes a budget field that persists / invalid budget treated as no cap",
+          "files_to_modify": [
+            "src/preferences/http/settings-handler.ts"
+          ],
+          "deps": [
+            "04-01"
+          ],
+          "implementation_notes": "Add a budget input to the settings form (name=\"budget\", value in euros, empty = no cap). handlePost: parse euros->cents (euros * 100, rounded). Validation (mirror the dietary whitelist discipline from 03-08): reject non-numeric/negative -> budgetCapCents = null (no cap). Persist via preferencesService.updatePreferences({dietaryRestriction, budgetCapCents}). GET pre-fills the euros value from the saved cents (cents/100), empty when null. Keep the 'Settings saved' confirmation."
+        },
+        {
+          "id": "04-03",
+          "name": "Budget snapshot at generation + over-budget banner",
+          "criteria": [
+            "generatePlan snapshots the current budget_cap_cents onto the plan; getOrGenerateCurrentWeekPlan reads it from prefs",
+            "GET /plan renders data-over-budget iff the plan's snapshotted cap is non-null AND plan.totalSalePrice > cap",
+            "No marker when cap null or totalSalePrice <= cap; changing the cap after generation does NOT change the existing plan's banner (snapshot frozen)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/budget-cap.test.ts",
+          "scenario_name": "@driving_port — over-budget banner appears / no banner under or without cap / snapshot immutability",
+          "files_to_modify": [
+            "src/meal-planning/plan-service.ts",
+            "src/meal-planning/http/plan-handler.ts"
+          ],
+          "deps": [
+            "04-02"
+          ],
+          "implementation_notes": "plan-service getOrGenerateCurrentWeekPlan: read budgetCapCents from preferencesRepository.get() and pass into generatePlan; generatePlan sets plan.budgetCapCents (snapshot). plan-handler renderPlanHtml (populated branch): emit a data-over-budget marker (e.g. <p class=\"over-budget-warning\" data-over-budget>...over budget...</p>) iff plan.budgetCapCents != null AND plan.totalSalePrice > plan.budgetCapCents. Read the SNAPSHOT (plan.budgetCapCents), never the live setting. No banner otherwise. savePlan stays insert-only (one savings_log row/week)."
+        }
+      ]
+    },
+    {
+      "id": "05",
+      "name": "SLICE-04: Savings history UI — this-week breakdown + month-to-date + unavailable",
+      "steps": [
+        {
+          "id": "05-01",
+          "name": "SavingsService: month-to-date + current-week + unavailable classification (view model)",
+          "criteria": [
+            "Service exposes a summary combining history, current-week breakdown, and a month-to-date sum",
+            "Month-to-date sums saved_amount only for weeks whose week_start is in the current calendar month; weeks with totalRegularPrice===0 are excluded",
+            "A week with totalRegularPrice===0 is flagged as savings-unavailable"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/savings-history.test.ts",
+          "scenario_name": "@driving_port — month-to-date total / savings unavailable (aggregation)",
+          "files_to_modify": [
+            "src/savings/savings-service.ts",
+            "src/savings/savings-service.test.ts"
+          ],
+          "deps": [
+            "04-03"
+          ],
+          "implementation_notes": "Add a getSummary() (or extend getHistory consumers) returning a view model: { history: SavingsRecord[] (DESC), thisWeek: SavingsRecord|null (weekStart===currentWeekMonday()), monthToDateCents: number, unavailableWeekStarts: string[] }. Month filter: week_start.slice(0,7) === currentWeekMonday().slice(0,7). Exclude any record with totalRegularPrice===0 from monthToDateCents and list it in unavailableWeekStarts. Import currentWeekMonday from src/shared/week.ts. Add colocated unit tests (real sqlite via createDb OR pure over seeded records) covering: month filter excludes prior-month; unavailable week excluded from sum and flagged. Keep getHistory() intact (existing handler/tests depend on it)."
+        },
+        {
+          "id": "05-02",
+          "name": "SavingsHandler: render this-week breakdown + month-to-date + Savings-unavailable",
+          "criteria": [
+            "GET /savings renders data-week-paid / data-week-would-have-paid / data-week-saved for the current week (cents)",
+            "GET /savings renders data-month-to-date (cents) = current-month sum excluding unavailable weeks",
+            "A week with totalRegularPrice===0 shows the literal 'Savings unavailable' (not €0.00); existing data-saved-amount history rows still render"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/savings-history.test.ts",
+          "scenario_name": "@driving_port — this-week breakdown / month-to-date / savings unavailable (render)",
+          "files_to_modify": [
+            "src/savings/http/savings-handler.ts"
+          ],
+          "deps": [
+            "05-01"
+          ],
+          "implementation_notes": "Use the service summary. Render a this-week breakdown block with data-week-paid={thisWeek.totalSalePrice}, data-week-would-have-paid={thisWeek.totalRegularPrice}, data-week-saved={thisWeek.savedAmount} (omit the block or render zeros gracefully if thisWeek is null — but ATs seed a current-week row). Render data-month-to-date={monthToDateCents}. In the history rows, when a record.totalRegularPrice===0 render 'Savings unavailable' in place of the euros amount (keep data-saved-amount rows for normal weeks unchanged so the existing savings-handler.test.ts stays green). Escape any interpolated strings via escapeHtml where relevant (week_start is safe, but stay consistent)."
+        },
+        {
+          "id": "05-03",
+          "name": "Savings hardening: this-week unavailable + testable month-to-date + escape store names",
+          "criteria": [
+            "When the current week's totalRegularPrice===0, the this-week breakdown shows 'Savings unavailable' (not €0.00 / data-week-would-have-paid)",
+            "Month-to-date summation is a pure function taking an explicit reference-month, unit-tested with a record in the same calendar month as today but a different week-Monday month bucket — proving the intended semantics independently of currentWeekMonday()",
+            "Store names in the discount feed are HTML-escaped (stored-XSS closed), consistent with item/meal name escaping"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/savings-history.test.ts",
+          "scenario_name": "@driving_port — this-week savings unavailable / month-to-date semantics / store-name escaping",
+          "files_to_modify": [
+            "src/savings/savings-service.ts",
+            "src/savings/savings-service.test.ts",
+            "src/savings/http/savings-handler.ts",
+            "src/discount/http/discount-handler.ts",
+            "tests/acceptance/discount-hunt/savings-history.test.ts"
+          ],
+          "deps": [
+            "06-02"
+          ],
+          "implementation_notes": "BLOCKER: savings-handler renderThisWeekBreakdown must branch on isSavingsUnavailable(thisWeek) (totalRegularPrice===0) and render 'Savings unavailable' instead of the paid/would-have-paid/saved fields (mirror the history renderSavedCell branch). Add an AT: seed a CURRENT-week savings_log row with totalRegularPrice=0 -> GET /savings this-week block contains 'Savings unavailable' and NOT data-week-would-have-paid. Keep the normal this-week AT (regular=1420) green.\n\nWARNING (month-to-date testability): extract the month sum into a PURE function in savings-service, e.g. sumMonthToDateCents(records, referenceMonthYYYYMM): sums saved_amount for records whose weekStart.slice(0,7)===referenceMonth AND totalRegularPrice!==0. getSummary derives referenceMonth = currentWeekMonday().slice(0,7) and calls it. Add a colocated UNIT test that calls the pure function with an EXPLICIT referenceMonth (e.g. '2026-08') and records including one at '2026-08-01' and one at '2026-07-27' -> asserts only the 2026-08 one is summed. This breaks the test-blind-spot (test no longer shares the derivation). Also add a one-line clarification to docs/feature/discount-hunt/slices/slice-04-savings-history.md line ~24 that 'current month' = calendar month of the current week's Monday. (Doc note optional but preferred.)\n\nINFO (escape store names): in discount-handler, wrap the interpolated store name at the staleness-warning and store-section <h2> sites in escapeHtml(...). Add/extend an AT (or reuse ui/dietary seed) with a store name containing an HTML special char -> assert escaped form present, raw tag absent. Keep existing 'Aldi Süd' assertions green (escaping a plain name is a no-op).\n\nDo NOT weaken existing assertions; keep getHistory + existing savings-handler.test.ts green; savePlan stays insert-only."
+        }
+      ]
+    },
+    {
+      "id": "06",
+      "name": "UI upgrade: shared layout + inline CSS (clean card-grid) + top nav across all pages",
+      "steps": [
+        {
+          "id": "06-01",
+          "name": "Shared page layout helper + inline CSS + top nav",
+          "criteria": [
+            "src/shared/layout.ts exports renderPage({title, activeNav, body}) returning a full HTML document",
+            "The document includes a <style> block (clean utility theme) and a top nav (class=site-nav) linking / /plan /savings /settings with the active page marked",
+            "renderPage escapes the title and does not alter the provided body markup"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/ui-shell.test.ts",
+          "scenario_name": "@driving_port — shared shell present on every page (layout unit)",
+          "files_to_modify": [
+            "src/shared/layout.ts",
+            "src/shared/layout.test.ts"
+          ],
+          "deps": [
+            "05-02"
+          ],
+          "implementation_notes": "Create renderPage({title, activeNav, body}): returns `<!DOCTYPE html><html lang=en><head>` with charset, viewport meta, <title>{escaped}</title>, and an inline <style> implementing a clean utility theme (light bg, system-ui font, max-width container, a .site-nav top bar with brand 'DiscountHunt' + links, a .card + .card-grid (CSS grid, responsive via repeat(auto-fill,minmax(...))), basic table styling, a .warning/.banner style). Body wrapped in <main class=container>. Nav links: Feed=/ Plan=/plan Savings=/savings Settings=/settings; the link whose key === activeNav gets class=active (or aria-current=page). activeNav is one of 'feed'|'plan'|'savings'|'settings'. Do NOT transform the body string (callers pass ready HTML). Colocated unit test: assert doctype, <style> present, all four hrefs present, active class applied for a given activeNav, title escaped."
+        },
+        {
+          "id": "06-02",
+          "name": "Route all four handlers through renderPage; feed renders item cards",
+          "criteria": [
+            "GET /, /plan, /settings, /savings each return HTML containing class=\"site-nav\" and links to / /plan /savings /settings and a <style> block",
+            "GET / renders each discount item inside a card (data-item-card); existing item-name and staleness/empty-state assertions still pass",
+            "All previously-passing assertions (data-estimated-savings, data-meal-slot, data-over-budget, data-saved-amount, data-week-*, data-month-to-date, 'Settings saved', 'No compatible meals found', 'No discounts available', 'Savings unavailable', href=/settings) remain green"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/ui-shell.test.ts",
+          "scenario_name": "@driving_port — nav+shell on all routes; feed uses cards",
+          "files_to_modify": [
+            "src/discount/http/discount-handler.ts",
+            "src/meal-planning/http/plan-handler.ts",
+            "src/preferences/http/settings-handler.ts",
+            "src/savings/http/savings-handler.ts",
+            "tests/acceptance/discount-hunt/ui-shell.test.ts"
+          ],
+          "deps": [
+            "06-01"
+          ],
+          "implementation_notes": "Refactor each handler so it builds ONLY its inner body markup and returns renderPage({title, activeNav, body}). Preserve EVERY existing asserted string/attribute verbatim (data-*, marker texts, hrefs) — the refactor must not drop them. Discount feed: wrap each rendered item in <div class=\"card\" data-item-card>...</div> inside a <div class=\"card-grid\">, keeping escapeHtml(item.name) and existing price/staleness markup. Keep per-store sections + empty-state + staleness warnings intact. Plan/settings/savings keep their tables/forms as the body, now inside the shell. Author tests/acceptance/discount-hunt/ui-shell.test.ts: seed minimal data, start createServer (fresh port range e.g. 5600+random), fetch each of the four GET routes, assert class=\"site-nav\" + the four hrefs + '<style' present on each; on GET / assert data-item-card present for a seeded item. Then run FULL bun test — everything green."
         }
       ]
     }

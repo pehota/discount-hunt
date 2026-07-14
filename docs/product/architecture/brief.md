@@ -473,7 +473,7 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (HTTP) | `src/discount/http/discount-handler.ts` | `GET /` — reads filtered discount items; passes `dietary_filter` from `UserPreferencesRepository` into query |
+| Primary adapter (HTTP) | `src/discount/http/discount-handler.ts` | `GET /` — filters LIVE by the user's dietary restriction (read from `UserPreferencesRepository.get()` on every request; S03 03-04) and passes it into the weekly query; renders items as `data-item-card` cards via the shared `renderPage()` shell; escapes item **and** store names via `escapeHtml` (S03 03-08 / S04 05-03 XSS fix) |
 | Domain service | `src/discount/discount-service.ts` | `RegisterDiscountItem(normalizedItem)`: validates price invariants, persists; `GetWeeklyItems(filter)`: returns `DiscountItem[]` filtered by `isCompatible()` |
 | Driven port (DB) | `src/discount/ports/discount-item-repository.ts` | Port: `register`, `getByWeek(weekStart, filter)`, `expire` |
 | Secondary adapter | `src/discount/adapters/sqlite-discount-item-repository.ts` | Drizzle ORM; `discount_items` table; enforces `regular_price IS NOT NULL` at insert |
@@ -482,10 +482,10 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (HTTP) | `src/meal-planning/http/plan-handler.ts` | `GET /plan` — renders current week's plan; `POST /plan/generate` — triggers `GeneratePlan` use case |
-| Domain service | `src/meal-planning/plan-service.ts` | `GeneratePlan(weekStart)`: reads `UserPreferences`, applies `isCompatible()` before selection, queries `getRecentRecipeIds(since: 4 weeks ago)` to exclude recently used recipes, maps items to meals, computes `estimated_savings`, writes plan + savings in one SQLite transaction |
-| Driven port (DB) | `src/meal-planning/ports/meal-plan-repository.ts` | Port: `save(plan)`, `getByWeek(weekStart)`, `replaceCurrentWeek(plan)`, `getRecentRecipeIds(since: Date): RecipeId[]` |
-| Secondary adapter | `src/meal-planning/adapters/sqlite-meal-plan-repository.ts` | Drizzle ORM; `meal_plans` table; `ReplaceSavings` called in same transaction |
+| Primary adapter (HTTP) | `src/meal-planning/http/plan-handler.ts` | `GET /plan` — renders current week's plan via `renderPage()`; shows the empty-state discriminator (no-data vs restriction-filtered, reading the plan's snapshotted `dietary_filter`; S03 03-06/03-07) and the `data-over-budget` banner driven by the snapshotted `budget_cap_cents` (increment 1.5 / 04-03); `POST /plan/generate` — triggers `GeneratePlan` use case |
+| Domain service | `src/meal-planning/plan-service.ts` | `GeneratePlan(weekStart)`: reads `UserPreferences` (dietary restriction **and** budget cap), applies `isCompatible()` before selection, maps items to meals, computes `estimated_savings`, and **snapshots** the active `dietary_filter` (D25; S03 03-05) and `budget_cap_cents` (1.5 / 04-03) onto the `meal_plans` row; writes plan + savings in one SQLite transaction (D23). `savePlan` is INSERT-only — one `savings_log` row per week |
+| Driven port (DB) | `src/meal-planning/ports/meal-plan-repository.ts` | Port: `save(plan)`, `getByWeek(weekStart)`. (`getRecentRecipeIds` / recipe-rotation methods are FUTURE — arrive with SLICE-05 recipe integration; not on the port today) |
+| Secondary adapter | `src/meal-planning/adapters/sqlite-meal-plan-repository.ts` | Drizzle ORM; `meal_plans` table (now carries snapshotted `dietary_filter` + `budget_cap_cents`); `recordSavings` called in the same transaction (D23) |
 
 #### Recipe Matching — `src/recipe/`
 
@@ -503,8 +503,8 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (HTTP) | `src/savings/http/savings-handler.ts` | `GET /savings` — renders weekly history and month-to-date total |
-| Domain service | `src/savings/savings-service.ts` | `GetHistory()`: query `savings_log` ordered by `week_start DESC`; compute month-to-date; `RecordSavings` and `ReplaceSavings` invoked by `plan-service.ts` in same transaction (not via HTTP) |
+| Primary adapter (HTTP) | `src/savings/http/savings-handler.ts` | `GET /savings` — renders (via `renderPage()`) the this-week breakdown (`data-week-paid` / `data-week-would-have-paid` / `data-week-saved`), the month-to-date total, and an honest "Savings unavailable" notice for weeks whose regular price was never captured; escapes store names |
+| Domain service | `src/savings/savings-service.ts` | `getHistory()`: query `savings_log` ordered by `week_start DESC`; `getSummary()`: builds the S04 view model (`history`, `thisWeek`, `monthToDateCents`, `unavailableWeekStarts`) via the pure, independently-unit-tested `sumMonthToDateCents(records, referenceMonth)` and `isSavingsUnavailable(record)` (unavailable ≡ `totalRegularPrice === 0`); `recordSavings(...)` invoked by `plan-service.ts` in the same transaction (D23), not via HTTP |
 | Driven port (DB) | `src/savings/ports/savings-repository.ts` | Port: `record(savingsRecord)`, `replace(weekStart, record)`, `getHistory()` |
 | Secondary adapter | `src/savings/adapters/sqlite-savings-repository.ts` | Drizzle ORM; `savings_log` table; `replace` enforces `week_start >= currentMonday()` guard |
 
@@ -512,10 +512,12 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (HTTP) | `src/preferences/http/settings-handler.ts` | `GET /settings` — renders settings form pre-populated with current restriction; `POST /settings` — calls `UpdateDietaryRestrictions` |
-| Domain service | `src/preferences/preferences-service.ts` | `GetPreferences()`, `UpdateDietaryRestrictions(restrictions[])` — thin CRUD, no domain logic |
-| Driven port (DB) | `src/preferences/ports/preferences-repository.ts` | Port: `get()`, `update(restrictions[])` |
-| Secondary adapter | `src/preferences/adapters/sqlite-preferences-repository.ts` | Drizzle ORM; `user_settings` table; single-row, upsert on `user_id = 'dimitar'` |
+| Primary adapter (HTTP) | `src/preferences/http/settings-handler.ts` | `GET /settings` — renders the Preferences form (via `renderPage()`) pre-filled with the current dietary restriction and budget cap; `POST /settings` — validates input, converts the budget euros→cents, `upsert`s, and re-renders with a "Settings saved" confirmation |
+| Domain service | `src/preferences/preferences-service.ts` | `getPreferences()`, `updatePreferences(prefs)` — thin CRUD, no domain logic (Generic subdomain) |
+| Driven port (DB) | `src/preferences/ports/preferences-repository.ts` | `UserPreferencesRepository` — `get(): UserPreferences` (returns honest defaults `{ dietaryRestriction: 'none', budgetCapCents: null }` when unset, never null), `upsert(prefs): void` |
+| Secondary adapter | `src/preferences/adapters/sqlite-user-preferences-repository.ts` | Drizzle ORM; `user_settings` table; single-row singleton, fixed-PK upsert-on-conflict on `user_id = 'dimitar'` |
+
+**Schema (`user_settings`):** `user_id` (fixed-PK singleton), `dietary_restriction` (`none`\|`vegetarian`\|`vegan`, S03), `budget_cap_cents` (nullable, increment 1.5), `updated_at`. Budget column added via the guarded ALTER idiom when the warn-effect shipped (columns-arrive-with-effects rule).
 
 #### Shared Kernel — `src/shared/`
 
@@ -525,6 +527,9 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `src/shared/schema.ts` | Drizzle table schema definitions shared across adapter implementations | N/A (data definition only) |
 | `src/shared/types.ts` | Cross-context value types (`DietaryTag`, `DietaryRestriction`, `WeekStart`, `Money`) | N/A (type definitions only) |
 | `src/shared/db.ts` | Drizzle client factory; SQLite WAL-mode startup probe (`write-read-delete` row test) | bounded-change — probe writes/deletes one probe row only |
+| `src/shared/layout.ts` | `renderPage({ title, activeNav, body })` — page shell (inline CSS, top nav Feed/Plan/Savings/Settings, responsive card-grid); wraps caller-supplied body verbatim, escapes only the title. All four HTTP handlers route through it | pure-function / return-only |
+| `src/shared/week.ts` | `currentWeekMonday(): WeekStart` — single source of truth for the current ISO-week Monday ("YYYY-MM-DD"); consumed by the discount dashboard and `GeneratePlan` so feed and plan agree on the week | pure-function / return-only |
+| `src/shared/html.ts` | `escapeHtml(value)` — escapes `& < > " '` for safe interpolation of untrusted scraped strings (item/meal/store names) into server-rendered HTML | pure-function / return-only |
 
 **Shared Kernel rationale:** `src/shared/dietary.ts` is the sole sanctioned cross-context import, declared as Shared Kernel per DDD context mapping. All other cross-context communication goes through port interfaces and the SQLite DB. This is the explicit exception to D26 ("no cross-context type imports") — a deliberate Shared Kernel boundary, not a leak.
 
@@ -547,16 +552,16 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 ### Driving Ports (Inbound Adapters)
 
-| Route | HTTP Method | Handler File | Use Case | Bounded Context | Slice |
+| Route | HTTP Method | Handler File | Use Case | Bounded Context | Slice / Status |
 |-------|-------------|--------------|----------|-----------------|-------|
-| `/` | GET | `src/discount/http/discount-handler.ts` | Display weekly discount feed filtered by dietary restriction | Discount / Pricing | S01 |
-| `/plan` | GET | `src/meal-planning/http/plan-handler.ts` | Render current week's meal plan | Meal Planning | S01 |
-| `/plan/generate` | POST | `src/meal-planning/http/plan-handler.ts` | Trigger `GeneratePlan` use case; redirect to `/plan` | Meal Planning | S01 |
-| `/plan/:meal_id` | GET | `src/recipe/http/recipe-handler.ts` | Render recipe detail for a plan meal (cache-first, partial HTML swap via HTMX) | Recipe Matching | S05 |
-| `/savings` | GET | `src/savings/http/savings-handler.ts` | Render weekly + monthly savings history | Savings Tracking | S01 (basic) / S04 (history) |
-| `/settings` | GET | `src/preferences/http/settings-handler.ts` | Render settings form pre-populated with current restriction | User Preferences | S03 |
-| `/settings` | POST | `src/preferences/http/settings-handler.ts` | `UpdateDietaryRestrictions`; redirect to `/settings` with toast | User Preferences | S03 |
-| CLI: `bun run scrape.ts` | — | `src/scraping/scraper-runner.ts` | Invoke `ScrapingService`; one-shot, exit on completion | Catalogue Scraping | S01 |
+| `/` | GET | `src/discount/http/discount-handler.ts` | Display weekly discount feed filtered LIVE by dietary restriction; card-grid | Discount / Pricing | S01 — DELIVERED (live filter S03) |
+| `/plan` | GET | `src/meal-planning/http/plan-handler.ts` | Render current week's meal plan; empty-state discriminator + over-budget banner | Meal Planning | S01 — DELIVERED |
+| `/plan/generate` | POST | `src/meal-planning/http/plan-handler.ts` | Trigger `GeneratePlan` use case; redirect to `/plan` | Meal Planning | S01 — DELIVERED |
+| `/plan/:meal_id` | GET | `src/recipe/http/recipe-handler.ts` | Render recipe detail for a plan meal (cache-first, partial HTML swap via HTMX) | Recipe Matching | S05 — FUTURE (blocked on SPIKE-02) |
+| `/savings` | GET | `src/savings/http/savings-handler.ts` | Render this-week breakdown + month-to-date + "Savings unavailable" | Savings Tracking | S01 (basic) — DELIVERED; S04 (history) — DELIVERED |
+| `/settings` | GET | `src/preferences/http/settings-handler.ts` | Render Preferences form pre-filled with dietary restriction + budget cap | User Preferences | S03 — DELIVERED (budget field: increment 1.5) |
+| `/settings` | POST | `src/preferences/http/settings-handler.ts` | Validate + `upsert` preferences (dietary + budget euros→cents); re-render with "Settings saved" | User Preferences | S03 — DELIVERED |
+| CLI: `bun run scrape.ts` | — | `src/scraping/scraper-runner.ts` | Invoke `ScrapingService`; one-shot, exit on completion | Catalogue Scraping | S01 — DELIVERED |
 
 **HTTP server entry point:** `src/server.ts` — registers all handlers with `Bun.serve` (see ADR-004); composition root: creates Drizzle client, runs SQLite WAL probe (`src/shared/db.ts`), then registers routes. Adapters that fail their probe cause the server to log `health.startup.refused` and exit with code 1.
 
@@ -570,7 +575,7 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `DiscountItemRepository` | `sqlite-discount-item-repository.ts` | Drizzle ORM / SQLite | Discount / Pricing | Shared WAL probe | No |
 | `MealPlanRepository` | `sqlite-meal-plan-repository.ts` | Drizzle ORM / SQLite | Meal Planning | Shared WAL probe | No |
 | `SavingsRepository` | `sqlite-savings-repository.ts` | Drizzle ORM / SQLite | Savings Tracking | Shared WAL probe | No |
-| `PreferencesRepository` | `sqlite-preferences-repository.ts` | Drizzle ORM / SQLite | User Preferences | Shared WAL probe | No |
+| `UserPreferencesRepository` | `sqlite-user-preferences-repository.ts` | Drizzle ORM / SQLite | User Preferences | Shared WAL probe | No |
 | `RecipeRepository` | `sqlite-recipe-repository.ts` | Drizzle ORM / SQLite | Recipe Matching | Shared WAL probe | No |
 | `CatalogueFetcher` | `aldi-sud-catalogue-fetcher.ts` | `Bun.fetch` (built-in) | Catalogue Scraping | `catalogue-probe.ts` — slug 302 + item shape | Yes: prospekt.aldi-sued.de |
 | `CatalogueFetcher` | `edeka-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | FUTURE — not implemented; Edeka blocked by Akamai Bot Manager | Yes: Edeka catalogue |

@@ -1,8 +1,8 @@
 # Evolution: discount-hunt DELIVER Wave
 
 **Date**: 2026-07-14
-**Iteration**: S01 + S02 (of 5 planned)
-**Status**: COMPLETE — all 12 steps DONE, acceptance suite GREEN (66 pass, 4 skip, 0 fail)
+**Iteration**: S01 + S02 + S03 (dietary) + increment 1.5 (budget cap) + S04 (savings history) + UI upgrade (of 5 planned)
+**Status**: COMPLETE — all 28 steps DONE, acceptance suite GREEN (151 pass, 4 skip, 0 fail)
 
 ---
 
@@ -10,10 +10,14 @@
 
 **Primary job**: When planning weekly groceries with no knowledge of current promotions, Dimitar wants to generate a discount-first 7-day meal plan filtered to his dietary restrictions, so he can cook real meals while spending meaningfully less than unplanned shopping.
 
-Two delivery slices shipped in this DELIVER wave:
+Slices/increments shipped in this DELIVER wave:
 
 - **S01 (Walking Skeleton)**: Single-store Aldi Süd scraper, SQLite persistence, discount feed at `GET /`, meal plan generation via `POST /plan/generate` + `GET /plan`, savings log, dietary filtering scaffold.
 - **S02 (Multi-store + Staleness)**: V-Markt integration (Haiku AI-powered PDF extraction), staleness warnings (48h threshold), per-store empty-state UI, meal plan format upgrade (14 slots: 7 days × 2), prior-week filter fix, schema migration guard (meals column idempotency).
+- **S03 increment 1 (Dietary preference)**: `user_settings` singleton table + `SQLiteUserPreferencesRepository`; GET/POST `/settings` Preferences page; dashboard filters LIVE on the saved restriction; plan generation SNAPSHOTS `meal_plans.dietary_filter` (D25); empty-state discriminator (no-data vs restriction-filtered, reads the snapshot); input validation; HTML escaping of item + meal names.
+- **Increment 1.5 (Budget cap — warn + snapshot, NO regenerate)**: `budget_cap_cents` on `user_settings` + `meal_plans` (guarded ALTERs); Settings budget field (euros→cents, validated); over-budget banner driven by the snapshotted cap; `savePlan` kept INSERT-only (one `savings_log` row per week).
+- **S04 (Savings history UI)**: this-week breakdown, month-to-date total (pure `sumMonthToDateCents`, unit-tested independently of the clock), honest "Savings unavailable" for uncaptured-regular-price weeks, store-name XSS closed.
+- **UI upgrade (clean card-grid)**: `src/shared/layout.ts` `renderPage()` shell (inline CSS, top nav Feed/Plan/Savings/Settings); all four handlers routed through the shell; discount feed rendered as `data-item-card` cards.
 
 **Architecture**: OOP TypeScript, Bun runtime, SQLite + Drizzle ORM, Bun HTTP server, OS cron for weekly scrape.
 
@@ -28,8 +32,8 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | Job | Opportunity Score | Coverage at Close |
 |-----|------------------|-------------------|
 | JOB-001: Weekly grocery planning driven by discounts | 9 | DELIVERED — 2-store discount feed, 14-slot meal plan |
-| JOB-002: Track actual grocery savings vs full price | 8 | DELIVERED — savings log + D23 atomic write |
-| JOB-003: Ensure meal plan respects dietary restrictions | 9 | DEFERRED — S03 (filter scaffold in place, tag engine placeholder) |
+| JOB-002: Track actual grocery savings vs full price | 8 | DELIVERED — savings log + D23 atomic write; S04 adds this-week + month-to-date UI |
+| JOB-003: Ensure meal plan respects dietary restrictions | 9 | DELIVERED — S03: live dashboard filter + snapshotted plan filter + Preferences page |
 
 **Baseline**: 30-45 min/week manual browsing → <2 min via the app (to be measured at 4-week check).
 
@@ -59,7 +63,45 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | 02-06 | Post-verification: week filter + DB migration guard | PASS | 2026-07-14 |
 | 02-07 | Regression ATs: prior-week filter + schema migration boot | PASS | 2026-07-14 |
 
-**Tests at close**: 66 pass, 4 skip (@skip scenarios deferred to later slices), 0 fail.
+### S03 — Dietary preference (increment 1)
+
+| Step | Name | Result | Date |
+|------|------|--------|------|
+| 03-01 | Schema foundation: user_settings singleton + meal_plans.dietary_filter snapshot column | PASS | 2026-07-14 |
+| 03-02 | Preferences context: repository port + SQLite singleton adapter + service | PASS | 2026-07-14 |
+| 03-03 | Settings handler + /settings route + Preferences page (GET pre-filled, POST upsert) | PASS | 2026-07-14 |
+| 03-04 | Dashboard live filter: un-hardcode discount-handler restriction read | PASS | 2026-07-14 |
+| 03-05 | Plan generation: un-hardcode restriction, snapshot dietary_filter onto the plan | PASS | 2026-07-14 |
+| 03-06 | Empty-plan warning + link to /settings when no compatible items exist | PASS | 2026-07-14 |
+| 03-07 | Empty-state discriminator: no-data vs restriction-filtered | PASS | 2026-07-14 |
+| 03-08 | Harden dietary settings: input validation + snapshot-behavior AT + HTML escaping | PASS | 2026-07-14 |
+
+### Increment 1.5 — Budget cap (warn + snapshot, no regenerate)
+
+| Step | Name | Result | Date |
+|------|------|--------|------|
+| 04-01 | Budget schema: budget_cap_cents on user_settings + meal_plans (guarded migration) + types/repo | PASS | 2026-07-14 |
+| 04-02 | Settings budget field: input + euros→cents validation + persistence | PASS | 2026-07-14 |
+| 04-03 | Budget snapshot at generation + over-budget banner | PASS | 2026-07-14 |
+
+### S04 — Savings history UI
+
+| Step | Name | Result | Date |
+|------|------|--------|------|
+| 05-01 | SavingsService: month-to-date + current-week + unavailable classification (view model) | PASS | 2026-07-14 |
+| 05-02 | SavingsHandler: render this-week breakdown + month-to-date + Savings-unavailable | PASS | 2026-07-14 |
+| 05-03 | Savings hardening: this-week unavailable + testable month-to-date + escape store names | PASS | 2026-07-14 |
+
+### UI upgrade — clean card-grid shell
+
+| Step | Name | Result | Date |
+|------|------|--------|------|
+| 06-01 | Shared page layout helper + inline CSS + top nav | PASS | 2026-07-14 |
+| 06-02 | Route all four handlers through renderPage; feed renders item cards | PASS | 2026-07-14 |
+
+**Tests at close**: 151 pass, 4 skip (@skip scenarios deferred to SLICE-05 recipe integration), 0 fail. All 28 steps DONE; `des-verify-integrity` confirms complete DES traces for all 28 steps.
+
+**Adversarial reviews**: run on both the dietary increment (03-08) and the budget+savings+UI batch (05-03); all BLOCKERs fixed — input validation, no-data/restriction-filtered conflation, and this-week "savings unavailable".
 
 ---
 
@@ -77,6 +119,13 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 **Regression gates (S02 close)**
 - Prior-week items (validUntil < weekStart) absent from `GET /`; current-week items present.
 - DB opened without meals column starts cleanly via try/catch ALTER TABLE guard.
+
+**S03 + 1.5 + S04 + UI (live demo probe: 10/10)**
+- **Dietary filter** — set `vegetarian` on `/settings` → meat/fish items disappear from `GET /` immediately (live); a generated plan snapshots `dietary_filter` and shows zero meat/fish; switching back to `none` does NOT rewrite the existing plan (snapshot immutability, D25).
+- **Budget banner** — set a low weekly cap, generate a plan whose `totalSalePrice` exceeds it → `/plan` shows the `data-over-budget` banner driven by the snapshotted cap; raise/clear the cap and regenerate → no banner.
+- **Savings** — `/savings` shows the this-week breakdown (`data-week-paid` / `-would-have-paid` / `-saved`) and the month-to-date total; weeks with no captured regular price show "Savings unavailable" instead of a misleading €0.
+- **Card-grid shell** — all four pages route through `renderPage()` with the top nav (Feed/Plan/Savings/Settings); the discount feed renders `data-item-card` cards.
+- **Settings pre-fill** — `/settings` GET pre-populates both the dietary dropdown and the budget field from `UserPreferencesRepository.get()`; POST re-renders with "Settings saved".
 
 ---
 
@@ -127,10 +176,10 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 
 | ID | Issue | Resolution |
 |----|-------|------------|
-| I1 | XSS — item names unescaped in HTML output | Open — deferred to S03 |
-| I2 | No HTTP error boundary on plan generation | Open — deferred to S03 |
+| I1 | XSS — item names unescaped in HTML output | RESOLVED (S03 03-08 + S04 05-03) — `src/shared/html.ts` `escapeHtml`; item, meal, and store names all escaped |
+| I2 | No HTTP error boundary on plan generation | Open — deferred to S05 |
 | I3 | Zero-assertion test in db.test.ts | Fixed in S01 (commit 046674d) |
-| I4 | D23 atomicity — failure-injection test missing | Open — deferred to S03 |
+| I4 | D23 atomicity — failure-injection test missing | Open — deferred to S05 |
 | I5 | getByWeek() full table scan ignoring weekStart | Fixed in 02-06 — added WHERE valid_until >= weekStart |
 | I6 | createDb() CREATE TABLE not idempotent for new columns on existing DBs | Fixed in 02-06 — try/catch ALTER TABLE meals column guard |
 | I7 | 02-07 committed in two passes (test-file created, then confirmed GREEN separately) | No action — log reflects correct PASS state |
@@ -155,6 +204,14 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 
 8. **Schema migration guard pattern (try/catch ALTER TABLE) is pragmatic for single-user SQLite.** No migration framework needed at this scale; the idempotent column-add pattern is a standard SQLite technique and adequate for the delivery cadence.
 
+9. **Snapshot-vs-live is a per-preference architectural decision, not a default.** Dietary restriction re-filters the dashboard LIVE on every request (on-demand observable) but is SNAPSHOTTED onto each plan (`meal_plans.dietary_filter`, D25) so history is not retroactively rewritten. Budget cap has no honest live dashboard effect, so its only observable is the snapshotted plan banner — which is exactly why "change cap after plan exists" is invisible without a regenerate path, and why budget was re-sliced out of increment 1 into increment 1.5.
+
+10. **The columns-arrive-with-effects honesty rule prevents silent theater.** A deferred dimension gets NO column until its effect ships. `budget_cap_cents` was deliberately absent from increment 1 and added in 1.5 when the warn-effect shipped; household-size and kid-friendly get no column at all until they are observable. A stored-but-never-read column is inert theater.
+
+11. **Empty-state conflation is a real observability bug, caught by adversarial review.** An initial "No compatible meals found" message conflated two distinct causes — genuinely no data this week vs. a restriction filtering everything out. 03-07 split them into a discriminator that reads the snapshot, so the user is told the actual cause (and only offered a /settings link when a restriction is the reason).
+
+12. **Extracting `sumMonthToDateCents` as a pure function taking an explicit reference month made the aggregation unit-testable independently of the clock.** The service derives "current month" from `currentWeekMonday()`, but the summation semantics are proven in isolation by passing a fixed `"YYYY-MM"` — no clock mocking.
+
 ---
 
 ## Open Questions Carried Forward
@@ -162,10 +219,9 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | ID | Question | Target Slice |
 |----|----------|-------------|
 | OQ-1 | Brave Search API key validation | S05 |
-| OQ-4 | Dietary keyword classifier coverage | S03 |
 | OQ-5 | Docker overlayfs SQLite fsync risk | Platform / DEVOPS wave |
 
-*OQ-2 (V-Markt scraping feasibility) and OQ-3 (store codes) resolved in SPIKE-03 and S02.*
+*OQ-2 (V-Markt scraping feasibility) and OQ-3 (store codes) resolved in SPIKE-03 and S02. OQ-4 (dietary keyword classifier coverage) resolved in S03 — `isCompatible()` applied live at the dashboard and pre-selection in `GeneratePlan`; classifier coverage exercised by the dietary ATs.*
 
 ---
 
@@ -219,12 +275,16 @@ No design/, distill/, or discuss/journey-*.yaml files exist (lean v3.14 format) 
 
 ---
 
+## Deferred (recorded, not shipped)
+
+The household-preferences redesign (`docs/feature/discount-hunt/design-preferences-model.md`) applied a testing-theater guard: a setting ships only if changing it produces an observable output an acceptance test can assert. Two dimensions were held out deliberately (no inert controls):
+
+- **Kid-friendly** — NEEDS-DATA-SOURCE. No kid-friendliness signal exists in scraped items. It is a RECIPE-SEARCH parameter (per user); belongs to SLICE-05, blocked on SPIKE-02 (recipe source) and a data-source decision.
+- **Household size** — NEEDS-MODEL. A `Meal` is a name reference with no portion/quantity concept; nothing to scale until a recipe/portion model exists. Also a RECIPE-SEARCH parameter; belongs to SLICE-05.
+- **Budget mid-week regenerate** — deferred. Budget v1 ships WARN only. A `POST /plan/regenerate` path (so a cap change becomes observable on the current week) is a future increment, gated by a savings-row-count test guaranteeing `savePlan` stays INSERT-only (one row/week).
+
 ## Next Iteration
 
-**S03**: Dietary filter — full restriction enum, isCompatible() applied in getByWeek, settings UI.
-- Learning hypothesis: Does filtering by dietary restriction meaningfully reduce plan violations?
-- Hardening also due: I1 (XSS), I2 (HTTP error boundary), I4 (D23 failure-injection test)
-
-**S04**: Savings history — historical list + month-to-date aggregation.
-
-**S05**: Recipe integration — Brave Search API + Chefkoch JSON-LD parser.
+**S05**: Recipe integration — Brave Search API + Chefkoch JSON-LD parser (blocked on SPIKE-02). Carries the deferred RECIPE-SEARCH params (kid-friendly, household-size) once a portion/quantity model lands.
+- Hardening also due: I2 (HTTP error boundary on plan generation), I4 (D23 failure-injection test).
+- Candidate: budget mid-week regenerate increment (gated by savings-row-count test).

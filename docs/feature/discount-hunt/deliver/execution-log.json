@@ -274,6 +274,342 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-07-14T13:44:12Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: colocated integration+PBT RED for business reason (userSettings export missing, dietaryFilter undefined)",
+      "t": "2026-07-14T19:04:02Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: user_settings + meal_plans.dietary_filter (CREATE + guarded ALTER), MealPlan round-trip. 72 pass/4 skip/14 fail, no regression",
+      "t": "2026-07-14T19:04:02Z"
+    },
+    {
+      "sid": "03-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: des-commit 707e65e, wiring check passed",
+      "t": "2026-07-14T19:04:02Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: PBT singleton+default RED (adapter module not found)",
+      "t": "2026-07-14T19:04:02Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: port + sqlite fixed-PK singleton adapter + service. 76 pass/4 skip/14 fail, no regression",
+      "t": "2026-07-14T19:04:03Z"
+    },
+    {
+      "sid": "03-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: des-commit 723673c, consumed-only-by-tests until 03-03 (sequenced prereq)",
+      "t": "2026-07-14T19:04:03Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: pre-authored ATs sc1&2 RED (GET/POST /settings 404). EXEMPT PBT (HTML wiring)",
+      "t": "2026-07-14T19:04:18Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: SettingsHandler + /settings route. sc1&2 green. 80 pass/4 skip/10 fail, no regression",
+      "t": "2026-07-14T19:04:18Z"
+    },
+    {
+      "sid": "03-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: des-commit 02fa60e, wiring check passed",
+      "t": "2026-07-14T19:04:18Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: pre-authored AT sc3 RED (discount-handler hardcoded 'none'). EXEMPT PBT",
+      "t": "2026-07-14T19:04:18Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: live prefs read per GET /. sc3 green. 82 pass/4 skip/8 fail, no regression",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: des-commit d3ee3cc, all new-DiscountHandler sites updated",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-05",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: pre-authored ATs sc4&5 RED (plan-service hardcoded 'none'; snapshot not frozen)",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-05",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: generatePlan snapshots dietaryFilter (D25); live read. sc4&5 green (14 dietary pass). 88 pass/4 skip/2 fail, no regression",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-05",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: des-commit 62c7be9, all new-PlanService sites updated",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-06",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: pre-authored AT sc6 RED ('No compatible meals found' + href=/settings absent). EXEMPT PBT",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-06",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: empty-plan warning + settings link. sc6 green. 90 pass/4 skip/0 fail. All 16 dietary ATs green. FLAG: no-data vs restriction-filtered conflation -> acceptance-designer AT-gap",
+      "t": "2026-07-14T19:04:19Z"
+    },
+    {
+      "sid": "03-06",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: des-commit 7995459, wiring check passed",
+      "t": "2026-07-14T19:04:20Z"
+    },
+    {
+      "sid": "03-07",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T19:13:45Z"
+    },
+    {
+      "sid": "03-07",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T19:14:33Z"
+    },
+    {
+      "sid": "03-07",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T19:14:54Z"
+    },
+    {
+      "sid": "03-08",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T19:38:53Z"
+    },
+    {
+      "sid": "03-08",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T19:39:59Z"
+    },
+    {
+      "sid": "03-08",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T19:43:38Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:18:51Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:18:51Z"
+    },
+    {
+      "sid": "04-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:19:27Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:20:23Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:20:24Z"
+    },
+    {
+      "sid": "04-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:20:42Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:21:46Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:21:46Z"
+    },
+    {
+      "sid": "04-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:22:11Z"
+    },
+    {
+      "sid": "05-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:35:37Z"
+    },
+    {
+      "sid": "05-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:35:37Z"
+    },
+    {
+      "sid": "05-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:35:37Z"
+    },
+    {
+      "sid": "05-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:37:33Z"
+    },
+    {
+      "sid": "05-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:37:34Z"
+    },
+    {
+      "sid": "05-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:37:34Z"
+    },
+    {
+      "sid": "06-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:43:52Z"
+    },
+    {
+      "sid": "06-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:44:49Z"
+    },
+    {
+      "sid": "06-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:45:19Z"
+    },
+    {
+      "sid": "06-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:45:59Z"
+    },
+    {
+      "sid": "06-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:47:49Z"
+    },
+    {
+      "sid": "06-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T20:48:44Z"
+    },
+    {
+      "sid": "05-03",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T21:02:54Z"
+    },
+    {
+      "sid": "05-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T21:04:11Z"
+    },
+    {
+      "sid": "05-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T21:05:53Z"
     }
   ]
 }
