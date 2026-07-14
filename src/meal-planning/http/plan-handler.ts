@@ -14,6 +14,7 @@
 
 import type { PlanService } from "../plan-service.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
+import { escapeHtml } from "../../shared/html.ts";
 
 const DAY_LABELS: Record<number, string> = {
   1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun',
@@ -76,7 +77,7 @@ function renderPlanHtml(plan: MealPlan): string {
       `<tr data-meal-slot="${meal.slot}">` +
       `<td>Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
       `<td>${capitalizeFirst(meal.slot)}</td>` +
-      `<td>${meal.name}</td>` +
+      `<td>${escapeHtml(meal.name)}</td>` +
       `</tr>`
     )
     .join("");

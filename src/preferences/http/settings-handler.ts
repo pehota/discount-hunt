@@ -19,6 +19,21 @@ const DIETARY_OPTIONS: Array<{ value: DietaryRestriction; label: string }> = [
   { value: "vegan", label: "Vegan" },
 ];
 
+const VALID_DIETARY_VALUES: readonly DietaryRestriction[] = ["none", "vegetarian", "vegan"];
+
+/**
+ * Whitelists an untrusted form value against the DietaryRestriction set.
+ * Anything not on the whitelist (e.g. "banana", "") defaults to "none" —
+ * garbage is never persisted (03-08 adversarial-review D1). The `as` cast at
+ * the call site was compile-only and let invalid values through to isCompatible,
+ * which treats an unknown restriction as vegan-only.
+ */
+function parseDietaryRestriction(raw: string | null): DietaryRestriction {
+  return VALID_DIETARY_VALUES.includes(raw as DietaryRestriction)
+    ? (raw as DietaryRestriction)
+    : "none";
+}
+
 function renderSettingsHtml(current: DietaryRestriction, savedBanner: boolean): string {
   const options = DIETARY_OPTIONS.map(({ value, label }) => {
     const selected = value === current ? " selected" : "";
@@ -56,7 +71,7 @@ export class SettingsHandler {
 
   async handlePost(request: Request): Promise<Response> {
     const form = new URLSearchParams(await request.text());
-    const dietary = (form.get("dietary") ?? "none") as DietaryRestriction;
+    const dietary = parseDietaryRestriction(form.get("dietary"));
     this.preferencesService.updatePreferences({ dietaryRestriction: dietary });
     return this.htmlResponse(renderSettingsHtml(dietary, true));
   }

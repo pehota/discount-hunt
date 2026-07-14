@@ -132,6 +132,44 @@ function seedMeatFishOnlyItems(dbPath: string): void {
   }
 }
 
+// Item whose name carries HTML special chars — untrusted scraped data (D3, stored-XSS guard).
+// Vegan-tagged so it survives every restriction and appears on both GET / and GET /plan.
+const XSS_ITEM_NAME = `<script>alert('xss')</script> Bio-Müsli`;
+const XSS_ITEM_ESCAPED = `&lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt; Bio-Müsli`;
+
+/**
+ * Seeds a single vegan item whose NAME contains HTML special characters.
+ * Used to prove item.name / meal.name are HTML-escaped on render (D3).
+ */
+function seedHtmlSpecialItem(dbPath: string): void {
+  const db = createDb(dbPath);
+  const now = Date.now();
+  const jobId = randomUUID();
+  const validUntil = daysFromNow(7);
+
+  db.insert(scrapeJobs).values({
+    id: jobId,
+    store: STORE,
+    status: "completed",
+    startedAt: now - 3600 * 1000,
+    completedAt: now - 1800 * 1000,
+    itemCount: 1,
+  }).run();
+
+  db.insert(discountItems).values({
+    id: "xss-001",
+    store: STORE,
+    name: XSS_ITEM_NAME,
+    category: "food",
+    regularPrice: 399,
+    salePrice: 249,
+    validUntil,
+    dietaryTags: JSON.stringify(["vegan"]),
+    scrapeJobId: jobId,
+    createdAt: now,
+  }).run();
+}
+
 /** POST /settings with a dietary restriction — the driving port that sets the preference. */
 async function saveDietaryRestriction(port: number, restriction: string): Promise<Response> {
   const body = new URLSearchParams({ dietary: restriction });
@@ -535,5 +573,162 @@ describe("@driving_port — Empty plan distinguishes no-data from restriction-fi
     expect(response.ok).toBe(true);
     const html = await response.text();
     expect(html).not.toContain("No compatible meals found with your current restrictions");
+  });
+});
+
+// ─── Scenario 8 (D1): Invalid dietary input is rejected/defaulted to none ──────
+// Step 03-08 — adversarial-review BLOCKER. settings-handler `as DietaryRestriction`
+// cast is compile-only; a POST of 'banana' persists garbage that isCompatible treats
+// as vegan-only (unknown restriction falls through to tags.includes("vegan")).
+// RED reason: 'banana' persists → GET /settings has no option selected as none, and the
+// dashboard filters as vegan (meat/fish/vegetarian items vanish), NEVER showing all items.
+
+describe("@driving_port — Invalid dietary input is rejected and defaults to none", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-invalid-dietary-"));
+    dbPath = join(tmpDir, "invalid-dietary.db");
+    seedMixedDietaryItems(dbPath);
+
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 5000 + Math.floor(Math.random() * 99);
+    server = await createServer({ port: serverPort, dbPath });
+
+    // Precondition: an invalid dietary value is POSTed through the driving port.
+    await saveDietaryRestriction(serverPort, "banana");
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("GET /settings shows 'none' selected (invalid value never persisted)", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/settings`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    const noneOption = html.match(/<option\b[^>]*value="none"[^>]*>/)?.[0] ?? "";
+    expect(noneOption).toContain("selected");
+    // And no bogus 'banana' option leaked into the form.
+    expect(html).not.toContain('value="banana"');
+  });
+
+  test("the dashboard behaves as none — all items shown, never vegan-filtered", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    // Behaves as none: every seeded item appears. If 'banana' persisted, isCompatible
+    // would treat it as vegan-only and meat/fish/vegetarian items would vanish.
+    expect(html).toContain(MEAT_ITEM);
+    expect(html).toContain(FISH_ITEM);
+    expect(html).toContain(VEG_ITEM);
+    expect(html).toContain(VEGAN_ITEM);
+  });
+});
+
+// ─── Scenario 9 (D2): Empty-state discriminator reads the snapshot, not live ──
+// Step 03-08 — snapshot-behavior AT. Meat/fish-only DB, vegetarian saved, empty plan
+// generated (dietaryFilter="vegetarian" frozen). Switch the live setting to none.
+// GET /plan must STILL show the restriction-filtered warning ("No compatible meals
+// found") — driven by the frozen plan.dietaryFilter — NOT the no-data message.
+// A mutant that reads the LIVE restriction (now "none") would flip to "No discounts
+// available"; this test kills it.
+
+describe("@driving_port — Empty-plan discriminator reads the frozen snapshot, not the live setting", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-snapshot-discriminator-"));
+    dbPath = join(tmpDir, "snapshot-discriminator.db");
+    seedMeatFishOnlyItems(dbPath); // 0 vegetarian survivors → empty plan under vegetarian
+
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 5100 + Math.floor(Math.random() * 99);
+    server = await createServer({ port: serverPort, dbPath });
+
+    // Freeze a vegetarian plan (empty), then switch the live setting to none.
+    await saveDietaryRestriction(serverPort, "vegetarian");
+    await fetch(`http://localhost:${serverPort}/plan/generate`, {
+      method: "POST",
+      redirect: "manual",
+    });
+    await saveDietaryRestriction(serverPort, "none");
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("GET /plan STILL shows 'No compatible meals found' (snapshot drives the message)", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/plan`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).toContain("No compatible meals found");
+  });
+
+  test("GET /plan does NOT show the no-data 'No discounts available' message", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/plan`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    // A live-reading discriminator (setting is now "none") would render this — the mutant.
+    expect(html).not.toContain("No discounts available");
+  });
+});
+
+// ─── Scenario 10 (D3): Untrusted item names are HTML-escaped on render ────────
+// Step 03-08 — stored-XSS BLOCKER. Scraped item.name is interpolated unescaped into
+// GET / (discount-handler) and GET /plan (plan-handler via meal.name). A name containing
+// <script> must render escaped, never as a raw executable tag.
+// RED reason: no escapeHtml applied → raw "<script>" appears in both responses.
+
+describe("@driving_port — Item names with HTML special chars are escaped on render", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-html-escape-"));
+    dbPath = join(tmpDir, "html-escape.db");
+    seedHtmlSpecialItem(dbPath);
+
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 5200 + Math.floor(Math.random() * 99);
+    server = await createServer({ port: serverPort, dbPath });
+
+    await saveDietaryRestriction(serverPort, "none");
+    await fetch(`http://localhost:${serverPort}/plan/generate`, {
+      method: "POST",
+      redirect: "manual",
+    });
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("GET / renders the item name escaped (no raw <script>)", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).not.toContain("<script>alert('xss')</script>");
+    expect(html).toContain(XSS_ITEM_ESCAPED);
+  });
+
+  test("GET /plan renders the meal name escaped (no raw <script>)", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/plan`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).not.toContain("<script>alert('xss')</script>");
+    expect(html).toContain(XSS_ITEM_ESCAPED);
   });
 });

@@ -19,6 +19,7 @@ import type { DiscountService } from "../discount-service.ts";
 import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
+import { escapeHtml } from "../../shared/html.ts";
 
 const STALENESS_THRESHOLD_HOURS = 48;
 const STALENESS_THRESHOLD_MS = STALENESS_THRESHOLD_HOURS * 60 * 60 * 1000;
@@ -174,7 +175,7 @@ export class DiscountHandler {
       .map(
         (item) => `
       <article class="discount-item">
-        <h3 class="item-name">${item.name}</h3>
+        <h3 class="item-name">${escapeHtml(item.name)}</h3>
         <p class="item-price">
           <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
           <span class="sale-price">€${centsToEuros(item.salePrice)}</span>
