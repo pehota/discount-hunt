@@ -13,29 +13,84 @@
  *
  * Wire order (D35):
  *   1. createDb(dbPath) — opens SQLite, enables WAL, runs startup probe
- *   2. Instantiate all adapters (SQLite repos, fake adapters if CATALOGUE_SOURCE=fake)
+ *   2. Instantiate all adapters (SQLite repos)
  *   3. Instantiate all domain services
- *   4. Register HTTP routes with Bun.serve
- *   5. Adapters that fail their probe: log health.startup.refused, exit code 1
+ *   4. Instantiate all HTTP handlers
+ *   5. Register HTTP routes with Bun.serve
+ *   6. Adapters that fail their probe: log health.startup.refused, exit code 1
  */
 
-export const __SCAFFOLD__ = true as const;
+import { createDb } from "./shared/db.ts";
+import type { ServerConfig, ServerHandle } from "./shared/types.ts";
+import { SQLiteDiscountItemRepository } from "./discount/adapters/sqlite-discount-item-repository.ts";
+import { DiscountService } from "./discount/discount-service.ts";
+import { DiscountHandler } from "./discount/http/discount-handler.ts";
+import { SQLiteMealPlanRepository } from "./meal-planning/adapters/sqlite-meal-plan-repository.ts";
+import { PlanService } from "./meal-planning/plan-service.ts";
+import { PlanHandler } from "./meal-planning/http/plan-handler.ts";
+import { SQLiteSavingsRepository } from "./savings/adapters/sqlite-savings-repository.ts";
+import { SavingsService } from "./savings/savings-service.ts";
+import { SavingsHandler } from "./savings/http/savings-handler.ts";
 
-export interface ServerConfig {
-  port: number;
-  dbPath: string;
-}
-
-export interface ServerHandle {
-  stop(): void;
-}
+export type { ServerConfig, ServerHandle };
 
 /**
  * Creates and starts the HTTP server with the production composition root.
  * Returns a handle with stop() for graceful shutdown (used in tests).
+ *
+ * Wire order (D35):
+ *   1. createDb(dbPath)
+ *   2. Instantiate repositories
+ *   3. Instantiate services
+ *   4. Instantiate handlers
+ *   5. Register routes with Bun.serve
+ *   6. Return { stop }
  */
 export async function createServer(config: ServerConfig): Promise<ServerHandle> {
-  throw new Error("Not yet implemented — RED scaffold");
+  // 1. Database
+  const db = createDb(config.dbPath);
+
+  // 2. Repositories
+  const discountItemRepo = new SQLiteDiscountItemRepository(db);
+  const mealPlanRepo = new SQLiteMealPlanRepository(db);
+  const savingsRepo = new SQLiteSavingsRepository(db);
+
+  // 3. Services
+  const discountService = new DiscountService(discountItemRepo);
+  const savingsService = new SavingsService(savingsRepo);
+  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db);
+
+  // 4. Handlers
+  const discountHandler = new DiscountHandler(discountService);
+  const planHandler = new PlanHandler(planService);
+  const savingsHandler = new SavingsHandler(savingsService);
+
+  // 5. Routes
+  const server = Bun.serve({
+    port: config.port,
+    async fetch(request: Request): Promise<Response> {
+      const url = new URL(request.url);
+      const method = request.method;
+
+      if (method === "GET" && url.pathname === "/") {
+        return discountHandler.handleGet(request);
+      }
+      if (method === "POST" && url.pathname === "/plan/generate") {
+        return planHandler.handlePostGenerate(request);
+      }
+      if (method === "GET" && url.pathname === "/plan") {
+        return planHandler.handleGetPlan(request);
+      }
+      if (method === "GET" && url.pathname === "/savings") {
+        return savingsHandler.handleGet(request);
+      }
+
+      return new Response("Not Found", { status: 404 });
+    },
+  });
+
+  // 6. Handle
+  return { stop: () => server.stop() };
 }
 
 // Direct invocation (cron / systemd)
