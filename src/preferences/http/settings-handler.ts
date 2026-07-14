@@ -34,7 +34,32 @@ function parseDietaryRestriction(raw: string | null): DietaryRestriction {
     : "none";
 }
 
-function renderSettingsHtml(current: DietaryRestriction, savedBanner: boolean): string {
+/**
+ * Parses an untrusted euros budget field into cents, mirroring the dietary whitelist
+ * discipline (03-08 D1): anything not a finite non-negative number is treated as NO cap
+ * (null), never persisted as garbage. Empty/blank input means "no cap".
+ * Guards the `Number("") === 0` trap by rejecting blank before the numeric parse.
+ */
+function parseBudgetCapCents(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const euros = Number(trimmed);
+  if (!Number.isFinite(euros) || euros < 0) return null;
+  return Math.round(euros * 100);
+}
+
+/** Echoes a snapshotted cap back into the form as a euros value; empty when no cap. */
+function budgetEurosValue(budgetCapCents: number | null | undefined): string {
+  if (budgetCapCents === null || budgetCapCents === undefined) return "";
+  return (budgetCapCents / 100).toFixed(2);
+}
+
+function renderSettingsHtml(
+  current: DietaryRestriction,
+  budgetCapCents: number | null | undefined,
+  savedBanner: boolean,
+): string {
   const options = DIETARY_OPTIONS.map(({ value, label }) => {
     const selected = value === current ? " selected" : "";
     return `<option value="${value}"${selected}>${label}</option>`;
@@ -55,6 +80,8 @@ function renderSettingsHtml(current: DietaryRestriction, savedBanner: boolean): 
     <select name="dietary" id="dietary">
         ${options}
     </select>
+    <label for="budget">Weekly budget (€)</label>
+    <input type="number" name="budget" id="budget" min="0" step="0.01" value="${budgetEurosValue(budgetCapCents)}">
     <button type="submit">Save</button>
   </form>
 </body>
@@ -65,15 +92,16 @@ export class SettingsHandler {
   constructor(private readonly preferencesService: PreferencesService) {}
 
   handleGet(_request: Request): Response {
-    const { dietaryRestriction } = this.preferencesService.getPreferences();
-    return this.htmlResponse(renderSettingsHtml(dietaryRestriction, false));
+    const { dietaryRestriction, budgetCapCents } = this.preferencesService.getPreferences();
+    return this.htmlResponse(renderSettingsHtml(dietaryRestriction, budgetCapCents, false));
   }
 
   async handlePost(request: Request): Promise<Response> {
     const form = new URLSearchParams(await request.text());
     const dietary = parseDietaryRestriction(form.get("dietary"));
-    this.preferencesService.updatePreferences({ dietaryRestriction: dietary });
-    return this.htmlResponse(renderSettingsHtml(dietary, true));
+    const budgetCapCents = parseBudgetCapCents(form.get("budget"));
+    this.preferencesService.updatePreferences({ dietaryRestriction: dietary, budgetCapCents });
+    return this.htmlResponse(renderSettingsHtml(dietary, budgetCapCents, true));
   }
 
   private htmlResponse(html: string): Response {
