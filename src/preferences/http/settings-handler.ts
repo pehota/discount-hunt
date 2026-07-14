@@ -12,6 +12,7 @@
 
 import type { PreferencesService } from "../preferences-service.ts";
 import type { DietaryRestriction } from "../../shared/types.ts";
+import { renderPage } from "../../shared/layout.ts";
 
 const DIETARY_OPTIONS: Array<{ value: DietaryRestriction; label: string }> = [
   { value: "none", label: "None" },
@@ -69,11 +70,7 @@ function renderSettingsHtml(
     ? `<p class="settings-saved">Settings saved</p>`
     : "";
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Preferences</title></head>
-<body>
-  <h1>Preferences</h1>
+  const body = `<h1>Preferences</h1>
   ${banner}
   <form method="POST" action="/settings">
     <label for="dietary">Dietary restriction</label>
@@ -83,9 +80,9 @@ function renderSettingsHtml(
     <label for="budget">Weekly budget (€)</label>
     <input type="number" name="budget" id="budget" min="0" step="0.01" value="${budgetEurosValue(budgetCapCents)}">
     <button type="submit">Save</button>
-  </form>
-</body>
-</html>`;
+  </form>`;
+
+  return renderPage({ title: "Preferences", activeNav: "settings", body });
 }
 
 export class SettingsHandler {

@@ -20,6 +20,7 @@ import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-s
 import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
 import { escapeHtml } from "../../shared/html.ts";
+import { renderPage } from "../../shared/layout.ts";
 
 const STALENESS_THRESHOLD_HOURS = 48;
 const STALENESS_THRESHOLD_MS = STALENESS_THRESHOLD_HOURS * 60 * 60 * 1000;
@@ -52,29 +53,23 @@ export class DiscountHandler {
       ? this.renderFallback(items)
       : this.renderWithStoreContext(items, knownStores);
 
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Discount Hunt — Weekly Deals</title>
-</head>
-<body>
-  <header>
+    const body = `<header>
     <h1>Weekly Discount Feed</h1>
   </header>
-  <main>
-    <section id="discount-items">
-      ${itemsHtml}
-    </section>
-    <section id="meal-plan-action">
-      <form method="POST" action="/plan/generate">
-        <button type="submit" id="generate-meal-plan">Generate Meal Plan</button>
-      </form>
-    </section>
-  </main>
-</body>
-</html>`;
+  <section id="discount-items">
+    ${itemsHtml}
+  </section>
+  <section id="meal-plan-action">
+    <form method="POST" action="/plan/generate">
+      <button type="submit" id="generate-meal-plan">Generate Meal Plan</button>
+    </form>
+  </section>`;
+
+    const html = renderPage({
+      title: "Discount Hunt — Weekly Deals",
+      activeNav: "feed",
+      body,
+    });
 
     return new Response(html, {
       status: 200,
@@ -174,18 +169,22 @@ export class DiscountHandler {
     const storeItemsHtml = storeItems
       .map(
         (item) => `
-      <article class="discount-item">
+      <div class="card" data-item-card>
+        <article class="discount-item">
         <h3 class="item-name">${escapeHtml(item.name)}</h3>
         <p class="item-price">
           <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
           <span class="sale-price">€${centsToEuros(item.salePrice)}</span>
         </p>
-      </article>`,
+      </article>
+      </div>`,
       )
       .join("\n");
     return `<section class="store-group">
       <h2 class="store-name">${storeName}</h2>
+      <div class="card-grid">
       ${storeItemsHtml}
+      </div>
     </section>`;
   }
 }

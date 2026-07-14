@@ -11,6 +11,7 @@
  */
 
 import { escapeHtml } from "../../shared/html.ts";
+import { renderPage } from "../../shared/layout.ts";
 import type { SavingsRecord } from "../adapters/sqlite-savings-repository.ts";
 import type { SavingsService, SavingsSummary } from "../savings-service.ts";
 
@@ -58,11 +59,7 @@ export class SavingsHandler {
 
     const rows = summary.history.map(renderHistoryRow).join("");
 
-    const html = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Savings Tracker</title></head>
-<body>
-  <h1>Weekly Savings</h1>
+    const body = `<h1>Weekly Savings</h1>
   ${renderThisWeekBreakdown(summary.thisWeek)}
   <section class="month-to-date">
     <h2>Month to date</h2>
@@ -75,9 +72,9 @@ export class SavingsHandler {
     <tbody>
       ${rows}
     </tbody>
-  </table>
-</body>
-</html>`;
+  </table>`;
+
+    const html = renderPage({ title: "Savings Tracker", activeNav: "savings", body });
 
     return new Response(html, {
       status: 200,

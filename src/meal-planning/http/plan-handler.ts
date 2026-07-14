@@ -15,6 +15,7 @@
 import type { PlanService } from "../plan-service.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
 import { escapeHtml } from "../../shared/html.ts";
+import { renderPage } from "../../shared/layout.ts";
 
 const DAY_LABELS: Record<number, string> = {
   1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun',
@@ -54,15 +55,10 @@ function renderOverBudgetBanner(plan: MealPlan): string {
  * compatible item. Steer the user to relax their dietary restriction.
  */
 function renderRestrictionFilteredHtml(plan: MealPlan): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Meal Plan</title></head>
-<body>
-  <h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
   <p class="empty-plan-warning">No compatible meals found with your current restrictions</p>
-  <p><a href="/settings">Change your dietary restriction</a></p>
-</body>
-</html>`;
+  <p><a href="/settings">Change your dietary restriction</a></p>`;
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
 }
 
 /**
@@ -71,14 +67,9 @@ function renderRestrictionFilteredHtml(plan: MealPlan): string {
  * tell them to check back after the next catalogue update. No /settings steer.
  */
 function renderNoDataHtml(plan: MealPlan): string {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Meal Plan</title></head>
-<body>
-  <h1>Meal Plan — Week of ${plan.weekStart}</h1>
-  <p class="no-discounts-warning">No discounts available this week — please check back after the next catalogue update.</p>
-</body>
-</html>`;
+  const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  <p class="no-discounts-warning">No discounts available this week — please check back after the next catalogue update.</p>`;
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
 }
 
 function renderPlanHtml(plan: MealPlan): string {
@@ -98,11 +89,7 @@ function renderPlanHtml(plan: MealPlan): string {
     )
     .join("");
 
-  return `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="UTF-8"><title>Meal Plan</title></head>
-<body>
-  <h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
   ${renderOverBudgetBanner(plan)}
   <p>
     Estimated savings:
@@ -113,9 +100,8 @@ function renderPlanHtml(plan: MealPlan): string {
   <table>
     <thead><tr><th>Day</th><th>Slot</th><th>Meal</th></tr></thead>
     <tbody>${mealRows}</tbody>
-  </table>
-</body>
-</html>`;
+  </table>`;
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
 }
 
 export class PlanHandler {
