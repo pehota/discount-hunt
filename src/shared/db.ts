@@ -97,7 +97,7 @@ export function createDb(dbPath: string): DbClient {
   const insert = sqlite.prepare(
     "INSERT INTO scrape_jobs (id, store, status, started_at, item_count) VALUES (?, ?, ?, ?, ?)"
   );
-  insert.run(PROBE_ID, "__probe__", "running", Date.now(), 0);
+  insert.run(PROBE_ID, PROBE_ID, "running", Date.now(), 0);
 
   const row = sqlite.prepare("SELECT id FROM scrape_jobs WHERE id = ?").get(PROBE_ID);
   if (!row || (row as { id: string }).id !== PROBE_ID) {

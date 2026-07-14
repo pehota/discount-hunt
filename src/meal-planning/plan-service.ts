@@ -24,6 +24,7 @@ import type { SavingsService } from "../savings/savings-service.ts";
 
 const MEAL_SLOTS: MealSlot[] = ['lunch', 'dinner'];
 const DAYS_PER_WEEK = 7;
+const NO_DISCOUNT_PLACEHOLDER = 'No discount available';
 
 /**
  * Returns the ISO date string for the Monday of the current UTC week.
@@ -52,29 +53,35 @@ export class PlanService {
     const totalSalePrice = discountItems.reduce((sum, item) => sum + item.salePrice, 0);
     const estimatedSavings = totalRegularPrice - totalSalePrice;
 
-    const meals: Meal[] = [];
-    for (let day = 1; day <= DAYS_PER_WEEK; day++) {
-      for (let slotIdx = 0; slotIdx < MEAL_SLOTS.length; slotIdx++) {
-        const slotIndex = (day - 1) * 2 + slotIdx;
-        if (discountItems.length === 0) {
-          meals.push({ day, slot: MEAL_SLOTS[slotIdx], name: 'No discount available', discountItemId: null });
-        } else {
-          const item = discountItems[slotIndex % discountItems.length];
-          meals.push({ day, slot: MEAL_SLOTS[slotIdx], name: item.name, discountItemId: item.id });
-        }
-      }
-    }
-
     return {
       id: randomUUID(),
       weekStart,
       itemIds: discountItems.map((item) => item.id),
-      meals,
+      meals: this.buildMeals(discountItems),
       totalRegularPrice,
       totalSalePrice,
       estimatedSavings,
       createdAt: Date.now(),
     };
+  }
+
+  private buildMeals(discountItems: StoredDiscountItem[]): Meal[] {
+    const meals: Meal[] = [];
+    for (let day = 1; day <= DAYS_PER_WEEK; day++) {
+      for (let slotIdx = 0; slotIdx < MEAL_SLOTS.length; slotIdx++) {
+        meals.push(this.buildMealSlot(day, slotIdx, discountItems));
+      }
+    }
+    return meals;
+  }
+
+  private buildMealSlot(day: number, slotIdx: number, discountItems: StoredDiscountItem[]): Meal {
+    if (discountItems.length === 0) {
+      return { day, slot: MEAL_SLOTS[slotIdx], name: NO_DISCOUNT_PLACEHOLDER, discountItemId: null };
+    }
+    const slotIndex = (day - 1) * MEAL_SLOTS.length + slotIdx;
+    const item = discountItems[slotIndex % discountItems.length];
+    return { day, slot: MEAL_SLOTS[slotIdx], name: item.name, discountItemId: item.id };
   }
 
   /**

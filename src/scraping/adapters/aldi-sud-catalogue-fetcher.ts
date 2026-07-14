@@ -13,6 +13,7 @@
 
 const ALDI_SUD_ORIGIN = "https://prospekt.aldi-sued.de";
 const SLUG_PATTERN = /^\/\/prospekt\.aldi-sued\.de\/([^/]+)\//;
+const PRODUCT_TYPE = "product";
 
 /**
  * Exported pure function — parse slug from a 302 Location header value.
@@ -68,7 +69,7 @@ export class AldiSudCatalogueFetcher {
 
   private isDiscountedProduct(entry: HotspotEntry): boolean {
     return (
-      entry.type === "product" &&
+      entry.type === PRODUCT_TYPE &&
       entry.discountedPrice !== undefined &&
       entry.discountedPrice !== "" &&
       parseFloat(entry.discountedPrice) < parseFloat(entry.price)

@@ -11,6 +11,8 @@
 
 import type { NormalizedItem, DietaryTag } from "../../shared/types.ts";
 
+const CENTS_PER_EURO = 100;
+
 interface RawAldiItem {
   id: string;
   title: string;
@@ -26,17 +28,25 @@ export class CatalogueNormalizer {
   normalize(rawItems: unknown[], store: string = "Aldi Süd"): NormalizedItem[] {
     const items = rawItems as RawAldiItem[];
     return items
-      .filter((item) => item.discountedPrice !== undefined && item.discountedPrice !== "")
-      .map((item) => ({
-        externalId: item.id,
-        store,
-        name: item.title,
-        category: item.productType,
-        regularPrice: Math.round(parseFloat(item.price) * 100),
-        salePrice: Math.round(parseFloat(item.discountedPrice!) * 100),
-        validUntil: item.customLabel1,
-        dietaryTags: this.classifyDietaryTags(item.productType),
-      }));
+      .filter(this.hasDiscount)
+      .map((item) => this.toNormalizedItem(item, store));
+  }
+
+  private hasDiscount(item: RawAldiItem): boolean {
+    return item.discountedPrice !== undefined && item.discountedPrice !== "";
+  }
+
+  private toNormalizedItem(item: RawAldiItem, store: string): NormalizedItem {
+    return {
+      externalId: item.id,
+      store,
+      name: item.title,
+      category: item.productType,
+      regularPrice: Math.round(parseFloat(item.price) * CENTS_PER_EURO),
+      salePrice: Math.round(parseFloat(item.discountedPrice!) * CENTS_PER_EURO),
+      validUntil: item.customLabel1,
+      dietaryTags: this.classifyDietaryTags(item.productType),
+    };
   }
 
   private classifyDietaryTags(productType: string): DietaryTag[] {

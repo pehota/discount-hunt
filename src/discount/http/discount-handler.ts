@@ -19,6 +19,7 @@ import type { DiscountService } from "../discount-service.ts";
 import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 
 const STALENESS_THRESHOLD_MS = 48 * 3600 * 1000;
+const DATE_LOCALE = "de-DE";
 
 /** Staleness predicate: returns true if the last run was more than 48 hours ago. */
 export function isStale(completedAt: number, now: number): boolean {
@@ -47,61 +48,11 @@ export class DiscountHandler {
   async handleGet(_request: Request): Promise<Response> {
     const weekStart = getCurrentWeekStart();
     const items = await this.discountService.getWeeklyItems(weekStart, "none");
-
-    let itemsHtml: string;
-
     const knownStores = this.scrapeJobRepo?.getStoresWithJobs() ?? [];
 
-    if (knownStores.length === 0) {
-      // Backward-compatible fallback: no scrape jobs exist at all
-      itemsHtml = items.length === 0
-        ? `<p class="empty-state">No discounts available this week</p>`
-        : this.renderItemsByStore(items);
-    } else {
-      const now = Date.now();
-      const warnings: string[] = [];
-      const storeItems = new Map<string, typeof items>();
-
-      // Group items by store
-      for (const item of items) {
-        const group = storeItems.get(item.store) ?? [];
-        group.push(item);
-        storeItems.set(item.store, group);
-      }
-
-      // Build per-store sections in known-store order
-      const sections: string[] = [];
-      for (const store of knownStores) {
-        const completedAt = this.scrapeJobRepo!.getLastSuccessfulRunByStore(store);
-        if (completedAt !== null && isStale(completedAt, now)) {
-          const lastRefreshed = new Date(completedAt).toLocaleDateString("de-DE");
-          warnings.push(
-            `<div class="staleness-warning">Data for ${store} may be outdated — last refreshed ${lastRefreshed}</div>`,
-          );
-        }
-
-        const storeGroup = storeItems.get(store) ?? [];
-        if (storeGroup.length === 0) {
-          sections.push(
-            `<section class="store-group">
-      <h2 class="store-name">${store}</h2>
-      <p class="empty-state">No discounts this week at ${store}</p>
-    </section>`,
-          );
-        } else {
-          sections.push(this.renderStoreSection(store, storeGroup));
-        }
-      }
-
-      // Render items for stores not in knownStores (edge case: items from unknown stores)
-      for (const [store, group] of storeItems.entries()) {
-        if (!knownStores.includes(store)) {
-          sections.push(this.renderStoreSection(store, group));
-        }
-      }
-
-      itemsHtml = [...warnings, ...sections].join("\n");
-    }
+    const itemsHtml = knownStores.length === 0
+      ? this.renderFallback(items)
+      : this.renderWithStoreContext(items, knownStores);
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -131,6 +82,79 @@ export class DiscountHandler {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });
+  }
+
+  private renderFallback(items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>): string {
+    if (items.length === 0) {
+      return `<p class="empty-state">No discounts available this week</p>`;
+    }
+    return this.renderItemsByStore(items);
+  }
+
+  private renderWithStoreContext(
+    items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>,
+    knownStores: string[],
+  ): string {
+    const now = Date.now();
+    const storeItems = this.groupItemsByStore(items);
+    const warnings = this.buildStalenessWarnings(knownStores, now);
+    const sections = this.buildStoreSections(knownStores, storeItems);
+
+    // Render items for stores not in knownStores (edge case: items from unknown stores)
+    for (const [store, group] of storeItems.entries()) {
+      if (!knownStores.includes(store)) {
+        sections.push(this.renderStoreSection(store, group));
+      }
+    }
+
+    return [...warnings, ...sections].join("\n");
+  }
+
+  private groupItemsByStore(
+    items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>,
+  ): Map<string, Awaited<ReturnType<DiscountService["getWeeklyItems"]>>> {
+    const storeItems = new Map<string, typeof items>();
+    for (const item of items) {
+      const group = storeItems.get(item.store) ?? [];
+      group.push(item);
+      storeItems.set(item.store, group);
+    }
+    return storeItems;
+  }
+
+  private buildStalenessWarnings(knownStores: string[], now: number): string[] {
+    const warnings: string[] = [];
+    for (const store of knownStores) {
+      const completedAt = this.scrapeJobRepo!.getLastSuccessfulRunByStore(store);
+      if (completedAt !== null && isStale(completedAt, now)) {
+        const lastRefreshed = new Date(completedAt).toLocaleDateString(DATE_LOCALE);
+        warnings.push(
+          `<div class="staleness-warning">Data for ${store} may be outdated — last refreshed ${lastRefreshed}</div>`,
+        );
+      }
+    }
+    return warnings;
+  }
+
+  private buildStoreSections(
+    knownStores: string[],
+    storeItems: Map<string, Awaited<ReturnType<DiscountService["getWeeklyItems"]>>>,
+  ): string[] {
+    const sections: string[] = [];
+    for (const store of knownStores) {
+      const storeGroup = storeItems.get(store) ?? [];
+      if (storeGroup.length === 0) {
+        sections.push(
+          `<section class="store-group">
+      <h2 class="store-name">${store}</h2>
+      <p class="empty-state">No discounts this week at ${store}</p>
+    </section>`,
+        );
+      } else {
+        sections.push(this.renderStoreSection(store, storeGroup));
+      }
+    }
+    return sections;
   }
 
   private renderItemsByStore(items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>): string {

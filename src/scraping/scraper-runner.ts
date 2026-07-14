@@ -35,6 +35,10 @@ import { AldiSudCatalogueFetcher } from "./adapters/aldi-sud-catalogue-fetcher.t
 import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts";
 import { HaikuCatalogueExtractor } from "./adapters/haiku-catalogue-extractor.ts";
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const CATALOGUE_SOURCE_FAKE = "fake";
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface CatalogueFetcher {
@@ -128,7 +132,7 @@ async function runFakeScrape(): Promise<void> {
 async function main(): Promise<void> {
   const source = process.env.CATALOGUE_SOURCE ?? "live";
 
-  if (source === "fake") {
+  if (source === CATALOGUE_SOURCE_FAKE) {
     return runFakeScrape();
   }
 
