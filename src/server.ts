@@ -32,6 +32,9 @@ import { PlanHandler } from "./meal-planning/http/plan-handler.ts";
 import { SQLiteSavingsRepository } from "./savings/adapters/sqlite-savings-repository.ts";
 import { SavingsService } from "./savings/savings-service.ts";
 import { SavingsHandler } from "./savings/http/savings-handler.ts";
+import { SQLiteUserPreferencesRepository } from "./preferences/adapters/sqlite-user-preferences-repository.ts";
+import { PreferencesService } from "./preferences/preferences-service.ts";
+import { SettingsHandler } from "./preferences/http/settings-handler.ts";
 
 export type { ServerConfig, ServerHandle };
 
@@ -56,16 +59,19 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
   const mealPlanRepo = new SQLiteMealPlanRepository(db);
   const savingsRepo = new SQLiteSavingsRepository(db);
   const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
+  const preferencesRepo = new SQLiteUserPreferencesRepository(db);
 
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
   const savingsService = new SavingsService(savingsRepo);
   const planService = new PlanService(discountService, mealPlanRepo, savingsService, db);
+  const preferencesService = new PreferencesService(preferencesRepo);
 
   // 4. Handlers
   const discountHandler = new DiscountHandler(discountService, scrapeJobRepo);
   const planHandler = new PlanHandler(planService);
   const savingsHandler = new SavingsHandler(savingsService);
+  const settingsHandler = new SettingsHandler(preferencesService);
 
   // 5. Routes
   const server = Bun.serve({
@@ -85,6 +91,12 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
       }
       if (method === "GET" && url.pathname === "/savings") {
         return savingsHandler.handleGet(request);
+      }
+      if (method === "GET" && url.pathname === "/settings") {
+        return settingsHandler.handleGet(request);
+      }
+      if (method === "POST" && url.pathname === "/settings") {
+        return settingsHandler.handlePost(request);
       }
 
       return new Response("Not Found", { status: 404 });
