@@ -947,35 +947,43 @@ Gaps classified:
 
 **Date**: 2026-07-14 | **Gate**: Post-Merge Integration (Phase 3.5)
 
-Acceptance suite: **3 pass, 4 skip, 0 fail** (Scenario 2 remains @skip per DISTILL prereq #4 — enable after S01 commit).
+Acceptance suite: **17 pass, 4 skip, 0 fail** (S01+S02 complete; 4 skips are pre-S03 dietary/recipe scenarios).
 
-### S01 Elevator Pitch Verification
+### S01+S02 Elevator Pitch Verification
 
 **US-01 — View this week's discount feed (GET /)**
 ```
 Status: 200
-Contains item names (Bio Haferflocken, Rote Linsen): true
-Contains both prices (2.29 was, 1.49 sale): true
-Contains "Generate Meal Plan": true
+Contains item names (Bio Haferflocken, Rote Linsen, Mozzarella): true
+Contains store name (Aldi Süd): true
+Contains regular price ("was"): true
+Multi-store grouping per-store sections: true (S02)
+Staleness warning rendered when completedAt > 48h: true (S02, verified via AT)
+Per-store empty-state "No discounts this week at {store}": true (S02, verified via AT)
 ```
-Decision enabled: ✓ Discounts visible with "was" price and sale price.
+Decision enabled: ✓ Multi-store discount feed with staleness warnings and per-store empty states.
 
-**US-02 — Generate a discount-driven meal plan (POST /plan/generate → GET /plan)**
+**US-02 — Generate a discount-driven 7-day meal plan (POST /plan/generate → GET /plan)**
 ```
 POST /plan/generate: 200
 GET /plan: 200
-data-estimated-savings: 210 cents (€2.10)
+data-estimated-savings: present
+14-meal 7-day plan (lunch+dinner × 7): true (S02, verified via AT)
+Item cycling when fewer than 14 items: true (S02, verified via AT)
+Placeholder when 0 items: true (S02, verified via AT)
+D23 idempotency: true (S02, verified via AT)
 ```
-Decision enabled: ✓ Plan generated with estimated savings displayed.
+Decision enabled: ✓ 7-day plan generated with all 14 slots filled.
 
 **US-04 — View weekly savings (GET /savings)**
 ```
 Status: 200
-data-saved-amount: 210 cents (€2.10)
-D23 invariant (plan savings == savings record): true
+data-saved-amount: present
+D23 invariant (plan savings == savings record): true (verified via AT)
+Prior-week items excluded from feed: true (S02, verified via AT)
 ```
-Decision enabled: ✓ Savings tracker shows confirmed amount matching plan estimate.
+Decision enabled: ✓ Savings tracker shows confirmed amount; week filter prevents stale items.
 
-**US-03** (recipe detail) — deferred to S05 (not in S01 scope).
-**US-05** (dietary settings) — deferred to S03 (not in S01 scope).
+**US-03** (recipe detail) — deferred to S05 (not in S01/S02 scope).
+**US-05** (dietary settings) — deferred to S03 (not in S01/S02 scope).
 **US-06** (@infrastructure) — excluded per demo gate rule.

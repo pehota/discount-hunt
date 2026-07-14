@@ -461,8 +461,9 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | Primary adapter (CLI) | `src/scraping/scraper-runner.ts` | Entry point for `bun run scrape.ts`; parses CLI args (store flag); delegates to `ScrapingService` |
 | Domain service | `src/scraping/scraping-service.ts` | Orchestrates `ScrapeJob` lifecycle: `StartScrape` → fetch → normalize → `CompleteScrape`/`FailScrape` |
 | ACL: Aldi Süd | `src/scraping/adapters/aldi-sud-catalogue-fetcher.ts` | HEAD→302 slug discovery; paginated `hotspots_data.json` fetch; returns raw catalogue JSON |
-| ACL: Edeka | `src/scraping/adapters/edeka-catalogue-fetcher.ts` | SLICE-02+ — stub in SLICE-01 |
-| ACL: V-Markt | `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | SLICE-02+ — stub in SLICE-01 |
+| ACL: Edeka | (not yet implemented) | FUTURE — planned in SLICE-02 but deferred; no file exists |
+| ACL: V-Markt | `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | Delivered S02 — PDF catalogue URL discovery via HEAD redirect; content extraction delegated to HaikuCatalogueExtractor |
+| AI extractor | `src/scraping/adapters/haiku-catalogue-extractor.ts` | Claude Haiku vision call; extracts items from V-Markt PDF catalogue pages; returns NormalizedItem[] |
 | ACL normalizer | `src/scraping/adapters/catalogue-normalizer.ts` | Translates store-specific JSON to `NormalizedItem`; applies `dietary_tags[]` classifier; enforces both-price filter (drops items missing `price` or `discountedPrice`) |
 | Driven port (DB) | `src/scraping/ports/scrape-job-repository.ts` | Port interface: `startJob`, `completeJob`, `failJob` |
 | Secondary adapter | `src/scraping/adapters/sqlite-scrape-job-repository.ts` | Drizzle ORM implementation of `ScrapeJobRepository`; writes `scrape_jobs` table |
@@ -572,8 +573,9 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `PreferencesRepository` | `sqlite-preferences-repository.ts` | Drizzle ORM / SQLite | User Preferences | Shared WAL probe | No |
 | `RecipeRepository` | `sqlite-recipe-repository.ts` | Drizzle ORM / SQLite | Recipe Matching | Shared WAL probe | No |
 | `CatalogueFetcher` | `aldi-sud-catalogue-fetcher.ts` | `Bun.fetch` (built-in) | Catalogue Scraping | `catalogue-probe.ts` — slug 302 + item shape | Yes: prospekt.aldi-sued.de |
-| `CatalogueFetcher` | `edeka-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | SLICE-02+ (stub in S01) | Yes: Edeka catalogue |
-| `CatalogueFetcher` | `v-markt-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | SLICE-02+ (stub in S01) | Yes: V-Markt catalogue |
+| `CatalogueFetcher` | `edeka-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | FUTURE — not implemented; Edeka blocked by Akamai Bot Manager | Yes: Edeka catalogue |
+| `CatalogueFetcher` | `v-markt-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | Delivered S02 | Yes: V-Markt catalogue |
+| `CatalogueExtractor` | `haiku-catalogue-extractor.ts` | Anthropic SDK (claude-haiku-4-5) | Catalogue Scraping | Delivered S02 | Yes: Anthropic API |
 | `RecipeSearchClient` | `brave-search-client.ts` | `Bun.fetch` + Brave REST API | Recipe Matching | `recipe-source-probe.ts` — API key + response shape | Yes: api.search.brave.com |
 | `RecipeFetcher` | `chefkoch-recipe-fetcher.ts` | `Bun.fetch` + JSON-LD parse | Recipe Matching | `recipe-source-probe.ts` — JSON-LD `@type: Recipe` check | Yes: chefkoch.de |
 
@@ -668,16 +670,17 @@ flowchart TB
 
 ### Slice → Component Map
 
-*Last updated: 2026-07-14 — S01 DELIVERED*
+*Last updated: 2026-07-14 — S01 + S02 DELIVERED*
 
-| Component | First slice | S01 Status | Incremental additions |
+| Component | First slice | S02 Status | Incremental additions |
 |---|---|---|---|
-| `src/scraping/scraper-runner.ts` | S01 | IMPLEMENTED | S02: add Edeka + V-Markt adapter flags |
-| `src/scraping/scraping-service.ts` | S01 | IMPLEMENTED | S02: multi-store loop |
+| `src/scraping/scraper-runner.ts` | S01 | IMPLEMENTED | S03: no change expected |
+| `src/scraping/scraping-service.ts` | S01 | IMPLEMENTED | S03: no change expected |
 | `src/scraping/adapters/aldi-sud-catalogue-fetcher.ts` | S01 | IMPLEMENTED | — |
-| `src/scraping/adapters/catalogue-normalizer.ts` | S01 | IMPLEMENTED | S02: extended dietary tag set; S03: validate all tags covered |
-| `src/scraping/adapters/edeka-catalogue-fetcher.ts` | S02 | PLANNED | — |
-| `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | S02 | PLANNED | — |
+| `src/scraping/adapters/catalogue-normalizer.ts` | S01 | IMPLEMENTED | S03: validate all dietary tags covered |
+| `src/scraping/adapters/edeka-catalogue-fetcher.ts` | FUTURE | NOT IMPLEMENTED | Edeka deferred — blocked by Akamai Bot Manager |
+| `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | S02 | IMPLEMENTED | — |
+| `src/scraping/adapters/haiku-catalogue-extractor.ts` | S02 | IMPLEMENTED | — |
 | `src/scraping/probes/catalogue-probe.ts` | S01 | IMPLEMENTED | S02: per-store probe instances |
 | `src/discount/http/discount-handler.ts` | S01 | IMPLEMENTED | S03: passes `dietary_filter` to `getByWeek` |
 | `src/discount/discount-service.ts` | S01 | IMPLEMENTED | S03: `isCompatible()` applied in `getByWeek` |

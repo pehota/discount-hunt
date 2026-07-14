@@ -1,8 +1,8 @@
-# Evolution: discount-hunt S01 Walking Skeleton
+# Evolution: discount-hunt DELIVER Wave
 
 **Date**: 2026-07-14
-**Iteration**: S01 (of 5)
-**Status**: COMPLETE — all 5 steps DONE, acceptance suite GREEN
+**Iteration**: S01 + S02 (of 5 planned)
+**Status**: COMPLETE — all 12 steps DONE, acceptance suite GREEN (66 pass, 4 skip, 0 fail)
 
 ---
 
@@ -10,7 +10,12 @@
 
 **Primary job**: When planning weekly groceries with no knowledge of current promotions, Dimitar wants to generate a discount-first 7-day meal plan filtered to his dietary restrictions, so he can cook real meals while spending meaningfully less than unplanned shopping.
 
-S01 delivers the walking skeleton: one store (Aldi Süd) → one discounted item → one-meal plan → savings amount confirmed. All 4 bounded contexts are exercised end-to-end. Future slices (S02–S05) add breadth without changing the pipeline shape.
+Two delivery slices shipped in this DELIVER wave:
+
+- **S01 (Walking Skeleton)**: Single-store Aldi Süd scraper, SQLite persistence, discount feed at `GET /`, meal plan generation via `POST /plan/generate` + `GET /plan`, savings log, dietary filtering scaffold.
+- **S02 (Multi-store + Staleness)**: V-Markt integration (Haiku AI-powered PDF extraction), staleness warnings (48h threshold), per-store empty-state UI, meal plan format upgrade (14 slots: 7 days × 2), prior-week filter fix, schema migration guard (meals column idempotency).
+
+**Architecture**: OOP TypeScript, Bun runtime, SQLite + Drizzle ORM, Bun HTTP server, OS cron for weekly scrape.
 
 **North-star hypothesis**: Cumulative monthly savings ≥ €20 after 4 weeks of use.
 
@@ -20,10 +25,10 @@ S01 delivers the walking skeleton: one store (Aldi Süd) → one discounted item
 
 Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Munich. Three jobs validated:
 
-| Job | Opportunity Score | S01 Coverage |
-|-----|------------------|--------------|
-| JOB-001: Weekly grocery planning driven by discounts | 9 | DELIVERED (walking skeleton) |
-| JOB-002: Track actual grocery savings vs full price | 8 | DELIVERED (single-week savings record) |
+| Job | Opportunity Score | Coverage at Close |
+|-----|------------------|-------------------|
+| JOB-001: Weekly grocery planning driven by discounts | 9 | DELIVERED — 2-store discount feed, 14-slot meal plan |
+| JOB-002: Track actual grocery savings vs full price | 8 | DELIVERED — savings log + D23 atomic write |
 | JOB-003: Ensure meal plan respects dietary restrictions | 9 | DEFERRED — S03 (filter scaffold in place, tag engine placeholder) |
 
 **Baseline**: 30-45 min/week manual browsing → <2 min via the app (to be measured at 4-week check).
@@ -31,6 +36,8 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 ---
 
 ## Work Completed (Execution Log)
+
+### S01 — Walking Skeleton
 
 | Step | Name | Result | Date |
 |------|------|--------|------|
@@ -40,23 +47,36 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | 01-04 | Plan generation and savings tracking (D23 atomic) | PASS | 2026-07-14 |
 | 01-05 | Server composition root (D35 wire order) | PASS | 2026-07-14 |
 
-**Tests at close**: 26 pass, 4 skip (Scenario 2 @skip per DISTILL prereq — enable in S02), 0 fail.
+### S02 — Multi-store, Staleness, 7-Day Plan
+
+| Step | Name | Result | Date |
+|------|------|--------|------|
+| 02-01 | Real AldiSudCatalogueFetcher | PASS | 2026-07-14 |
+| 02-02 | CatalogueExtractor port + HaikuCatalogueExtractor + VMarktCatalogueFetcher | PASS | 2026-07-14 |
+| 02-03 | Live scraper wiring in scraper-runner.ts | PASS | 2026-07-14 |
+| 02-04 | 7-day meal plan generation (14 slots) | PASS | 2026-07-14 |
+| 02-05 | Staleness warning + per-store empty-state UI | PASS | 2026-07-14 |
+| 02-06 | Post-verification: week filter + DB migration guard | PASS | 2026-07-14 |
+| 02-07 | Regression ATs: prior-week filter + schema migration boot | PASS | 2026-07-14 |
+
+**Tests at close**: 66 pass, 4 skip (@skip scenarios deferred to later slices), 0 fail.
 
 ---
 
-## Demo Evidence (Post-Merge Integration Gate)
+## Demo Evidence
 
-**US-01 — Discount feed (GET /)**
-- Status 200; item names present (Bio Haferflocken, Rote Linsen); both prices rendered (2.29 was, 1.49 sale); "Generate Meal Plan" visible.
+**Discount feed (GET /)**
+- Status 200; items grouped per store (Aldi Süd, V-Markt); both prices rendered; staleness banner when store last scraped >48h ago; per-store empty-state when 0 items this week.
 
-**US-02 — Meal plan (POST /plan/generate → GET /plan)**
-- POST 200; GET 200; `data-estimated-savings: 210` cents (€2.10).
+**Meal plan (POST /plan/generate → GET /plan)**
+- POST 303/200; plan renders 14 slots (7 days × lunch + dinner); items cycled when fewer than 14 available; placeholder for 0-item week.
 
-**US-04 — Savings tracker (GET /savings)**
-- Status 200; `data-saved-amount: 210` cents; D23 invariant confirmed (plan savings == savings record).
+**Savings tracker (GET /savings)**
+- D23 invariant confirmed: `data-saved-amount` == `data-estimated-savings` (written in same SQLite transaction).
 
-**US-03** (recipe detail) — deferred to S05.
-**US-05** (dietary settings) — deferred to S03.
+**Regression gates (S02 close)**
+- Prior-week items (validUntil < weekStart) absent from `GET /`; current-week items present.
+- DB opened without meals column starts cleanly via try/catch ALTER TABLE guard.
 
 ---
 
@@ -69,7 +89,7 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | D1 | JTBD analysis — all stories trace to jobs.yaml |
 | D3 | Walking skeleton = SLICE-01: one store, one discount, one meal, one saving |
 | D5 | Elephant Carpaccio slicing: ≤1 day per slice |
-| D6 | Aldi Süd: plain HTTP (no Playwright); prospekt.aldi-sued.de serves static JSON — SPIKE-01 validated |
+| D6 | Aldi Süd: plain HTTP; prospekt.aldi-sued.de serves static JSON — SPIKE-01 validated |
 | D7 | Recipe source: Brave Search API → top result → schema.org/Recipe JSON-LD — deferred to S05 |
 | D8 | regular_price captured at scrape time; MUST persist beyond promotion end |
 | D9 | Single-user; no auth, no multi-tenancy |
@@ -92,30 +112,48 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | D35 | Composition root wire order: createDb → services → probe → routes |
 | D37 | generatePlan() pure computation (value); savePlan() only impure function (D23 transaction) |
 
+### Spike-03 Decisions (Store Scraping — S02)
+
+| Decision | Outcome |
+|----------|---------|
+| V-Markt scraping | PROMOTED — plain HTTP, zero extra infrastructure, 122+ items/week |
+| V-Markt extraction strategy | LLM-assisted (claude-haiku-4-5): send `<p>` blocks for structured extraction; cost ~$0.001/weekly run |
+| Edeka | DROPPED — fully blocked by Akamai Bot Manager; Playwright required; two Munich stores sufficient |
+| CatalogueExtractor port | Defined as interface; HaikuCatalogueExtractor is production impl; FakeCatalogueExtractor for tests |
+
 ---
 
 ## Issues Encountered and Resolution
 
 | ID | Issue | Resolution |
 |----|-------|------------|
-| D1 | XSS — item names unescaped in HTML output | Open: schedule for S02 hardening |
-| D2 | No HTTP error boundary on plan generation | Open: schedule for S02 hardening |
-| D3 | Zero-assertion test in db.test.ts | Fixed: test deleted (commit 046674d) |
-| D4 | D23 atomicity — happy-path only; failure-injection test missing | Deferred: failure-injection test to S02 |
+| I1 | XSS — item names unescaped in HTML output | Open — deferred to S03 |
+| I2 | No HTTP error boundary on plan generation | Open — deferred to S03 |
+| I3 | Zero-assertion test in db.test.ts | Fixed in S01 (commit 046674d) |
+| I4 | D23 atomicity — failure-injection test missing | Open — deferred to S03 |
+| I5 | getByWeek() full table scan ignoring weekStart | Fixed in 02-06 — added WHERE valid_until >= weekStart |
+| I6 | createDb() CREATE TABLE not idempotent for new columns on existing DBs | Fixed in 02-06 — try/catch ALTER TABLE meals column guard |
+| I7 | 02-07 committed in two passes (test-file created, then confirmed GREEN separately) | No action — log reflects correct PASS state |
 
 ---
 
 ## Lessons Learned
 
-1. **Fake injection via env vars works cleanly for CLI subprocesses.** `CATALOGUE_SOURCE=fake` + `FAKE_CATALOGUE_FIXTURE` path allows the acceptance test to own the fixture without mocking the subprocess boundary. No subprocess-mocking framework needed.
+1. **Fake injection via env vars works cleanly for CLI subprocesses.** `CATALOGUE_SOURCE=fake` + `FAKE_CATALOGUE_FIXTURE` path allows acceptance tests to own fixtures without mocking the subprocess boundary. No subprocess-mocking framework needed.
 
 2. **Both-price filter at ACL boundary eliminates a class of savings calculation bugs.** CatalogueNormalizer drops items missing either `price` or `discountedPrice` before they reach the domain layer. The Savings Tracker never sees items it cannot compute savings for.
 
 3. **Same-transaction write (D23) made consistency testing trivial.** Testing the D23 invariant was a single HTML attribute comparison (`data-estimated-savings == data-saved-amount`), not an async reconciliation.
 
-4. **SPIKE-01 saved significant time.** Validating the Aldi Süd catalogue endpoint (plain HTTP, static JSON, HEAD→302 slug) before DESIGN meant the scraper architecture was committed without a live-network risk. The spike finding that only ~20% of catalogue items carry both prices was also essential for setting realistic plan size expectations.
+4. **SPIKE-01 saved significant time.** Validating the Aldi Süd catalogue endpoint (plain HTTP, static JSON, HEAD→302 slug) before DESIGN meant the scraper architecture was committed without a live-network risk.
 
-5. **Lean v3.14 single-file feature-delta proved adequate for S01.** DISCUSS, DESIGN, DISTILL, and DELIVER evidence consolidated into one file. No separate wave-decisions.md files were needed; the delta sections stay navigable at this scope.
+5. **LLM extraction (Haiku) resolved the V-Markt name-price association problem cleanly.** Regex-only extraction from PDF-to-HTML produces anonymous items due to columnar layout flattening. Haiku at ~$0.001/weekly run adds negligible cost while providing reliable structured output.
+
+6. **Port abstraction (CatalogueExtractor interface) paid off immediately.** Injecting FakeCatalogueExtractor in unit tests meant zero Anthropic API calls in the test suite. The real HaikuCatalogueExtractor is isolated to production run only.
+
+7. **Week-filter bug caught by post-verification, not initial ATs.** `getByWeek()` was doing a full table scan; prior-week items were surfacing in the feed. Adding regression ATs (02-07) confirmed both the bug and the fix, and provides a guard against recurrence.
+
+8. **Schema migration guard pattern (try/catch ALTER TABLE) is pragmatic for single-user SQLite.** No migration framework needed at this scale; the idempotent column-add pattern is a standard SQLite technique and adequate for the delivery cadence.
 
 ---
 
@@ -124,16 +162,16 @@ Single-user personal tool. Dimitar Apostolov, software engineer, vegetarian, Mun
 | ID | Question | Target Slice |
 |----|----------|-------------|
 | OQ-1 | Brave Search API key validation | S05 |
-| OQ-2 | Edeka and V-Markt scraping feasibility | S02 |
-| OQ-3 | servicePoint / store codes for Munich Edeka + V-Markt | S02 |
 | OQ-4 | Dietary keyword classifier coverage | S03 |
 | OQ-5 | Docker overlayfs SQLite fsync risk | Platform / DEVOPS wave |
+
+*OQ-2 (V-Markt scraping feasibility) and OQ-3 (store codes) resolved in SPIKE-03 and S02.*
 
 ---
 
 ## KPI Baselines
 
-Formal measurement begins at 4-week mark (weekly use). Baselines captured at S01 close:
+Formal measurement begins at 4-week mark (weekly use). Baselines captured at DELIVER close:
 
 | KPI | Baseline | Target | Measurement |
 |-----|----------|--------|-------------|
@@ -141,8 +179,6 @@ Formal measurement begins at 4-week mark (weekly use). Baselines captured at S01
 | Weekly plan adoption | 0 weeks/month | ≥3 weeks/month | meal_plans table row count |
 | Monthly savings | €0 tracked | ≥€20/month after 4 weeks | savings_log cumulative total |
 | Dietary violations | N/A (manual review) | 0/week | Self-reported |
-
-Note: `docs/product/kpi-contracts.yaml` not present; baselines recorded here only. Formal KPI contract file deferred — no validated live data yet (walking skeleton uses fake catalogue).
 
 ---
 
@@ -159,6 +195,8 @@ No migration performed. All lasting artifacts were written directly to permanent
 
 The `docs/feature/discount-hunt/` workspace directory is preserved intact (wave matrix depends on it).
 
+No design/, distill/, or discuss/journey-*.yaml files exist (lean v3.14 format) — destination-map entries in the standard migration table are all N/A.
+
 ---
 
 ## Permanent Artifact Links
@@ -172,17 +210,21 @@ The `docs/feature/discount-hunt/` workspace directory is preserved intact (wave 
 | ADR-004: Tech stack | `docs/product/architecture/adr-004-tech-stack.md` |
 | ADR-005: Dietary filter enforcement | `docs/product/architecture/adr-005-dietary-filter-enforcement.md` |
 | ATDD policy | `docs/architecture/atdd-infrastructure-policy.md` |
-| Walking skeleton spec | `tests/acceptance/discount-hunt/walking-skeleton.feature` |
-| Acceptance test | `tests/acceptance/discount-hunt/walking-skeleton.test.ts` |
+| Walking skeleton acceptance test | `tests/acceptance/discount-hunt/walking-skeleton.test.ts` |
+| Multi-store acceptance test | `tests/acceptance/discount-hunt/multi-store.test.ts` |
 | Feature workspace | `docs/feature/discount-hunt/` |
 | Slice plans | `docs/feature/discount-hunt/slices/` |
 | Spike findings | `docs/feature/discount-hunt/spike/` |
+| Feature delta (lean v3.14) | `docs/feature/discount-hunt/feature-delta.md` |
 
 ---
 
 ## Next Iteration
 
-**S02**: Full 7-day plan + all 3 stores (Aldi Süd + Edeka + V-Markt).
-- Learning hypothesis: Does discount-first planning work when ingredient variety is real?
-- Blocked on: OQ-2 (Edeka/V-Markt scraping feasibility spike), OQ-3 (store codes)
-- Hardening also due: D1 (XSS), D2 (HTTP error boundary), D4 (D23 failure-injection test)
+**S03**: Dietary filter — full restriction enum, isCompatible() applied in getByWeek, settings UI.
+- Learning hypothesis: Does filtering by dietary restriction meaningfully reduce plan violations?
+- Hardening also due: I1 (XSS), I2 (HTTP error boundary), I4 (D23 failure-injection test)
+
+**S04**: Savings history — historical list + month-to-date aggregation.
+
+**S05**: Recipe integration — Brave Search API + Chefkoch JSON-LD parser.
