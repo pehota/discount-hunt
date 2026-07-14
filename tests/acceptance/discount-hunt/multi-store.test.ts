@@ -472,3 +472,70 @@ describe("schema migration boot — re-opening an existing DB with meals column 
     expect(response.status).not.toBe(500);
   });
 });
+
+// ─── AT: schema migration boot — forward path ────────────────────────────────
+// Forward-migration path: DB created WITHOUT meals column (pre-02-04 schema)
+// → createDb() runs ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'
+// → meals column is present → server starts.
+
+describe("schema migration boot — opening a pre-meals DB adds the meals column without error", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-forward-migration-"));
+    dbPath = join(tmpDir, "pre-meals-schema.db");
+
+    // Bootstrap a DB with the PRE-meals schema (meals column intentionally absent).
+    // This simulates a DB created before the 02-04 migration was introduced.
+    const bootstrapDb = new Database(dbPath);
+    bootstrapDb.exec(`
+      CREATE TABLE scrape_jobs (
+        id TEXT PRIMARY KEY, store TEXT NOT NULL, status TEXT NOT NULL,
+        started_at INTEGER NOT NULL, completed_at INTEGER, item_count INTEGER NOT NULL DEFAULT 0, error_message TEXT
+      );
+      CREATE TABLE discount_items (
+        id TEXT PRIMARY KEY, store TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL,
+        regular_price INTEGER NOT NULL, sale_price INTEGER NOT NULL, valid_until TEXT NOT NULL,
+        dietary_tags TEXT NOT NULL DEFAULT '[]', scrape_job_id TEXT NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE meal_plans (
+        id TEXT PRIMARY KEY, week_start TEXT NOT NULL, item_ids TEXT NOT NULL,
+        total_regular_price INTEGER NOT NULL, total_sale_price INTEGER NOT NULL,
+        estimated_savings INTEGER NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE savings_log (
+        id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, week_start TEXT NOT NULL,
+        saved_amount INTEGER NOT NULL, total_sale_price INTEGER NOT NULL,
+        total_regular_price INTEGER NOT NULL, item_count INTEGER NOT NULL, recorded_at INTEGER NOT NULL
+      );
+    `);
+    bootstrapDb.close();
+
+    // Call createServer — createDb internally runs ALTER TABLE meal_plans ADD COLUMN meals,
+    // which should succeed on a DB that does NOT yet have that column.
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 4200 + Math.floor(Math.random() * 99); // port range 4200–4299
+    server = await createServer({ port: serverPort, dbPath });
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("server starts without error on a pre-meals DB", () => {
+    expect(server).not.toBeNull();
+  });
+
+  test("meals column is present after migration", () => {
+    // Open a fresh raw Database to inspect the schema after createServer ran createDb.
+    const db = new Database(dbPath);
+    const columns = db.query("PRAGMA table_info(meal_plans)").all();
+    db.close();
+    const hasMeals = columns.some((r: any) => r.name === "meals");
+    expect(hasMeals).toBe(true);
+  });
+});
