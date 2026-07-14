@@ -20,6 +20,7 @@ export interface MealPlan {
   itemIds: string[];
   meals: Meal[];
   dietaryFilter: DietaryRestriction; // snapshotted restriction at generation (D25)
+  budgetCapCents: number | null; // snapshotted weekly cap at generation; null = no cap
   totalRegularPrice: number; // cents
   totalSalePrice: number;    // cents
   estimatedSavings: number;  // cents — D23 atomic
@@ -36,6 +37,7 @@ export class SQLiteMealPlanRepository {
       itemIds: JSON.stringify(plan.itemIds),
       meals: JSON.stringify(plan.meals),
       dietaryFilter: plan.dietaryFilter ?? "none",
+      budgetCapCents: plan.budgetCapCents ?? null,
       totalRegularPrice: plan.totalRegularPrice,
       totalSalePrice: plan.totalSalePrice,
       estimatedSavings: plan.estimatedSavings,
@@ -58,6 +60,7 @@ export class SQLiteMealPlanRepository {
       itemIds: JSON.parse(row.itemIds) as string[],
       meals: JSON.parse(row.meals) as Meal[],
       dietaryFilter: row.dietaryFilter as DietaryRestriction,
+      budgetCapCents: row.budgetCapCents ?? null,
       totalRegularPrice: row.totalRegularPrice,
       totalSalePrice: row.totalSalePrice,
       estimatedSavings: row.estimatedSavings,

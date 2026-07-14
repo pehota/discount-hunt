@@ -21,19 +21,22 @@ export class SQLiteUserPreferencesRepository implements UserPreferencesRepositor
 
   get(): UserPreferences {
     // drizzle-orm/bun-sqlite .get() returns a positional value array (or undefined).
-    const row = this.db.get<[string]>(
-      sql`SELECT dietary_restriction FROM user_settings WHERE user_id = ${SINGLETON_USER_ID}`,
+    const row = this.db.get<[string, number | null]>(
+      sql`SELECT dietary_restriction, budget_cap_cents FROM user_settings WHERE user_id = ${SINGLETON_USER_ID}`,
     );
-    if (!row) return { dietaryRestriction: "none" };
-    return { dietaryRestriction: row[0] as DietaryRestriction };
+    if (!row) return { dietaryRestriction: "none", budgetCapCents: null };
+    return { dietaryRestriction: row[0] as DietaryRestriction, budgetCapCents: row[1] };
   }
 
   upsert(prefs: UserPreferences): void {
+    // undefined would throw at the bun:sqlite binding layer — coalesce to null.
+    const budgetCapCents = prefs.budgetCapCents ?? null;
     this.db.run(sql`
-      INSERT INTO user_settings (user_id, dietary_restriction, updated_at)
-      VALUES (${SINGLETON_USER_ID}, ${prefs.dietaryRestriction}, ${Date.now()})
+      INSERT INTO user_settings (user_id, dietary_restriction, budget_cap_cents, updated_at)
+      VALUES (${SINGLETON_USER_ID}, ${prefs.dietaryRestriction}, ${budgetCapCents}, ${Date.now()})
       ON CONFLICT(user_id) DO UPDATE SET
         dietary_restriction = excluded.dietary_restriction,
+        budget_cap_cents = excluded.budget_cap_cents,
         updated_at = excluded.updated_at
     `);
   }

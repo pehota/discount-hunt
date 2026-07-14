@@ -37,10 +37,10 @@ function withDb<T>(run: (db: DbClient) => T): T {
 }
 
 describe("SQLiteUserPreferencesRepository", () => {
-  test("get() returns the honest default { dietaryRestriction: 'none' } when no row exists", () => {
+  test("get() returns the honest defaults { dietaryRestriction: 'none', budgetCapCents: null } when no row exists", () => {
     withDb((db) => {
       const repo = new SQLiteUserPreferencesRepository(db);
-      expect(repo.get()).toEqual({ dietaryRestriction: "none" });
+      expect(repo.get()).toEqual({ dietaryRestriction: "none", budgetCapCents: null });
       // Universe guard: reading must not create a row.
       expect(rowCount(db)).toBe(0);
     });
@@ -57,9 +57,42 @@ describe("SQLiteUserPreferencesRepository", () => {
           // Singleton invariant: the fixed-PK upsert cannot grow the table.
           expect(rowCount(db)).toBe(1);
           // Last-write-wins (seq has minLength 1, so the last element is defined).
-          expect(repo.get()).toEqual({ dietaryRestriction: seq[seq.length - 1]! });
+          expect(repo.get()).toEqual({
+            dietaryRestriction: seq[seq.length - 1]!,
+            budgetCapCents: null,
+          });
         });
       }),
+      { numRuns: 40 },
+    );
+  });
+
+  // ─── Step 04-01: budget_cap_cents round-trip ────────────────────────────────
+  test("get() returns budgetCapCents: null when no row exists", () => {
+    withDb((db) => {
+      const repo = new SQLiteUserPreferencesRepository(db);
+      expect(repo.get().budgetCapCents).toBeNull();
+    });
+  });
+
+  test("for any budget cap (cents or null), upsert→get round-trips it faithfully", () => {
+    fc.assert(
+      fc.property(
+        restrictionArb,
+        fc.option(fc.integer({ min: 0, max: 10_000_000 }), { nil: null }),
+        (restriction, budgetCapCents) => {
+          withDb((db) => {
+            const repo = new SQLiteUserPreferencesRepository(db);
+            repo.upsert({ dietaryRestriction: restriction, budgetCapCents });
+            // Singleton still holds; both fields round-trip.
+            expect(rowCount(db)).toBe(1);
+            expect(repo.get()).toEqual({
+              dietaryRestriction: restriction,
+              budgetCapCents,
+            });
+          });
+        },
+      ),
       { numRuns: 40 },
     );
   });

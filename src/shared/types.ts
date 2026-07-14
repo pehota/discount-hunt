@@ -8,11 +8,13 @@
 export type DietaryRestriction = "vegetarian" | "vegan" | "none";
 
 /**
- * Household preferences (increment 1: single dietary dimension).
- * budgetCapCents / household / kid-friendly are deferred until their effect ships.
+ * Household preferences.
+ * increment 1: dietary dimension. increment 1.5: budget cap (euros stored as cents).
+ * budgetCapCents null / undefined = no cap. household / kid-friendly deferred until they ship.
  */
 export interface UserPreferences {
   dietaryRestriction: DietaryRestriction;
+  budgetCapCents?: number | null;
 }
 
 /** Dietary classification tag applied at scrape time by catalogue-normalizer. */

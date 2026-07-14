@@ -19,7 +19,11 @@ const restrictionArb: fc.Arbitrary<DietaryRestriction> = fc.constantFrom(
   "none", "vegetarian", "vegan",
 );
 
-function planWith(dietaryFilter: DietaryRestriction, weekStart: string): MealPlan {
+function planWith(
+  dietaryFilter: DietaryRestriction,
+  weekStart: string,
+  budgetCapCents: number | null = null,
+): MealPlan {
   return {
     id: `plan-${weekStart}`,
     weekStart,
@@ -29,6 +33,7 @@ function planWith(dietaryFilter: DietaryRestriction, weekStart: string): MealPla
     totalSalePrice: 0,
     estimatedSavings: 0,
     dietaryFilter,
+    budgetCapCents,
     createdAt: Date.now(),
   };
 }
@@ -53,6 +58,34 @@ describe("SQLiteMealPlanRepository — dietaryFilter snapshot round-trip", () =>
           rmSync(dir, { recursive: true, force: true });
         }
       }),
+      { numRuns: 30 },
+    );
+  });
+});
+
+// ─── Step 04-01: budgetCapCents snapshot round-trip ─────────────────────────
+describe("SQLiteMealPlanRepository — budgetCapCents snapshot round-trip", () => {
+  test("save→findByWeek preserves the snapshotted budgetCapCents (cents or null)", () => {
+    fc.assert(
+      fc.property(
+        fc.option(fc.integer({ min: 0, max: 10_000_000 }), { nil: null }),
+        (budgetCapCents) => {
+          const dir = mkdtempSync(join(tmpdir(), "dh-mealplan-budget-rt-"));
+          try {
+            const db = createDb(join(dir, "rt.db"));
+            const repo = new SQLiteMealPlanRepository(db);
+            const weekStart = "2026-07-13";
+
+            repo.save(planWith("none", weekStart, budgetCapCents));
+            const loaded = repo.findByWeek(weekStart);
+
+            expect(loaded).not.toBeNull();
+            expect(loaded!.budgetCapCents).toBe(budgetCapCents);
+          } finally {
+            rmSync(dir, { recursive: true, force: true });
+          }
+        },
+      ),
       { numRuns: 30 },
     );
   });

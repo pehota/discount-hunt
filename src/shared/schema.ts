@@ -38,6 +38,7 @@ export const mealPlans = sqliteTable("meal_plans", {
   itemIds: text("item_ids").notNull(), // JSON array
   meals: text("meals").notNull().default("[]"), // JSON array of Meal objects
   dietaryFilter: text("dietary_filter").notNull().default("none"), // snapshotted restriction (D25)
+  budgetCapCents: integer("budget_cap_cents"), // nullable snapshot; NULL = no cap
   totalRegularPrice: integer("total_regular_price").notNull(), // cents
   totalSalePrice: integer("total_sale_price").notNull(), // cents
   estimatedSavings: integer("estimated_savings").notNull(), // cents — D23 atomic
@@ -47,6 +48,7 @@ export const mealPlans = sqliteTable("meal_plans", {
 export const userSettings = sqliteTable("user_settings", {
   userId: text("user_id").primaryKey().default("dimitar"), // single-user singleton (D9)
   dietaryRestriction: text("dietary_restriction").notNull().default("none"), // 'none'|'vegetarian'|'vegan'
+  budgetCapCents: integer("budget_cap_cents"), // nullable weekly cap; NULL = no cap
   updatedAt: integer("updated_at").notNull(), // ms since epoch
 });
 

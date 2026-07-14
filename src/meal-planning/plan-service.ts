@@ -53,6 +53,7 @@ export class PlanService {
       itemIds: discountItems.map((item) => item.id),
       meals: this.buildMeals(discountItems),
       dietaryFilter,
+      budgetCapCents: null, // snapshot wired in 04-03; null until then (no cap)
       totalRegularPrice,
       totalSalePrice,
       estimatedSavings,

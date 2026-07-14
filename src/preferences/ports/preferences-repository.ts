@@ -9,7 +9,10 @@
 import type { UserPreferences } from "../../shared/types.ts";
 
 export interface UserPreferencesRepository {
-  /** Single-row read; returns { dietaryRestriction: 'none' } if unset (never null). */
+  /**
+   * Single-row read; returns honest defaults if unset (never null):
+   * { dietaryRestriction: 'none', budgetCapCents: null }.
+   */
   get(): UserPreferences;
   /** Idempotent single-row write (fixed-PK upsert-on-conflict). */
   upsert(prefs: UserPreferences): void;
