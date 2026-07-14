@@ -56,8 +56,8 @@ describe("SQLiteUserPreferencesRepository", () => {
           }
           // Singleton invariant: the fixed-PK upsert cannot grow the table.
           expect(rowCount(db)).toBe(1);
-          // Last-write-wins.
-          expect(repo.get()).toEqual({ dietaryRestriction: seq[seq.length - 1] });
+          // Last-write-wins (seq has minLength 1, so the last element is defined).
+          expect(repo.get()).toEqual({ dietaryRestriction: seq[seq.length - 1]! });
         });
       }),
       { numRuns: 40 },
