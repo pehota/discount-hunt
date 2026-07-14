@@ -17,6 +17,7 @@
 import { randomUUID } from "node:crypto";
 import type { DbClient } from "../shared/db.ts";
 import type { WeekStart, Meal, MealSlot, DietaryRestriction } from "../shared/types.ts";
+import { currentWeekMonday } from "../shared/week.ts";
 import type { DiscountService } from "../discount/discount-service.ts";
 import type { StoredDiscountItem } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import type { SQLiteMealPlanRepository, MealPlan } from "./adapters/sqlite-meal-plan-repository.ts";
@@ -26,19 +27,6 @@ import type { UserPreferencesRepository } from "../preferences/ports/preferences
 const MEAL_SLOTS: MealSlot[] = ['lunch', 'dinner'];
 const DAYS_PER_WEEK = 7;
 const NO_DISCOUNT_PLACEHOLDER = 'No discount available';
-
-/**
- * Returns the ISO date string for the Monday of the current UTC week.
- * Sunday (day=0) rolls back 6 days; other days offset by (1 - day).
- */
-function currentMonday(): WeekStart {
-  const now = new Date();
-  const day = now.getUTCDay(); // 0=Sun … 6=Sat
-  const offsetToMonday = day === 0 ? -6 : 1 - day;
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() + offsetToMonday);
-  return monday.toISOString().slice(0, 10); // "YYYY-MM-DD"
-}
 
 export class PlanService {
   constructor(
@@ -118,7 +106,7 @@ export class PlanService {
   }
 
   async getOrGenerateCurrentWeekPlan(): Promise<MealPlan> {
-    const weekStart = currentMonday();
+    const weekStart = currentWeekMonday();
     const existing = this.mealPlanRepository.findByWeek(weekStart);
     if (existing) return existing;
 

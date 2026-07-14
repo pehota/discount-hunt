@@ -18,8 +18,10 @@
 import type { DiscountService } from "../discount-service.ts";
 import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
 
-const STALENESS_THRESHOLD_MS = 48 * 3600 * 1000;
+const STALENESS_THRESHOLD_HOURS = 48;
+const STALENESS_THRESHOLD_MS = STALENESS_THRESHOLD_HOURS * 60 * 60 * 1000;
 const DATE_LOCALE = "de-DE";
 
 /** Staleness predicate: returns true if the last run was more than 48 hours ago. */
@@ -31,15 +33,6 @@ function centsToEuros(cents: number): string {
   return (cents / 100).toFixed(2);
 }
 
-function getCurrentWeekStart(): string {
-  const now = new Date();
-  const dayOfWeek = now.getUTCDay(); // 0=Sun, 1=Mon, ..., 6=Sat
-  const daysToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-  const monday = new Date(now);
-  monday.setUTCDate(now.getUTCDate() + daysToMonday);
-  return monday.toISOString().slice(0, 10);
-}
-
 export class DiscountHandler {
   constructor(
     private readonly discountService: DiscountService,
@@ -48,7 +41,7 @@ export class DiscountHandler {
   ) {}
 
   async handleGet(_request: Request): Promise<Response> {
-    const weekStart = getCurrentWeekStart();
+    const weekStart = currentWeekMonday();
     // LIVE read on every request — the feed re-filters the moment the setting changes.
     const restriction = this.preferencesRepo?.get().dietaryRestriction ?? "none";
     const items = await this.discountService.getWeeklyItems(weekStart, restriction);
