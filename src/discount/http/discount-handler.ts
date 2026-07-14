@@ -64,7 +64,9 @@ export class DiscountHandler {
       ${itemsHtml}
     </section>
     <section id="meal-plan-action">
-      <button type="button" id="generate-meal-plan">Generate Meal Plan</button>
+      <form method="POST" action="/plan/generate">
+        <button type="submit" id="generate-meal-plan">Generate Meal Plan</button>
+      </form>
     </section>
   </main>
 </body>

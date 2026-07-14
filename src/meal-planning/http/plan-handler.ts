@@ -52,12 +52,8 @@ export class PlanHandler {
     });
   }
 
-  async handlePostGenerate(request: Request): Promise<Response> {
-    const plan = await this.planService.getOrGenerateCurrentWeekPlan();
-    const html = renderPlanHtml(plan);
-    return new Response(html, {
-      status: 200,
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
+  async handlePostGenerate(_request: Request): Promise<Response> {
+    await this.planService.getOrGenerateCurrentWeekPlan();
+    return Response.redirect("/plan", 303);
   }
 }
