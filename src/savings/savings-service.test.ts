@@ -20,7 +20,7 @@ import { randomUUID } from "node:crypto";
 import { createDb } from "../shared/db.ts";
 import { currentWeekMonday } from "../shared/week.ts";
 import { SQLiteSavingsRepository, type SavingsRecord } from "./adapters/sqlite-savings-repository.ts";
-import { SavingsService } from "./savings-service.ts";
+import { SavingsService, sumMonthToDateCents } from "./savings-service.ts";
 
 interface Seed {
   weekStart: string;
@@ -154,6 +154,64 @@ describe("SavingsService.getSummary", () => {
       }),
       { numRuns: 50 },
     );
+  });
+
+  test("getHistory remains intact — returns all records DESC by weekStart", async () => {
+    const service = serviceWith([
+      { weekStart: currentWeekMonday(), savedAmount: 700, totalSalePrice: 1500, totalRegularPrice: 2200 },
+      { weekStart: priorMonthWeekStart(), savedAmount: 500, totalSalePrice: 1000, totalRegularPrice: 1500 },
+    ]);
+
+    const history = await service.getHistory();
+
+    expect(history).toHaveLength(2);
+    expect(history[0].weekStart >= history[1].weekStart).toBe(true);
+  });
+});
+
+// ─── Pure month-to-date summation (05-03 WARNING: testability) ────────────────
+// sumMonthToDateCents(records, referenceMonth) is a PURE function taking an EXPLICIT
+// reference month ("YYYY-MM"). This breaks the test-blind-spot: previously the month sum
+// derived its reference month via currentWeekMonday().slice(0,7) in BOTH production and
+// test, so the intended semantics ("current month" = calendar month of the current week's
+// Monday) were never proven independently of the derivation. Here we pin an explicit month.
+//
+// Contract: sums savedAmount over records whose weekStart.slice(0,7) === referenceMonth
+// AND whose totalRegularPrice !== 0 (uncaptured-regular rows excluded).
+
+function record(partial: Partial<SavingsRecord> & { weekStart: string; savedAmount: number; totalRegularPrice: number }): SavingsRecord {
+  return {
+    id: randomUUID(),
+    planId: randomUUID(),
+    weekStart: partial.weekStart,
+    savedAmount: partial.savedAmount,
+    totalSalePrice: partial.totalSalePrice ?? 0,
+    totalRegularPrice: partial.totalRegularPrice,
+    itemCount: partial.itemCount ?? 1,
+    recordedAt: partial.recordedAt ?? Date.now(),
+  };
+}
+
+describe("sumMonthToDateCents (pure, explicit reference month)", () => {
+  test("sums only records in the explicit reference month, excluding other months and uncaptured-regular rows", () => {
+    const records: SavingsRecord[] = [
+      // In reference month 2026-08, regular captured → counts.
+      record({ weekStart: "2026-08-01", savedAmount: 500, totalRegularPrice: 3000 }),
+      // Prior calendar month bucket 2026-07 → excluded even though close in time.
+      record({ weekStart: "2026-07-27", savedAmount: 900, totalRegularPrice: 4000 }),
+      // In reference month 2026-08 but regular NOT captured → excluded.
+      record({ weekStart: "2026-08-15", savedAmount: 700, totalRegularPrice: 0 }),
+    ];
+
+    expect(sumMonthToDateCents(records, "2026-08")).toBe(500);
+  });
+
+  test("returns 0 when no record falls in the reference month", () => {
+    const records: SavingsRecord[] = [
+      record({ weekStart: "2026-07-27", savedAmount: 900, totalRegularPrice: 4000 }),
+    ];
+
+    expect(sumMonthToDateCents(records, "2026-08")).toBe(0);
   });
 
   test("getHistory remains intact — returns all records DESC by weekStart", async () => {

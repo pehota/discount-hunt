@@ -13,19 +13,21 @@
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 import type { SavingsRecord } from "../adapters/sqlite-savings-repository.ts";
-import type { SavingsService, SavingsSummary } from "../savings-service.ts";
+import { isSavingsUnavailable, type SavingsService, type SavingsSummary } from "../savings-service.ts";
 
 function formatEuros(cents: number): string {
   return `€${(cents / 100).toFixed(2)}`;
 }
 
-function isSavingsUnavailable(record: SavingsRecord): boolean {
-  return record.totalRegularPrice === 0;
-}
-
 function renderThisWeekBreakdown(thisWeek: SavingsRecord | null): string {
   if (thisWeek === null) {
     return `<section class="this-week"><p>No plan generated for this week yet.</p></section>`;
+  }
+  if (isSavingsUnavailable(thisWeek)) {
+    return `<section class="this-week">
+    <h2>This Week</h2>
+    <p>Savings unavailable</p>
+  </section>`;
   }
   return `<section class="this-week">
     <h2>This Week</h2>

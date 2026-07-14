@@ -21,8 +21,8 @@ Extend the savings tab to show a history of weekly savings across multiple plan 
 ## Acceptance Criteria
 - Savings tab shows: this week's savings breakdown (paid, would-have-paid, saved €)
 - History list shows one entry per prior week with savings amount
-- Month-to-date total shown as running sum of current month's weeks
-- When regular_price was not captured for a week, "Savings unavailable" shown for that week (not €0)
+- Month-to-date total shown as running sum of current month's weeks ("current month" = the calendar month of the current week's Monday, i.e. `currentWeekMonday().slice(0,7)`)
+- When regular_price was not captured for a week, "Savings unavailable" shown for that week (not €0) — this applies to the current-week breakdown too, not only the history rows
 - Data survives app restart (DB-persisted)
 
 ## Dependencies

@@ -26,6 +26,27 @@ export interface SavingsSummary {
   unavailableWeekStarts: string[]; // weekStarts where totalRegularPrice === 0 (savings not computable)
 }
 
+/** A savings record has no computable savings when its regular price was never captured. */
+export function isSavingsUnavailable(record: SavingsRecord): boolean {
+  return record.totalRegularPrice === 0;
+}
+
+/**
+ * Pure month-to-date summation over an EXPLICIT reference month ("YYYY-MM").
+ *
+ * Sums savedAmount for records whose weekStart falls in referenceMonth AND whose
+ * regular price was actually captured (uncaptured-regular rows are excluded — their
+ * savedAmount is meaningless). Taking referenceMonth as an argument (rather than
+ * deriving it internally) lets the semantics be unit-tested independently of
+ * currentWeekMonday(): "current month" = calendar month of the current week's Monday.
+ */
+export function sumMonthToDateCents(records: SavingsRecord[], referenceMonth: string): number {
+  return records
+    .filter((record) => record.weekStart.slice(0, 7) === referenceMonth)
+    .filter((record) => !isSavingsUnavailable(record))
+    .reduce((sum, record) => sum + record.savedAmount, 0);
+}
+
 export class SavingsService {
   constructor(private readonly savingsRepository: SQLiteSavingsRepository) {}
 
@@ -36,30 +57,17 @@ export class SavingsService {
   async getSummary(): Promise<SavingsSummary> {
     const history = await this.getHistory();
     const currentWeek = currentWeekMonday();
-    const currentMonthPrefix = currentWeek.slice(0, 7);
+    const referenceMonth = currentWeek.slice(0, 7);
 
     const thisWeek = history.find((record) => record.weekStart === currentWeek) ?? null;
 
-    const monthToDateCents = history
-      .filter((record) => this.countsTowardMonthTotal(record, currentMonthPrefix))
-      .reduce((sum, record) => sum + record.savedAmount, 0);
+    const monthToDateCents = sumMonthToDateCents(history, referenceMonth);
 
     const unavailableWeekStarts = history
-      .filter((record) => this.isSavingsUnavailable(record))
+      .filter((record) => isSavingsUnavailable(record))
       .map((record) => record.weekStart);
 
     return { history, thisWeek, monthToDateCents, unavailableWeekStarts };
-  }
-
-  private countsTowardMonthTotal(record: SavingsRecord, currentMonthPrefix: string): boolean {
-    if (record.weekStart.slice(0, 7) !== currentMonthPrefix) {
-      return false;
-    }
-    return !this.isSavingsUnavailable(record);
-  }
-
-  private isSavingsUnavailable(record: SavingsRecord): boolean {
-    return record.totalRegularPrice === 0;
   }
 
   recordSavings(

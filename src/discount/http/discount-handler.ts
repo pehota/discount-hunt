@@ -122,7 +122,7 @@ export class DiscountHandler {
       if (completedAt !== null && isStale(completedAt, now)) {
         const lastRefreshed = new Date(completedAt).toLocaleDateString(DATE_LOCALE);
         warnings.push(
-          `<div class="staleness-warning">Data for ${store} may be outdated — last refreshed ${lastRefreshed}</div>`,
+          `<div class="staleness-warning">Data for ${escapeHtml(store)} may be outdated — last refreshed ${lastRefreshed}</div>`,
         );
       }
     }
@@ -137,10 +137,11 @@ export class DiscountHandler {
     for (const store of knownStores) {
       const storeGroup = storeItems.get(store) ?? [];
       if (storeGroup.length === 0) {
+        const safeStore = escapeHtml(store);
         sections.push(
           `<section class="store-group">
-      <h2 class="store-name">${store}</h2>
-      <p class="empty-state">No discounts this week at ${store}</p>
+      <h2 class="store-name">${safeStore}</h2>
+      <p class="empty-state">No discounts this week at ${safeStore}</p>
     </section>`,
         );
       } else {
@@ -181,7 +182,7 @@ export class DiscountHandler {
       )
       .join("\n");
     return `<section class="store-group">
-      <h2 class="store-name">${storeName}</h2>
+      <h2 class="store-name">${escapeHtml(storeName)}</h2>
       <div class="card-grid">
       ${storeItemsHtml}
       </div>
