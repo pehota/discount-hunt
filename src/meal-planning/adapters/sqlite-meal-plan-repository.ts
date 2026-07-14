@@ -2,32 +2,60 @@
  * SQLiteMealPlanRepository — secondary adapter implementing MealPlanRepository port.
  *
  * Table: meal_plans (see src/shared/schema.ts)
- * Commands: save, getByWeek, replaceCurrentWeek, getRecentRecipeIds
+ * Commands: save, findByWeek
  *
  * Invariants:
- *   - replaceCurrentWeek deletes + reinserts current week's row only (D24)
- *   - savePlan is called inside the same SQLite transaction as savings_log write (D23)
- *   - getRecentRecipeIds(since) used by PlanService for 4-week rotation exclusion (D36)
+ *   - save is called inside the same SQLite transaction as savings_log write (D23)
+ *   - findByWeek queries by week_start for idempotency check in PlanService
  */
 
-export const __SCAFFOLD__ = true as const;
+import { eq } from "drizzle-orm";
+import type { DbClient } from "../../shared/db.ts";
+import { mealPlans } from "../../shared/schema.ts";
+import type { WeekStart } from "../../shared/types.ts";
+
+export interface MealPlan {
+  id: string;
+  weekStart: WeekStart;
+  itemIds: string[];
+  totalRegularPrice: number; // cents
+  totalSalePrice: number;    // cents
+  estimatedSavings: number;  // cents — D23 atomic
+  createdAt: number;
+}
 
 export class SQLiteMealPlanRepository {
-  constructor(private readonly db: unknown) {}
+  constructor(private readonly db: DbClient) {}
 
-  async save(plan: unknown): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
+  save(plan: MealPlan): void {
+    this.db.insert(mealPlans).values({
+      id: plan.id,
+      weekStart: plan.weekStart,
+      itemIds: JSON.stringify(plan.itemIds),
+      totalRegularPrice: plan.totalRegularPrice,
+      totalSalePrice: plan.totalSalePrice,
+      estimatedSavings: plan.estimatedSavings,
+      createdAt: plan.createdAt,
+    }).run();
   }
 
-  async getByWeek(weekStart: string): Promise<unknown | null> {
-    throw new Error("Not yet implemented — RED scaffold");
-  }
+  findByWeek(weekStart: WeekStart): MealPlan | null {
+    const row = this.db
+      .select()
+      .from(mealPlans)
+      .where(eq(mealPlans.weekStart, weekStart))
+      .get();
 
-  async replaceCurrentWeek(plan: unknown): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
-  }
+    if (!row) return null;
 
-  async getRecentRecipeIds(since: Date): Promise<string[]> {
-    throw new Error("Not yet implemented — RED scaffold");
+    return {
+      id: row.id,
+      weekStart: row.weekStart,
+      itemIds: JSON.parse(row.itemIds) as string[],
+      totalRegularPrice: row.totalRegularPrice,
+      totalSalePrice: row.totalSalePrice,
+      estimatedSavings: row.estimatedSavings,
+      createdAt: row.createdAt,
+    };
   }
 }

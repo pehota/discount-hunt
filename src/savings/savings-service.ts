@@ -2,30 +2,42 @@
  * SavingsService — domain service for the Savings Tracking bounded context.
  *
  * Use cases:
- *   GetHistory(): returns SavingsRecord[] ordered by week_start DESC
- *   RecordSavings(planId, ...): called by PlanService in same transaction (not via HTTP)
- *   ReplaceSavings(weekStart, planId, ...): replaces current week's record only (D24)
+ *   getHistory(): returns SavingsRecord[] ordered by week_start DESC
+ *   recordSavings(planId, ...): called by PlanService in same transaction (not via HTTP)
  *
  * Invariants:
- *   - Prior weeks (week_start < current Monday) are immutable — reject ReplaceSavings for them
  *   - saved_amount = total_regular_price - total_sale_price (verified at creation)
- *   - ReplaceSavings enforces week_start >= currentMonday() guard
+ *   - recordSavings is called inside PlanService.savePlan transaction (D23)
  */
 
-export const __SCAFFOLD__ = true as const;
+import { randomUUID } from "node:crypto";
+import type { SQLiteSavingsRepository, SavingsRecord } from "./adapters/sqlite-savings-repository.ts";
 
 export class SavingsService {
-  constructor(private readonly savingsRepository: unknown) {}
+  constructor(private readonly savingsRepository: SQLiteSavingsRepository) {}
 
-  async getHistory(): Promise<unknown[]> {
-    throw new Error("Not yet implemented — RED scaffold");
+  async getHistory(): Promise<SavingsRecord[]> {
+    return this.savingsRepository.getAll();
   }
 
-  async recordSavings(planId: string, savedAmount: number, totalSalePrice: number, totalRegularPrice: number, itemCount: number): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
-  }
-
-  async replaceSavings(weekStart: string, planId: string, savedAmount: number, totalSalePrice: number, totalRegularPrice: number, itemCount: number): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
+  recordSavings(
+    planId: string,
+    savedAmount: number,
+    totalSalePrice: number,
+    totalRegularPrice: number,
+    itemCount: number,
+    weekStart: string,
+  ): void {
+    const record: SavingsRecord = {
+      id: randomUUID(),
+      planId,
+      weekStart,
+      savedAmount,
+      totalSalePrice,
+      totalRegularPrice,
+      itemCount,
+      recordedAt: Date.now(),
+    };
+    this.savingsRepository.record(record);
   }
 }

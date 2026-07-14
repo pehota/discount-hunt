@@ -12,16 +12,52 @@
  *   The walking-skeleton AT extracts data-estimated-savings to assert D23 structurally.
  */
 
-export const __SCAFFOLD__ = true as const;
+import type { PlanService } from "../plan-service.ts";
+import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
+
+function formatEuros(cents: number): string {
+  return `€${(cents / 100).toFixed(2)}`;
+}
+
+function renderPlanHtml(plan: MealPlan): string {
+  const itemList = plan.itemIds
+    .map((id) => `<li>${id}</li>`)
+    .join("");
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Meal Plan</title></head>
+<body>
+  <h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  <p>
+    Estimated savings:
+    <span data-estimated-savings="${plan.estimatedSavings}">${formatEuros(plan.estimatedSavings)}</span>
+  </p>
+  <p>Regular price total: ${formatEuros(plan.totalRegularPrice)}</p>
+  <p>Sale price total: ${formatEuros(plan.totalSalePrice)}</p>
+  <ul>${itemList}</ul>
+</body>
+</html>`;
+}
 
 export class PlanHandler {
-  constructor(private readonly planService: unknown) {}
+  constructor(private readonly planService: PlanService) {}
 
   async handleGetPlan(request: Request): Promise<Response> {
-    throw new Error("Not yet implemented — RED scaffold");
+    const plan = await this.planService.getOrGenerateCurrentWeekPlan();
+    const html = renderPlanHtml(plan);
+    return new Response(html, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
   }
 
   async handlePostGenerate(request: Request): Promise<Response> {
-    throw new Error("Not yet implemented — RED scaffold");
+    const plan = await this.planService.getOrGenerateCurrentWeekPlan();
+    const html = renderPlanHtml(plan);
+    return new Response(html, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
   }
 }

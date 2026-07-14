@@ -2,27 +2,60 @@
  * SQLiteSavingsRepository — secondary adapter implementing SavingsRepository port.
  *
  * Table: savings_log (see src/shared/schema.ts)
- * Commands: record, replace, getHistory
+ * Commands: record, getAll
  *
  * Invariants:
- *   - replace: enforces week_start >= currentMonday() guard; rejects prior weeks
  *   - record: insert-only; no update permitted after creation
+ *   - record is called inside the same SQLite transaction as meal_plans write (D23)
  */
 
-export const __SCAFFOLD__ = true as const;
+import { desc } from "drizzle-orm";
+import type { DbClient } from "../../shared/db.ts";
+import { savingsLog } from "../../shared/schema.ts";
+
+export interface SavingsRecord {
+  id: string;
+  planId: string;
+  weekStart: string;
+  savedAmount: number;      // cents — D23: must equal estimated_savings
+  totalSalePrice: number;
+  totalRegularPrice: number;
+  itemCount: number;
+  recordedAt: number;
+}
 
 export class SQLiteSavingsRepository {
-  constructor(private readonly db: unknown) {}
+  constructor(private readonly db: DbClient) {}
 
-  async record(savingsRecord: unknown): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
+  record(savingsRecord: SavingsRecord): void {
+    this.db.insert(savingsLog).values({
+      id: savingsRecord.id,
+      planId: savingsRecord.planId,
+      weekStart: savingsRecord.weekStart,
+      savedAmount: savingsRecord.savedAmount,
+      totalSalePrice: savingsRecord.totalSalePrice,
+      totalRegularPrice: savingsRecord.totalRegularPrice,
+      itemCount: savingsRecord.itemCount,
+      recordedAt: savingsRecord.recordedAt,
+    }).run();
   }
 
-  async replace(weekStart: string, savingsRecord: unknown): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
-  }
+  getAll(): SavingsRecord[] {
+    const rows = this.db
+      .select()
+      .from(savingsLog)
+      .orderBy(desc(savingsLog.weekStart))
+      .all();
 
-  async getHistory(): Promise<unknown[]> {
-    throw new Error("Not yet implemented — RED scaffold");
+    return rows.map((row) => ({
+      id: row.id,
+      planId: row.planId,
+      weekStart: row.weekStart,
+      savedAmount: row.savedAmount,
+      totalSalePrice: row.totalSalePrice,
+      totalRegularPrice: row.totalRegularPrice,
+      itemCount: row.itemCount,
+      recordedAt: row.recordedAt,
+    }));
   }
 }
