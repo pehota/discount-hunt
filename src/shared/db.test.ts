@@ -44,11 +44,4 @@ describe("createDb", () => {
     expect(result.journal_mode).toBe("wal");
   });
 
-  test("throws if probe fails (scaffold must fail with not-implemented error)", () => {
-    // This test drives RED: the scaffold throws "Not yet implemented"
-    // GREEN: createDb must complete without throwing for :memory:
-    // We verify indirectly: the test above passes means no throw.
-    // This explicit throw check ensures scaffold still fails during RED.
-    // In GREEN, this test passes because createDb no longer throws.
-  });
 });
