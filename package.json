@@ -12,8 +12,9 @@
     "lint:arch": "depcruise src --config .dependency-cruiser.cjs"
   },
   "dependencies": {
-    "drizzle-orm": "^0.44.2",
+    "@anthropic-ai/sdk": "^0.111.0",
     "better-sqlite3": "^11.10.0",
+    "drizzle-orm": "^0.44.2",
     "htmx.org": "^2.0.4"
   },
   "devDependencies": {

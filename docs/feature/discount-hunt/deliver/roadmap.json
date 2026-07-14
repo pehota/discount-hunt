@@ -2,7 +2,7 @@
   "roadmap": {
     "project_id": "discount-hunt",
     "created_at": "2026-07-13T20:49:27Z",
-    "total_steps": 5
+    "total_steps": 10
   },
   "phases": [
     {
@@ -48,7 +48,9 @@
             "src/discount/discount-service.ts",
             "src/discount/adapters/sqlite-discount-item-repository.ts"
           ],
-          "deps": ["01-01"],
+          "deps": [
+            "01-01"
+          ],
           "implementation_notes": "ScrapingService.run orchestrates: start job, fetch, normalize, registerDiscountItem for each item, complete job. scraper-runner reads CATALOGUE_SOURCE env var to select adapter: FakeAldiCatalogueAdapter.fromFixtureFile(FAKE_CATALOGUE_FIXTURE) or live fetcher. CatalogueNormalizer contract shape: pure-function / return-only — no DB writes, no I/O. DiscountService.registerDiscountItem is the only impure function in this boundary (writes to sqlite_discount_item_repository). D21: normalizer MUST drop items where discountedPrice is absent or empty. D22: regularPrice is written once; the repository must not allow updates. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
         },
         {
@@ -63,7 +65,9 @@
           "files_to_modify": [
             "src/discount/http/discount-handler.ts"
           ],
-          "deps": ["01-02"],
+          "deps": [
+            "01-02"
+          ],
           "implementation_notes": "DiscountHandler.handleGet calls DiscountService.getWeeklyItems and renders HTMX HTML with item name, regular price (was €X.XX), and sale price. Handler is a thin driving adapter — no business logic, no DB access directly. Contract shape: bounded-change (reads discount_items, no writes). TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
         },
         {
@@ -84,7 +88,9 @@
             "src/savings/http/savings-handler.ts",
             "src/savings/adapters/sqlite-savings-repository.ts"
           ],
-          "deps": ["01-03"],
+          "deps": [
+            "01-03"
+          ],
           "implementation_notes": "PlanService.generatePlan is a pure function (plan-value pattern): takes weekStart + prefs, reads discount items via DiscountService, returns a MealPlan value — no DB writes. PlanService.savePlan is the ONLY impure function: opens a single SQLite transaction, writes meal_plans.estimated_savings and savings_log.saved_amount atomically — the D23 invariant means partial writes are structurally impossible. plan-handler renders estimated_savings as `data-estimated-savings=\"{cents}\"`. savings-handler renders saved_amount as `data-saved-amount=\"{cents}\"`. SavingsService.recordSavings is called by PlanService.savePlan inside the same tx — NOT via HTTP. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
         },
         {
@@ -99,8 +105,124 @@
           "files_to_modify": [
             "src/server.ts"
           ],
-          "deps": ["01-04"],
+          "deps": [
+            "01-04"
+          ],
           "implementation_notes": "createServer follows D35 wire order: (1) createDb(dbPath), (2) instantiate all SQLite adapters and services, (3) run probe — emit health.startup.refused and exit 1 on failure, (4) register routes: GET / → DiscountHandler, POST /plan/generate and GET /plan → PlanHandler, GET /savings → SavingsHandler. Returns ServerHandle with stop(). When CATALOGUE_SOURCE=fake the server does not wire the scraping pipeline — scraper-runner.ts is the separate entry point. TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants."
+        }
+      ]
+    },
+    {
+      "id": "02",
+      "name": "Slice-02: Real Scrapers, 7-Day Meal Plan, Staleness Warning, Empty-Store UI",
+      "steps": [
+        {
+          "id": "02-01",
+          "name": "Real AldiSudCatalogueFetcher",
+          "criteria": [
+            "Given a live prospekt.aldi-sued.de endpoint, when AldiSudCatalogueFetcher.fetchCurrentWeek() is called, then it returns only items of type 'product' that have both a price and a discountedPrice where discountedPrice < price",
+            "Given a 302 Location header of '//prospekt.aldi-sued.de/kw27-26-op-mp/', when the slug is parsed, then the result is 'kw27-26-op-mp'",
+            "Given pages 1 through N exist and page N+1 returns 404, when the fetcher paginates, then it stops after the 404 and returns items from all preceding pages",
+            "Given a hotspot entry with type 'product' and discountedPrice present and parseFloat(discountedPrice) < parseFloat(price), when fetchCurrentWeek() returns, then the entry is included in the result array",
+            "Given a hotspot entry with type 'banner' or with discountedPrice absent or discountedPrice >= price, when fetchCurrentWeek() returns, then the entry is excluded from the result array",
+            "Given a network error on the HEAD request, when fetchCurrentWeek() is called, then the promise rejects with a structured error"
+          ],
+          "test_file": "src/scraping/adapters/aldi-sud-catalogue-fetcher.test.ts",
+          "scenario_name": "AldiSudCatalogueFetcher — slug parsing and item filtering",
+          "files_to_modify": [
+            "src/scraping/adapters/aldi-sud-catalogue-fetcher.ts"
+          ],
+          "deps": [],
+          "implementation_notes": "TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants.\n\nRemove the `__SCAFFOLD__ = true` constant and implement the three methods.\n\n`discoverSlug()`: issue a HEAD request to `https://prospekt.aldi-sued.de/`. Read the `Location` response header. Parse the slug using a regex against the pattern `//prospekt.aldi-sued.de/([^/]+)/`. Throw a structured error if the header is absent or does not match.\n\n`fetchPage(slug, page)`: GET `https://prospekt.aldi-sued.de/${slug}/page/${page}-${page+1}/hotspots_data.json`. Return parsed JSON array on 200. Return empty array `[]` on 404 (pagination sentinel). Throw on any other status.\n\n`fetchCurrentWeek()`: call `discoverSlug()`, then loop `fetchPage()` starting at page 1, incrementing by 1, stopping when `fetchPage` returns `[]`. Flatten all results. Filter: keep only entries where `type === 'product'` AND `discountedPrice` is a non-empty string AND `parseFloat(discountedPrice) < parseFloat(price)`. Return filtered array typed as `{id, title, brand, price, discountedPrice, customLabel1, productType, photoUrls}[]`.\n\nTest approach: use fast-check arbitraries to generate slug strings matching `kw{N}-{yy}-op-mp` and assert the regex always extracts the slug portion correctly (property test). Stub `globalThis.fetch` or inject a `fetch` parameter into the constructor for HTTP interaction tests (fixture-based single example with bypass comment). The `FakeAldiCatalogueAdapter` continues to serve all acceptance tests — no AT change needed for this step."
+        },
+        {
+          "id": "02-02",
+          "name": "CatalogueExtractor port + HaikuCatalogueExtractor + VMarktCatalogueFetcher",
+          "criteria": [
+            "Given a set of German supermarket paragraph strings, when HaikuCatalogueExtractor.extractProducts() is called, then it returns an array of objects each with name (string), regularPrice (EUR string), and salePrice (EUR string)",
+            "Given paragraph input where salePrice >= regularPrice for an extracted entry, when VMarktCatalogueFetcher.fetchCurrentWeek() processes the extraction result, then that entry is excluded from the returned items",
+            "Given a VMarktCatalogueFetcher constructed with a FakeCatalogueExtractor, when fetchCurrentWeek() is called, then it does not call the Anthropic API and returns items using the extractor's fixture output",
+            "Given a slug page at pageflip.v-markt.de/muenchen/{slug}/ containing paragraph HTML, when VMarktCatalogueFetcher.fetchCurrentWeek() is called, then the paragraph text blocks are passed to CatalogueExtractor.extractProducts()",
+            "Given the slug discovery page at v-markt.de/angebote/muenchen returns multiple hrefs, when the fetcher extracts slugs matching /^\\d{4}_VMMUC$/, then it selects the lexicographically latest one",
+            "Given an extracted product with valid salePrice < regularPrice, when VMarktCatalogueFetcher.fetchCurrentWeek() returns, then the item shape includes id, title, brand, price, discountedPrice, customLabel1, productType, and photoUrls so it is compatible with CatalogueNormalizer"
+          ],
+          "test_file": "src/scraping/adapters/v-markt-catalogue-fetcher.test.ts",
+          "scenario_name": "VMarktCatalogueFetcher — slug discovery, extraction delegation, and price filtering",
+          "files_to_modify": [
+            "src/scraping/adapters/catalogue-extractor.ts",
+            "src/scraping/adapters/haiku-catalogue-extractor.ts",
+            "src/scraping/adapters/v-markt-catalogue-fetcher.ts",
+            "src/scraping/adapters/catalogue-normalizer.ts",
+            "tests/acceptance/support/fake-catalogue-extractor.ts"
+          ],
+          "deps": [],
+          "implementation_notes": "TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants.\n\n**Port interface** `src/scraping/adapters/catalogue-extractor.ts`: define and export `interface CatalogueExtractor { extractProducts(paragraphs: string[]): Promise<Array<{name: string, regularPrice: string, salePrice: string}>> }`. No implementation here.\n\n**HaikuCatalogueExtractor** `src/scraping/adapters/haiku-catalogue-extractor.ts`: import `Anthropic` from `@anthropic-ai/sdk`. Constructor reads `ANTHROPIC_API_KEY` from environment. Implements `CatalogueExtractor`. The `extractProducts()` method sends the paragraphs array to `claude-haiku-4-5-20251001` with a prompt instructing the model to extract German supermarket product rows as JSON: `[{name, regularPrice, salePrice}]` where prices are EUR strings like `'1.29'`. Parse the response JSON and return the array. Never mutate state — this is a bounded-change adapter (reads env, calls external API, returns value).\n\n**VMarktCatalogueFetcher** `src/scraping/adapters/v-markt-catalogue-fetcher.ts`: implements the same `fetchCurrentWeek(): Promise<unknown[]>` shape as `AldiSudCatalogueFetcher`. Constructor takes `extractor: CatalogueExtractor` and optionally a fetch injectable. Slug discovery: GET `https://www.v-markt.de/angebote/muenchen`, extract all hrefs matching `pageflip.v-markt.de/muenchen/`, collect path segments matching `/^\\d{4}_VMMUC$/`, pick the lexicographically latest. Catalogue fetch: GET `https://www.pageflip.v-markt.de/muenchen/{slug}/`, extract all `<p>` text content blocks. Call `extractor.extractProducts(paragraphs)`. Filter: keep only entries where `parseFloat(salePrice) < parseFloat(regularPrice)`. Map each valid entry to a `CatalogueItem`-compatible shape: set `id` as a generated UUID or `${slug}-${index}`, `title` = name, `brand` = 'V-Markt', `price` = regularPrice, `discountedPrice` = salePrice, `customLabel1` as current ISO date, `productType` = 'grocery', `photoUrls` = [].\n\n**CatalogueNormalizer**: the existing `normalize()` method already handles the `CatalogueItem` shape and is store-agnostic. No structural change needed — VMarktCatalogueFetcher maps to the same shape before returning, so CatalogueNormalizer requires no new branch. If a minor guard is needed (e.g., V-Markt dairy tags), extend `classifyDietaryTags()` with a 'dairy' case.\n\n**FakeCatalogueExtractor** `tests/acceptance/support/fake-catalogue-extractor.ts`: implement `CatalogueExtractor` returning a hardcoded fixture array of `{name, regularPrice, salePrice}` objects. Used in unit tests to avoid Anthropic API calls. Constructor accepts optional fixture data override."
+        },
+        {
+          "id": "02-03",
+          "name": "Live scraper wiring in scraper-runner.ts",
+          "criteria": [
+            "Given CATALOGUE_SOURCE=live and ANTHROPIC_API_KEY is set, when the scraper runner is executed, then it wires AldiSudCatalogueFetcher and VMarktCatalogueFetcher with HaikuCatalogueExtractor and calls ScrapingService.run() for both stores",
+            "Given CATALOGUE_SOURCE=live and all HTTP calls succeed, when the runner exits, then the process exits with code 0",
+            "Given CATALOGUE_SOURCE=live and AldiSudCatalogueFetcher throws, when the runner handles the error, then the process exits with code 1 and logs a structured error event",
+            "Given CATALOGUE_SOURCE=fake (unchanged), when the runner executes, then it continues to use FakeAldiCatalogueAdapter and FakeVMarktCatalogueAdapter exactly as in Slice-01"
+          ],
+          "test_file": "src/scraping/scraper-runner.test.ts",
+          "scenario_name": "scraper-runner — live mode wiring and exit codes",
+          "files_to_modify": [
+            "src/scraping/scraper-runner.ts"
+          ],
+          "deps": [
+            "02-01",
+            "02-02"
+          ],
+          "implementation_notes": "TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants.\n\nExtend the `main()` function: when `source === 'live'`, check for `ANTHROPIC_API_KEY` env var (throw `health.scrape.refused` if absent). Instantiate `AldiSudCatalogueFetcher` and `VMarktCatalogueFetcher` with `new HaikuCatalogueExtractor()`. Run both via `ScrapingService.run('Aldi Süd')` and `ScrapingService.run('V-Markt')`. The existing `process.exit(0)` on success and `process.exit(1)` on error in the `.catch()` block remain unchanged.\n\nThe `fake` branch must remain fully intact — acceptance tests use `CATALOGUE_SOURCE=fake`. No changes to the fake branch logic.\n\nUnit test strategy: inject stub fetcher and stub scraping service via a testable factory function extracted from `main()`. Test that when source='live' and fetchers succeed, the runner resolves without throwing. Test that when a fetcher rejects, the runner rejects. Mark as single-example with `# bypass: wiring test verifies composition, not invariants` comment. CI can skip this test if `ANTHROPIC_API_KEY` is not set (guard with `test.skipIf`)."
+        },
+        {
+          "id": "02-04",
+          "name": "7-day meal plan generation",
+          "criteria": [
+            "Given a non-empty list of discount items, when POST /plan/generate is called and GET /plan is fetched, then the plan HTML contains exactly 14 meal entries (7 days x 2 slots: lunch and dinner)",
+            "Given fewer than 14 discount items, when generatePlan() is called, then items are cycled so all 14 meal slots are filled (no slot is empty)",
+            "Given 0 discount items, when generatePlan() is called, then all 14 meals have discountItemId null and a generic placeholder name",
+            "Given a generated plan, when GET /plan is rendered, then each meal entry shows the day number (1-7), the slot (lunch or dinner), and the item name or placeholder",
+            "Given the D23 invariant, when POST /plan/generate completes and GET /savings is fetched, then the saved_amount data attribute equals the estimated_savings data attribute from GET /plan",
+            "Given a plan already exists for the current week, when POST /plan/generate is called again, then no new plan is created and the existing plan is returned (idempotency preserved)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+          "scenario_name": "Walking Skeleton — Scenario 1: Shopper sees discounted items, generates a meal plan, and confirms savings match the estimate",
+          "files_to_modify": [
+            "src/shared/types.ts",
+            "src/shared/schema.ts",
+            "src/meal-planning/adapters/sqlite-meal-plan-repository.ts",
+            "src/meal-planning/plan-service.ts",
+            "src/meal-planning/http/plan-handler.ts",
+            "tests/acceptance/discount-hunt/walking-skeleton.test.ts"
+          ],
+          "deps": [],
+          "implementation_notes": "TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants.\n\n**Types** (`src/shared/types.ts`): add `type MealSlot = 'lunch' | 'dinner'` and `interface Meal { day: number; slot: MealSlot; name: string; discountItemId: string | null }`.\n\n**Schema** (`src/shared/schema.ts`): add `meals: text('meals').notNull().default('[]')` column to the `mealPlans` table definition. The column stores a JSON array of `Meal` objects.\n\n**Repository** (`src/meal-planning/adapters/sqlite-meal-plan-repository.ts`): extend the `MealPlan` interface with `meals: Meal[]`. Update `save()` to serialize `meals` as JSON. Update `findByWeek()` to deserialize `meals` from JSON on read.\n\n**PlanService** (`src/meal-planning/plan-service.ts`): update `generatePlan()` — pure computation, no DB writes. Build 14 meals by iterating days 1-7 and slots ['lunch','dinner']. For each slot index (0-13), if `discountItems.length > 0`, pick `discountItems[index % discountItems.length]` and set `discountItemId = item.id` and `name = item.name`. If `discountItems.length === 0`, set `discountItemId = null` and `name = 'No discount items this week'`. Attach `meals` array to the returned `MealPlan` object. `estimatedSavings` calculation is unchanged.\n\n**PlanHandler** (`src/meal-planning/http/plan-handler.ts`): update `renderPlanHtml()` to render the 7-day grid. Render a table or list with rows for each day (Mon-Sun labels) and columns for lunch and dinner. Each cell shows the meal name. The `data-estimated-savings` attribute contract is preserved unchanged.\n\n**Acceptance test extension** (`tests/acceptance/discount-hunt/walking-skeleton.test.ts`): in Scenario 1, after fetching `GET /plan`, assert that the plan HTML contains 14 meal entries. Use a CSS selector count approach: `(html.match(/data-meal-slot/g) ?? []).length === 14` or assert the presence of 14 `<tr class=\"meal-row\">` elements. Add `data-meal-slot` or `data-day` attributes to each meal row in the template for machine-readability. The D23 invariant test (`estimated_savings === saved_amount`) is unchanged.\n\nUnit test for `generatePlan()` (property-based): use fast-check to generate arrays of 0-20 discount items and assert that the result always has exactly 14 meals, each with a valid day (1-7) and slot ('lunch'|'dinner'), and that when items > 0, all discountItemIds are non-null."
+        },
+        {
+          "id": "02-05",
+          "name": "Staleness warning + per-store empty-state UI",
+          "criteria": [
+            "Given a scrape_jobs row for 'Aldi Süd' with completed_at = now - 72 hours, when GET / is fetched, then the HTML contains a staleness warning element with text referencing 'Aldi Süd' and the last refresh date",
+            "Given a scrape_jobs row for 'V-Markt' with completed_at = now - 24 hours (within 48h threshold), when GET / is fetched, then no staleness warning appears for V-Markt",
+            "Given a store that has had at least one scrape job but 0 discount items this week, when GET / is fetched, then the HTML shows 'No discounts this week at {store}' inside that store's section",
+            "Given no scrape jobs exist for any store, when GET / is fetched, then the global 'No discounts available this week' message is shown and no per-store section is rendered",
+            "Given discount items exist for both stores, when GET / is fetched, then each store's items appear under a per-store section heading with no empty-state message for that store",
+            "Given two stores have had scrape jobs and one is stale, when GET / is fetched, then the staleness banner appears only for the stale store and the fresh store renders normally"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/multi-store.test.ts",
+          "scenario_name": "@walking_skeleton @driving_port — Shopper sees staleness warning and per-store empty state",
+          "files_to_modify": [
+            "src/scraping/adapters/sqlite-scrape-job-repository.ts",
+            "src/discount/http/discount-handler.ts",
+            "src/server.ts",
+            "tests/acceptance/discount-hunt/multi-store.test.ts"
+          ],
+          "deps": [],
+          "implementation_notes": "TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants.\n\n**Repository** (`src/scraping/adapters/sqlite-scrape-job-repository.ts`): add method `getLastSuccessfulRunByStore(store: string): number | null`. Query `scrape_jobs` where `store = ?` AND `status = 'completed'`, order by `completed_at DESC`, limit 1. Return `completedAt` as a millisecond timestamp, or `null` if no row found. This is a read-only query — contract shape: pure-function / return-only.\n\nAlso add `getStoresWithJobs(): string[]` to return distinct store names that have at least one scrape job row (used by DiscountHandler to determine which per-store sections to render).\n\n**DiscountHandler** (`src/discount/http/discount-handler.ts`): update constructor to accept `scrapeJobRepository: SQLiteScrapeJobRepository` as a second argument. In `handleGet()`, after fetching `items`, call `scrapeJobRepository.getStoresWithJobs()` to get the list of stores that have ever been scraped. For each known store, call `scrapeJobRepository.getLastSuccessfulRunByStore(store)`. If `completedAt !== null` and `Date.now() - completedAt > 48 * 60 * 60 * 1000`, render a `<div class=\"staleness-warning\">Data for {store} may be outdated — last refreshed {date}</div>` banner at the top of the response.\n\nFor item grouping: if `getStoresWithJobs()` returns stores but a store has 0 items in `items`, still render its `<section class=\"store-group\">` but populate it with `<p class=\"empty-state\">No discounts this week at {store}</p>` instead of item cards. If no stores have jobs at all, render the global `<p class=\"empty-state\">No discounts available this week</p>` as before (backward-compatible fallback).\n\n**Server** (`src/server.ts`): instantiate `SQLiteScrapeJobRepository` and inject it into `new DiscountHandler(discountService, scrapeJobRepo)`.\n\n**Acceptance test extension** (`tests/acceptance/discount-hunt/multi-store.test.ts`): add a new `describe` block for the staleness scenario. In `beforeAll`, seed a `scrape_jobs` row directly into the test DB using drizzle (or raw SQL) with `store = 'Aldi Süd'`, `status = 'completed'`, `completed_at = Date.now() - 72 * 60 * 60 * 1000`. Start server. Assert `GET /` HTML contains `class=\"staleness-warning\"` and the text `'Aldi Süd'`. Assert the warning does NOT appear when completed_at is within 48h.\n\nUnit test for staleness threshold (property-based): use fast-check to generate arbitrary `completedAt` timestamps and assert that the staleness predicate `now - completedAt > 48h` is a pure boolean function with no side effects. Use state-delta matcher: input timestamp in → boolean out, no mutations."
         }
       ]
     }
@@ -125,8 +247,8 @@
     ]
   },
   "validation": {
-    "status": "pending",
+    "status": "approved",
     "reviewer": "nw-solution-architect",
-    "approved_at": "TODO"
+    "approved_at": "2026-07-14T09:45:00Z"
   }
 }

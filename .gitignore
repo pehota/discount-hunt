@@ -1,0 +1,8 @@
+# nWave activation marker (keep .nwave/local-config.json trackable)
+.nwave/*
+!.nwave/local-config.json
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal
