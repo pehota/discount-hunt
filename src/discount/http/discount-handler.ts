@@ -17,6 +17,7 @@
 
 import type { DiscountService } from "../discount-service.ts";
 import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
+import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
 
 const STALENESS_THRESHOLD_MS = 48 * 3600 * 1000;
 const DATE_LOCALE = "de-DE";
@@ -43,11 +44,14 @@ export class DiscountHandler {
   constructor(
     private readonly discountService: DiscountService,
     private readonly scrapeJobRepo?: SQLiteScrapeJobRepository,
+    private readonly preferencesRepo?: UserPreferencesRepository,
   ) {}
 
   async handleGet(_request: Request): Promise<Response> {
     const weekStart = getCurrentWeekStart();
-    const items = await this.discountService.getWeeklyItems(weekStart, "none");
+    // LIVE read on every request — the feed re-filters the moment the setting changes.
+    const restriction = this.preferencesRepo?.get().dietaryRestriction ?? "none";
+    const items = await this.discountService.getWeeklyItems(weekStart, restriction);
     const knownStores = this.scrapeJobRepo?.getStoresWithJobs() ?? [];
 
     const itemsHtml = knownStores.length === 0

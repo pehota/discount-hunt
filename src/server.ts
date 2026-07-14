@@ -68,7 +68,7 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
   const preferencesService = new PreferencesService(preferencesRepo);
 
   // 4. Handlers
-  const discountHandler = new DiscountHandler(discountService, scrapeJobRepo);
+  const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo);
   const planHandler = new PlanHandler(planService);
   const savingsHandler = new SavingsHandler(savingsService);
   const settingsHandler = new SettingsHandler(preferencesService);
