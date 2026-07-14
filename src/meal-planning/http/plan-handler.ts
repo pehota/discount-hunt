@@ -27,7 +27,27 @@ function capitalizeFirst(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+/** True when no meal references a real discount item (restriction filtered them all out). */
+function hasNoCompatibleItems(plan: MealPlan): boolean {
+  return plan.meals.every((meal) => meal.discountItemId === null);
+}
+
+function renderEmptyPlanHtml(plan: MealPlan): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Meal Plan</title></head>
+<body>
+  <h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  <p class="empty-plan-warning">No compatible meals found with your current restrictions</p>
+  <p><a href="/settings">Change your dietary restriction</a></p>
+</body>
+</html>`;
+}
+
 function renderPlanHtml(plan: MealPlan): string {
+  if (hasNoCompatibleItems(plan)) {
+    return renderEmptyPlanHtml(plan);
+  }
   const mealRows = plan.meals
     .map((meal) =>
       `<tr data-meal-slot="${meal.slot}">` +
