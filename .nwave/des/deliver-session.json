@@ -1,0 +1,10 @@
+{
+  "feature_id": "discount-hunt",
+  "wave": "DELIVER",
+  "started_at": "2026-07-13T00:00:00Z",
+  "crafter": "@nw-software-crafter",
+  "paradigm": "OOP",
+  "mutation_strategy": "nightly-delta",
+  "deliverable_type": "application",
+  "deliver_dir": "docs/feature/discount-hunt/deliver"
+}

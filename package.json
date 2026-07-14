@@ -1,0 +1,26 @@
+{
+  "name": "discount-hunt",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "bun run src/server.ts",
+    "scrape": "bun run src/scraping/scraper-runner.ts",
+    "test": "bun test",
+    "test:acceptance": "bun test tests/acceptance",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "lint:arch": "depcruise src --config .dependency-cruiser.cjs"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.2",
+    "better-sqlite3": "^11.10.0",
+    "htmx.org": "^2.0.4"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/better-sqlite3": "^7.6.13",
+    "drizzle-kit": "^0.31.1",
+    "fast-check": "^3.23.2",
+    "dependency-cruiser": "^16.10.2"
+  }
+}

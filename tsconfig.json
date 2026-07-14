@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "lib": ["ES2022"],
+    "types": ["bun"],
+    "paths": {
+      "@shared/*": ["./src/shared/*"],
+      "@scraping/*": ["./src/scraping/*"],
+      "@discount/*": ["./src/discount/*"],
+      "@meal-planning/*": ["./src/meal-planning/*"],
+      "@savings/*": ["./src/savings/*"],
+      "@recipe/*": ["./src/recipe/*"],
+      "@preferences/*": ["./src/preferences/*"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules"]
+}
