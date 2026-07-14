@@ -15,13 +15,27 @@
 import type { PlanService } from "../plan-service.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
 
+const DAY_LABELS: Record<number, string> = {
+  1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun',
+};
+
 function formatEuros(cents: number): string {
   return `€${(cents / 100).toFixed(2)}`;
 }
 
+function capitalizeFirst(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function renderPlanHtml(plan: MealPlan): string {
-  const itemList = plan.itemIds
-    .map((id) => `<li>${id}</li>`)
+  const mealRows = plan.meals
+    .map((meal) =>
+      `<tr data-meal-slot="${meal.slot}">` +
+      `<td>Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
+      `<td>${capitalizeFirst(meal.slot)}</td>` +
+      `<td>${meal.name}</td>` +
+      `</tr>`
+    )
     .join("");
 
   return `<!DOCTYPE html>
@@ -35,7 +49,10 @@ function renderPlanHtml(plan: MealPlan): string {
   </p>
   <p>Regular price total: ${formatEuros(plan.totalRegularPrice)}</p>
   <p>Sale price total: ${formatEuros(plan.totalSalePrice)}</p>
-  <ul>${itemList}</ul>
+  <table>
+    <thead><tr><th>Day</th><th>Slot</th><th>Meal</th></tr></thead>
+    <tbody>${mealRows}</tbody>
+  </table>
 </body>
 </html>`;
 }

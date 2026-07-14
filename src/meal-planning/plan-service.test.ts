@@ -11,6 +11,7 @@
  */
 
 import { describe, test, expect, beforeEach } from "bun:test";
+import * as fc from "fast-check";
 import { createDb } from "../shared/db.ts";
 import { discountItems, mealPlans, savingsLog } from "../shared/schema.ts";
 import { SQLiteMealPlanRepository } from "./adapters/sqlite-meal-plan-repository.ts";
@@ -202,5 +203,79 @@ describe("PlanService", () => {
     const savingsRows = db.select().from(savingsLog).all();
     expect(planRows).toHaveLength(1);
     expect(savingsRows).toHaveLength(1);
+  });
+});
+
+// ─── PBT: generatePlan meal structure (step 02-04) ───────────────────────────
+
+/**
+ * Fast-check unit tests for generatePlan() 14-meal structure.
+ *
+ * Behaviors under test (Mandate 1 budget: 2 × 2 behaviors = 4 max; using 2):
+ *   B1: given non-empty items, all 14 slots filled by cycling items (no empty slot)
+ *   B2: given 0 items, all 14 meals have discountItemId null and placeholder name
+ *
+ * Entry through the driving port: PlanService.generatePlan() public API.
+ */
+describe("PlanService.generatePlan — 14-meal structure (PBT)", () => {
+  const itemStrategy = fc.record({
+    id: fc.uuid(),
+    store: fc.constant("Aldi"),
+    name: fc.string({ minLength: 1, maxLength: 20 }),
+    category: fc.constant("vegetable"),
+    regularPrice: fc.integer({ min: 100, max: 500 }),
+    salePrice: fc.integer({ min: 50, max: 99 }),
+    validUntil: fc.constant("2026-07-20"),
+    dietaryTags: fc.constant([]),
+    scrapeJobId: fc.constant("job-pbt"),
+    createdAt: fc.constant(0),
+  });
+
+  test("B1: given 1-20 discount items, generatePlan produces exactly 14 meals all filled via cycling", () => {
+    const db = createDb(":memory:");
+    const { planService } = buildServices(db);
+
+    fc.assert(
+      fc.property(fc.array(itemStrategy, { minLength: 1, maxLength: 20 }), (items) => {
+        const plan = planService.generatePlan(TEST_WEEK, items);
+
+        // Exactly 14 meal slots
+        if (plan.meals.length !== 14) return false;
+
+        // All slots filled (no null discountItemId when items available)
+        if (plan.meals.some((m) => m.discountItemId === null)) return false;
+
+        // Items cycled: slot i picks items[i % items.length]
+        for (let i = 0; i < 14; i++) {
+          const expected = items[i % items.length];
+          if (plan.meals[i].discountItemId !== expected.id) return false;
+          if (plan.meals[i].name !== expected.name) return false;
+        }
+
+        // Day range 1-7, alternating slots
+        for (let i = 0; i < 14; i++) {
+          const day = Math.floor(i / 2) + 1;
+          const slot = i % 2 === 0 ? "lunch" : "dinner";
+          if (plan.meals[i].day !== day) return false;
+          if (plan.meals[i].slot !== slot) return false;
+        }
+
+        return true;
+      }),
+      { numRuns: 50 }
+    );
+  });
+
+  test("B2: given 0 discount items, generatePlan produces 14 meals with null discountItemId and placeholder name", () => {
+    const db = createDb(":memory:");
+    const { planService } = buildServices(db);
+
+    const plan = planService.generatePlan(TEST_WEEK, []);
+
+    expect(plan.meals).toHaveLength(14);
+    for (const meal of plan.meals) {
+      expect(meal.discountItemId).toBeNull();
+      expect(meal.name).toBe("No discount available");
+    }
   });
 });

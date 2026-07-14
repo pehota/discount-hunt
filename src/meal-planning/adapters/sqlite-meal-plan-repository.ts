@@ -12,12 +12,13 @@
 import { eq } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { mealPlans } from "../../shared/schema.ts";
-import type { WeekStart } from "../../shared/types.ts";
+import type { WeekStart, Meal } from "../../shared/types.ts";
 
 export interface MealPlan {
   id: string;
   weekStart: WeekStart;
   itemIds: string[];
+  meals: Meal[];
   totalRegularPrice: number; // cents
   totalSalePrice: number;    // cents
   estimatedSavings: number;  // cents — D23 atomic
@@ -32,6 +33,7 @@ export class SQLiteMealPlanRepository {
       id: plan.id,
       weekStart: plan.weekStart,
       itemIds: JSON.stringify(plan.itemIds),
+      meals: JSON.stringify(plan.meals),
       totalRegularPrice: plan.totalRegularPrice,
       totalSalePrice: plan.totalSalePrice,
       estimatedSavings: plan.estimatedSavings,
@@ -52,6 +54,7 @@ export class SQLiteMealPlanRepository {
       id: row.id,
       weekStart: row.weekStart,
       itemIds: JSON.parse(row.itemIds) as string[],
+      meals: JSON.parse(row.meals) as Meal[],
       totalRegularPrice: row.totalRegularPrice,
       totalSalePrice: row.totalSalePrice,
       estimatedSavings: row.estimatedSavings,

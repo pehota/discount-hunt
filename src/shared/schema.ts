@@ -36,6 +36,7 @@ export const mealPlans = sqliteTable("meal_plans", {
   id: text("id").primaryKey(),
   weekStart: text("week_start").notNull(), // ISO Monday
   itemIds: text("item_ids").notNull(), // JSON array
+  meals: text("meals").notNull().default("[]"), // JSON array of Meal objects
   totalRegularPrice: integer("total_regular_price").notNull(), // cents
   totalSalePrice: integer("total_sale_price").notNull(), // cents
   estimatedSavings: integer("estimated_savings").notNull(), // cents — D23 atomic

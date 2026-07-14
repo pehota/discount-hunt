@@ -191,6 +191,9 @@ describe("Walking Skeleton — Scenario 1: Shopper sees discounted items, genera
     const attrMatch = planHtml.match(/data-estimated-savings="(\d+)"/);
     expect(attrMatch).not.toBeNull(); // plan must expose estimated_savings as data attribute
     estimatedSavingRendered = attrMatch![1]; // cents string e.g. "290"
+
+    // 14-meal assertion: plan must contain exactly 14 meal slot entries (7 days × 2 slots)
+    expect((planHtml.match(/data-meal-slot/g) ?? []).length).toBe(14);
   });
 
   test("the saved amount in the savings tracker matches the estimated saving from the meal plan", async () => {

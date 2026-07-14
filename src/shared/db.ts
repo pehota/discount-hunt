@@ -50,6 +50,7 @@ const CREATE_MEAL_PLANS = `
     id TEXT PRIMARY KEY,
     week_start TEXT NOT NULL,
     item_ids TEXT NOT NULL,
+    meals TEXT NOT NULL DEFAULT '[]',
     total_regular_price INTEGER NOT NULL,
     total_sale_price INTEGER NOT NULL,
     estimated_savings INTEGER NOT NULL,

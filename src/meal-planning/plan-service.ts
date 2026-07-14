@@ -16,11 +16,14 @@
 
 import { randomUUID } from "node:crypto";
 import type { DbClient } from "../shared/db.ts";
-import type { WeekStart } from "../shared/types.ts";
+import type { WeekStart, Meal, MealSlot } from "../shared/types.ts";
 import type { DiscountService } from "../discount/discount-service.ts";
 import type { StoredDiscountItem } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import type { SQLiteMealPlanRepository, MealPlan } from "./adapters/sqlite-meal-plan-repository.ts";
 import type { SavingsService } from "../savings/savings-service.ts";
+
+const MEAL_SLOTS: MealSlot[] = ['lunch', 'dinner'];
+const DAYS_PER_WEEK = 7;
 
 /**
  * Returns the ISO date string for the Monday of the current UTC week.
@@ -49,10 +52,24 @@ export class PlanService {
     const totalSalePrice = discountItems.reduce((sum, item) => sum + item.salePrice, 0);
     const estimatedSavings = totalRegularPrice - totalSalePrice;
 
+    const meals: Meal[] = [];
+    for (let day = 1; day <= DAYS_PER_WEEK; day++) {
+      for (let slotIdx = 0; slotIdx < MEAL_SLOTS.length; slotIdx++) {
+        const slotIndex = (day - 1) * 2 + slotIdx;
+        if (discountItems.length === 0) {
+          meals.push({ day, slot: MEAL_SLOTS[slotIdx], name: 'No discount available', discountItemId: null });
+        } else {
+          const item = discountItems[slotIndex % discountItems.length];
+          meals.push({ day, slot: MEAL_SLOTS[slotIdx], name: item.name, discountItemId: item.id });
+        }
+      }
+    }
+
     return {
       id: randomUUID(),
       weekStart,
       itemIds: discountItems.map((item) => item.id),
+      meals,
       totalRegularPrice,
       totalSalePrice,
       estimatedSavings,

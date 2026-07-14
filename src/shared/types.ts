@@ -36,6 +36,17 @@ export interface NormalizedItem {
   dietaryTags: DietaryTag[];
 }
 
+/** Meal slot within a day — lunch or dinner. */
+export type MealSlot = 'lunch' | 'dinner';
+
+/** A single meal entry in a 7-day plan (14 total: 7 days × 2 slots). */
+export interface Meal {
+  day: number;       // 1-7 (Monday=1, Sunday=7)
+  slot: MealSlot;
+  name: string;
+  discountItemId: string | null;
+}
+
 /** HTTP server configuration. */
 export interface ServerConfig {
   port: number;
