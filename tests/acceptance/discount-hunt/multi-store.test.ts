@@ -15,6 +15,11 @@
  */
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
+import fc from "fast-check";
+import { randomUUID } from "node:crypto";
+import { createDb } from "../../../src/shared/db.ts";
+import { scrapeJobs } from "../../../src/shared/schema.ts";
+import { isStale } from "../../../src/discount/http/discount-handler.ts";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -180,3 +185,126 @@ describe(
     });
   }
 );
+
+// ─── PBT unit test: isStale predicate ────────────────────────────────────────
+// Mandate 1 budget: 1 behavior × 2 = 2 max unit tests. We use 1 PBT.
+
+describe("isStale predicate — fast-check", () => {
+  const FORTY_EIGHT_HOURS_MS = 48 * 3600 * 1000;
+
+  test("completedAt older than 48h is always stale", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 1, max: 10 * 24 * 3600 * 1000 }), // 1ms–10 days past threshold
+        (delta) => {
+          const now = Date.now();
+          const completedAt = now - FORTY_EIGHT_HOURS_MS - delta;
+          return isStale(completedAt, now) === true;
+        }
+      )
+    );
+  });
+
+  test("completedAt within 48h is never stale", () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: FORTY_EIGHT_HOURS_MS - 1 }), // 0ms–47h59m59s999ms
+        (delta) => {
+          const now = Date.now();
+          const completedAt = now - delta;
+          return isStale(completedAt, now) === false;
+        }
+      )
+    );
+  });
+});
+
+// ─── AT extension: staleness warning ─────────────────────────────────────────
+
+describe("staleness warning", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+  const STALE_STORE = "Aldi Süd";
+  const FRESH_STORE = "V-Markt";
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-staleness-"));
+    dbPath = join(tmpDir, "staleness-test.db");
+
+    // Seed scrape_jobs directly — need aged timestamps that cannot come from completeJob
+    const db = createDb(dbPath);
+    const now = Date.now();
+
+    // Stale row: 72h ago (beyond 48h threshold)
+    db.insert(scrapeJobs).values({
+      id: randomUUID(),
+      store: STALE_STORE,
+      status: "completed",
+      startedAt: now - 72 * 3600 * 1000 - 5000,
+      completedAt: now - 72 * 3600 * 1000,
+      itemCount: 0,
+    }).run();
+
+    // Fresh row: 24h ago (within 48h threshold)
+    db.insert(scrapeJobs).values({
+      id: randomUUID(),
+      store: FRESH_STORE,
+      status: "completed",
+      startedAt: now - 24 * 3600 * 1000 - 5000,
+      completedAt: now - 24 * 3600 * 1000,
+      itemCount: 0,
+    }).run();
+
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 3900 + Math.floor(Math.random() * 99); // port range 3900–3999
+    server = await createServer({ port: serverPort, dbPath });
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("Criterion 1: stale store (72h) shows staleness-warning element referencing the store name", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+
+    expect(html).toContain(`class="staleness-warning"`);
+    expect(html).toContain(STALE_STORE);
+  });
+
+  test("Criterion 2: fresh store (24h, within 48h threshold) shows no staleness warning", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+
+    // No warning referencing V-Markt specifically
+    expect(html).not.toMatch(new RegExp(`class="staleness-warning"[^<]*${FRESH_STORE}`));
+    // More precisely: no staleness-warning div should mention V-Markt
+    const warningMatches = html.match(/<div class="staleness-warning">[^<]*<\/div>/g) ?? [];
+    expect(warningMatches.every((w) => !w.includes(FRESH_STORE))).toBe(true);
+  });
+
+  test("Criterion 3: store with 0 items this week shows per-store empty-state message", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+
+    expect(html).toContain(`No discounts this week at ${STALE_STORE}`);
+  });
+
+  test("Criterion 6: staleness banner appears only for the stale store", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+
+    // Warning appears for stale store
+    expect(html).toContain(STALE_STORE);
+    // Only one staleness-warning div total (not one for each store)
+    const warningCount = (html.match(/class="staleness-warning"/g) ?? []).length;
+    expect(warningCount).toBe(1);
+  });
+});

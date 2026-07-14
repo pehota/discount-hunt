@@ -9,7 +9,7 @@
  *   - failJob must NOT update completed_at
  */
 
-import { eq } from "drizzle-orm";
+import { and, eq, max } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { scrapeJobs } from "../../shared/schema.ts";
 
@@ -42,5 +42,22 @@ export class SQLiteScrapeJobRepository {
       .set({ status: "failed", errorMessage })
       .where(eq(scrapeJobs.id, jobId))
       .run();
+  }
+
+  getLastSuccessfulRunByStore(store: string): number | null {
+    const result = this.db
+      .select({ completedAt: max(scrapeJobs.completedAt) })
+      .from(scrapeJobs)
+      .where(and(eq(scrapeJobs.store, store), eq(scrapeJobs.status, "completed")))
+      .get();
+    return result?.completedAt ?? null;
+  }
+
+  getStoresWithJobs(): string[] {
+    const rows = this.db
+      .selectDistinct({ store: scrapeJobs.store })
+      .from(scrapeJobs)
+      .all();
+    return rows.map((row) => row.store);
   }
 }

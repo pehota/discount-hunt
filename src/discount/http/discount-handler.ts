@@ -3,13 +3,27 @@
  *
  * Thin driving adapter: reads weekly discount items via DiscountService,
  * renders server-side HTML with item names, regular price ("was"), and sale price.
- * Shows "No discounts available this week" when item list is empty.
- * Generate Meal Plan button is always visible (US-01 AC).
+ *
+ * When scrapeJobRepo is provided:
+ *   - Shows staleness-warning for stores whose last completed run is > 48h ago
+ *   - Shows per-store empty-state ("No discounts this week at {store}") for stores with 0 items
+ *   - Falls back to global empty-state only when no scrape jobs exist at all
+ *
+ * When scrapeJobRepo is absent (legacy / unit-test path):
+ *   - Falls back to prior behavior: global empty-state if no items
  *
  * No business logic here — filtering (D21) happens upstream in the service/repo layer.
  */
 
 import type { DiscountService } from "../discount-service.ts";
+import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
+
+const STALENESS_THRESHOLD_MS = 48 * 3600 * 1000;
+
+/** Staleness predicate: returns true if the last run was more than 48 hours ago. */
+export function isStale(completedAt: number, now: number): boolean {
+  return now - completedAt > STALENESS_THRESHOLD_MS;
+}
 
 function centsToEuros(cents: number): string {
   return (cents / 100).toFixed(2);
@@ -25,42 +39,68 @@ function getCurrentWeekStart(): string {
 }
 
 export class DiscountHandler {
-  constructor(private readonly discountService: DiscountService) {}
+  constructor(
+    private readonly discountService: DiscountService,
+    private readonly scrapeJobRepo?: SQLiteScrapeJobRepository,
+  ) {}
 
   async handleGet(_request: Request): Promise<Response> {
     const weekStart = getCurrentWeekStart();
     const items = await this.discountService.getWeeklyItems(weekStart, "none");
 
     let itemsHtml: string;
-    if (items.length === 0) {
-      itemsHtml = `<p class="empty-state">No discounts available this week</p>`;
+
+    const knownStores = this.scrapeJobRepo?.getStoresWithJobs() ?? [];
+
+    if (knownStores.length === 0) {
+      // Backward-compatible fallback: no scrape jobs exist at all
+      itemsHtml = items.length === 0
+        ? `<p class="empty-state">No discounts available this week</p>`
+        : this.renderItemsByStore(items);
     } else {
-      const byStore = new Map<string, typeof items>();
+      const now = Date.now();
+      const warnings: string[] = [];
+      const storeItems = new Map<string, typeof items>();
+
+      // Group items by store
       for (const item of items) {
-        const group = byStore.get(item.store) ?? [];
+        const group = storeItems.get(item.store) ?? [];
         group.push(item);
-        byStore.set(item.store, group);
+        storeItems.set(item.store, group);
       }
-      itemsHtml = Array.from(byStore.entries())
-        .map(([storeName, storeItems]) => {
-          const storeItemsHtml = storeItems
-            .map(
-              (item) => `
-      <article class="discount-item">
-        <h3 class="item-name">${item.name}</h3>
-        <p class="item-price">
-          <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
-          <span class="sale-price">€${centsToEuros(item.salePrice)}</span>
-        </p>
-      </article>`
-            )
-            .join("\n");
-          return `<section class="store-group">
-      <h2 class="store-name">${storeName}</h2>
-      ${storeItemsHtml}
-    </section>`;
-        })
-        .join("\n");
+
+      // Build per-store sections in known-store order
+      const sections: string[] = [];
+      for (const store of knownStores) {
+        const completedAt = this.scrapeJobRepo!.getLastSuccessfulRunByStore(store);
+        if (completedAt !== null && isStale(completedAt, now)) {
+          const lastRefreshed = new Date(completedAt).toLocaleDateString("de-DE");
+          warnings.push(
+            `<div class="staleness-warning">Data for ${store} may be outdated — last refreshed ${lastRefreshed}</div>`,
+          );
+        }
+
+        const storeGroup = storeItems.get(store) ?? [];
+        if (storeGroup.length === 0) {
+          sections.push(
+            `<section class="store-group">
+      <h2 class="store-name">${store}</h2>
+      <p class="empty-state">No discounts this week at ${store}</p>
+    </section>`,
+          );
+        } else {
+          sections.push(this.renderStoreSection(store, storeGroup));
+        }
+      }
+
+      // Render items for stores not in knownStores (edge case: items from unknown stores)
+      for (const [store, group] of storeItems.entries()) {
+        if (!knownStores.includes(store)) {
+          sections.push(this.renderStoreSection(store, group));
+        }
+      }
+
+      itemsHtml = [...warnings, ...sections].join("\n");
     }
 
     const html = `<!DOCTYPE html>
@@ -91,5 +131,39 @@ export class DiscountHandler {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });
+  }
+
+  private renderItemsByStore(items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>): string {
+    const byStore = new Map<string, typeof items>();
+    for (const item of items) {
+      const group = byStore.get(item.store) ?? [];
+      group.push(item);
+      byStore.set(item.store, group);
+    }
+    return Array.from(byStore.entries())
+      .map(([storeName, storeItems]) => this.renderStoreSection(storeName, storeItems))
+      .join("\n");
+  }
+
+  private renderStoreSection(
+    storeName: string,
+    storeItems: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>,
+  ): string {
+    const storeItemsHtml = storeItems
+      .map(
+        (item) => `
+      <article class="discount-item">
+        <h3 class="item-name">${item.name}</h3>
+        <p class="item-price">
+          <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
+          <span class="sale-price">€${centsToEuros(item.salePrice)}</span>
+        </p>
+      </article>`,
+      )
+      .join("\n");
+    return `<section class="store-group">
+      <h2 class="store-name">${storeName}</h2>
+      ${storeItemsHtml}
+    </section>`;
   }
 }

@@ -25,6 +25,7 @@ import type { ServerConfig, ServerHandle } from "./shared/types.ts";
 import { SQLiteDiscountItemRepository } from "./discount/adapters/sqlite-discount-item-repository.ts";
 import { DiscountService } from "./discount/discount-service.ts";
 import { DiscountHandler } from "./discount/http/discount-handler.ts";
+import { SQLiteScrapeJobRepository } from "./scraping/adapters/sqlite-scrape-job-repository.ts";
 import { SQLiteMealPlanRepository } from "./meal-planning/adapters/sqlite-meal-plan-repository.ts";
 import { PlanService } from "./meal-planning/plan-service.ts";
 import { PlanHandler } from "./meal-planning/http/plan-handler.ts";
@@ -54,6 +55,7 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
   const discountItemRepo = new SQLiteDiscountItemRepository(db);
   const mealPlanRepo = new SQLiteMealPlanRepository(db);
   const savingsRepo = new SQLiteSavingsRepository(db);
+  const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
 
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
@@ -61,7 +63,7 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
   const planService = new PlanService(discountService, mealPlanRepo, savingsService, db);
 
   // 4. Handlers
-  const discountHandler = new DiscountHandler(discountService);
+  const discountHandler = new DiscountHandler(discountService, scrapeJobRepo);
   const planHandler = new PlanHandler(planService);
   const savingsHandler = new SavingsHandler(savingsService);
 
