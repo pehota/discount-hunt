@@ -16,11 +16,12 @@
 
 import { randomUUID } from "node:crypto";
 import type { DbClient } from "../shared/db.ts";
-import type { WeekStart, Meal, MealSlot } from "../shared/types.ts";
+import type { WeekStart, Meal, MealSlot, DietaryRestriction } from "../shared/types.ts";
 import type { DiscountService } from "../discount/discount-service.ts";
 import type { StoredDiscountItem } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import type { SQLiteMealPlanRepository, MealPlan } from "./adapters/sqlite-meal-plan-repository.ts";
 import type { SavingsService } from "../savings/savings-service.ts";
+import type { UserPreferencesRepository } from "../preferences/ports/preferences-repository.ts";
 
 const MEAL_SLOTS: MealSlot[] = ['lunch', 'dinner'];
 const DAYS_PER_WEEK = 7;
@@ -45,10 +46,15 @@ export class PlanService {
     private readonly mealPlanRepository: SQLiteMealPlanRepository,
     private readonly savingsService: SavingsService,
     private readonly db: DbClient,
+    private readonly preferencesRepository?: UserPreferencesRepository,
   ) {}
 
-  /** Pure computation — no DB writes (D37). */
-  generatePlan(weekStart: WeekStart, discountItems: StoredDiscountItem[]): MealPlan {
+  /** Pure computation — no DB writes (D37). Snapshots the restriction onto the plan. */
+  generatePlan(
+    weekStart: WeekStart,
+    discountItems: StoredDiscountItem[],
+    dietaryFilter: DietaryRestriction = "none",
+  ): MealPlan {
     const totalRegularPrice = discountItems.reduce((sum, item) => sum + item.regularPrice, 0);
     const totalSalePrice = discountItems.reduce((sum, item) => sum + item.salePrice, 0);
     const estimatedSavings = totalRegularPrice - totalSalePrice;
@@ -58,6 +64,7 @@ export class PlanService {
       weekStart,
       itemIds: discountItems.map((item) => item.id),
       meals: this.buildMeals(discountItems),
+      dietaryFilter,
       totalRegularPrice,
       totalSalePrice,
       estimatedSavings,
@@ -115,8 +122,9 @@ export class PlanService {
     const existing = this.mealPlanRepository.findByWeek(weekStart);
     if (existing) return existing;
 
-    const items = await this.discountService.getWeeklyItems(weekStart, "none");
-    const plan = this.generatePlan(weekStart, items);
+    const restriction = this.preferencesRepository?.get().dietaryRestriction ?? "none";
+    const items = await this.discountService.getWeeklyItems(weekStart, restriction);
+    const plan = this.generatePlan(weekStart, items, restriction);
     await this.savePlan(plan);
     return plan;
   }

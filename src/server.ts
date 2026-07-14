@@ -64,7 +64,7 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
   const savingsService = new SavingsService(savingsRepo);
-  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db);
+  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo);
   const preferencesService = new PreferencesService(preferencesRepo);
 
   // 4. Handlers
