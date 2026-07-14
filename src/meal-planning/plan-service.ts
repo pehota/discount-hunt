@@ -37,11 +37,12 @@ export class PlanService {
     private readonly preferencesRepository?: UserPreferencesRepository,
   ) {}
 
-  /** Pure computation — no DB writes (D37). Snapshots the restriction onto the plan. */
+  /** Pure computation — no DB writes (D37). Snapshots the restriction + budget cap onto the plan. */
   generatePlan(
     weekStart: WeekStart,
     discountItems: StoredDiscountItem[],
     dietaryFilter: DietaryRestriction = "none",
+    budgetCapCents: number | null = null,
   ): MealPlan {
     const totalRegularPrice = discountItems.reduce((sum, item) => sum + item.regularPrice, 0);
     const totalSalePrice = discountItems.reduce((sum, item) => sum + item.salePrice, 0);
@@ -53,7 +54,7 @@ export class PlanService {
       itemIds: discountItems.map((item) => item.id),
       meals: this.buildMeals(discountItems),
       dietaryFilter,
-      budgetCapCents: null, // snapshot wired in 04-03; null until then (no cap)
+      budgetCapCents, // snapshotted at generation; frozen for this week's plan (D25)
       totalRegularPrice,
       totalSalePrice,
       estimatedSavings,
@@ -111,9 +112,11 @@ export class PlanService {
     const existing = this.mealPlanRepository.findByWeek(weekStart);
     if (existing) return existing;
 
-    const restriction = this.preferencesRepository?.get().dietaryRestriction ?? "none";
+    const preferences = this.preferencesRepository?.get();
+    const restriction = preferences?.dietaryRestriction ?? "none";
+    const budgetCapCents = preferences?.budgetCapCents ?? null;
     const items = await this.discountService.getWeeklyItems(weekStart, restriction);
-    const plan = this.generatePlan(weekStart, items, restriction);
+    const plan = this.generatePlan(weekStart, items, restriction, budgetCapCents);
     await this.savePlan(plan);
     return plan;
   }

@@ -34,6 +34,22 @@ function hasNoCompatibleItems(plan: MealPlan): boolean {
 }
 
 /**
+ * True when the plan's SNAPSHOTTED cap is set and the sale total exceeds it.
+ * Reads plan.budgetCapCents (frozen at generation), never the live setting — so raising
+ * the cap after generation does not clear the banner (snapshot immutability, D25).
+ * Loose `!=` covers both null and undefined.
+ */
+function isOverBudget(plan: MealPlan): boolean {
+  return plan.budgetCapCents != null && plan.totalSalePrice > plan.budgetCapCents;
+}
+
+/** Over-budget warning banner, emitted only in the populated-plan branch. */
+function renderOverBudgetBanner(plan: MealPlan): string {
+  if (!isOverBudget(plan)) return "";
+  return `<p class="over-budget-warning" data-over-budget>This plan is over your weekly budget of ${formatEuros(plan.budgetCapCents!)}.</p>`;
+}
+
+/**
  * Restriction-filtered empty state: a restriction (!== "none") removed every
  * compatible item. Steer the user to relax their dietary restriction.
  */
@@ -87,6 +103,7 @@ function renderPlanHtml(plan: MealPlan): string {
 <head><meta charset="UTF-8"><title>Meal Plan</title></head>
 <body>
   <h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  ${renderOverBudgetBanner(plan)}
   <p>
     Estimated savings:
     <span data-estimated-savings="${plan.estimatedSavings}">${formatEuros(plan.estimatedSavings)}</span>
