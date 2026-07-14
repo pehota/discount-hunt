@@ -83,6 +83,14 @@ export function createDb(dbPath: string): DbClient {
   sqlite.exec(CREATE_SCRAPE_JOBS);
   sqlite.exec(CREATE_DISCOUNT_ITEMS);
   sqlite.exec(CREATE_MEAL_PLANS);
+
+  // Idempotent migration: add meals column if the table pre-dates it
+  try {
+    sqlite.exec("ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
   sqlite.exec(CREATE_SAVINGS_LOG);
 
   // Write-read-delete probe on scrape_jobs to verify R/W access

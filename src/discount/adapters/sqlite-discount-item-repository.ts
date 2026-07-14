@@ -13,7 +13,7 @@
  * INSERT OR IGNORE preserves regular_price on conflict (write-once).
  */
 
-import { sql } from "drizzle-orm";
+import { sql, gte } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { discountItems } from "../../shared/schema.ts";
 import { isCompatible } from "../../shared/dietary.ts";
@@ -49,7 +49,9 @@ export class SQLiteDiscountItemRepository {
   }
 
   async getByWeek(weekStart: WeekStart, restriction: DietaryRestriction): Promise<StoredDiscountItem[]> {
-    const rows = this.db.select().from(discountItems).all();
+    const rows = this.db.select().from(discountItems)
+      .where(gte(discountItems.validUntil, weekStart))
+      .all();
     return rows
       .filter((row) => {
         const tags = JSON.parse(row.dietaryTags) as DietaryTag[];

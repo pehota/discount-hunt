@@ -2,7 +2,7 @@
   "roadmap": {
     "project_id": "discount-hunt",
     "created_at": "2026-07-13T20:49:27Z",
-    "total_steps": 10
+    "total_steps": 11
   },
   "phases": [
     {
@@ -223,6 +223,26 @@
           ],
           "deps": [],
           "implementation_notes": "TEST PARADIGM (mandatory): Unit tests for this step MUST be written as property-based tests using fast-check @given strategies + state-delta matchers. Single-example unit tests are FALLBACK only — document why in a `# bypass:` comment if used. Integration and E2E tests REMAIN single-example — they verify wiring, not invariants.\n\n**Repository** (`src/scraping/adapters/sqlite-scrape-job-repository.ts`): add method `getLastSuccessfulRunByStore(store: string): number | null`. Query `scrape_jobs` where `store = ?` AND `status = 'completed'`, order by `completed_at DESC`, limit 1. Return `completedAt` as a millisecond timestamp, or `null` if no row found. This is a read-only query — contract shape: pure-function / return-only.\n\nAlso add `getStoresWithJobs(): string[]` to return distinct store names that have at least one scrape job row (used by DiscountHandler to determine which per-store sections to render).\n\n**DiscountHandler** (`src/discount/http/discount-handler.ts`): update constructor to accept `scrapeJobRepository: SQLiteScrapeJobRepository` as a second argument. In `handleGet()`, after fetching `items`, call `scrapeJobRepository.getStoresWithJobs()` to get the list of stores that have ever been scraped. For each known store, call `scrapeJobRepository.getLastSuccessfulRunByStore(store)`. If `completedAt !== null` and `Date.now() - completedAt > 48 * 60 * 60 * 1000`, render a `<div class=\"staleness-warning\">Data for {store} may be outdated — last refreshed {date}</div>` banner at the top of the response.\n\nFor item grouping: if `getStoresWithJobs()` returns stores but a store has 0 items in `items`, still render its `<section class=\"store-group\">` but populate it with `<p class=\"empty-state\">No discounts this week at {store}</p>` instead of item cards. If no stores have jobs at all, render the global `<p class=\"empty-state\">No discounts available this week</p>` as before (backward-compatible fallback).\n\n**Server** (`src/server.ts`): instantiate `SQLiteScrapeJobRepository` and inject it into `new DiscountHandler(discountService, scrapeJobRepo)`.\n\n**Acceptance test extension** (`tests/acceptance/discount-hunt/multi-store.test.ts`): add a new `describe` block for the staleness scenario. In `beforeAll`, seed a `scrape_jobs` row directly into the test DB using drizzle (or raw SQL) with `store = 'Aldi Süd'`, `status = 'completed'`, `completed_at = Date.now() - 72 * 60 * 60 * 1000`. Start server. Assert `GET /` HTML contains `class=\"staleness-warning\"` and the text `'Aldi Süd'`. Assert the warning does NOT appear when completed_at is within 48h.\n\nUnit test for staleness threshold (property-based): use fast-check to generate arbitrary `completedAt` timestamps and assert that the staleness predicate `now - completedAt > 48h` is a pure boolean function with no side effects. Use state-delta matcher: input timestamp in → boolean out, no mutations."
+        }
+      ]
+    }
+  ],
+        {
+          "id": "02-06",
+          "name": "Post-verification data correctness: week filter + DB migration guard",
+          "criteria": [
+            "Given discount items from a prior week (validUntil < weekStart), when getByWeek(weekStart) is called, then those items are NOT returned",
+            "Given discount items valid during the current week (validUntil >= weekStart), when getByWeek(weekStart) is called, then those items ARE returned",
+            "Given an existing discount-hunt.db created before the meals column was added, when createDb() is called, then the meals column is present and the app starts without error"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+          "scenario_name": "Walking Skeleton — Scenario 1",
+          "files_to_modify": [
+            "src/discount/adapters/sqlite-discount-item-repository.ts",
+            "src/shared/db.ts"
+          ],
+          "deps": ["02-04"],
+          "implementation_notes": "Two bug fixes found during /verify:\n\n1. getByWeek() currently does a full table scan ignoring weekStart. Fix: add a WHERE clause `valid_until >= weekStart` using Drizzle's gte() operator (import from drizzle-orm). This filters out items whose validUntil date is before the requested week started.\n\n2. createDb() uses CREATE TABLE IF NOT EXISTS which does not add new columns to existing databases. Fix: after the CREATE TABLE statements, run `ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'` wrapped in a try/catch — SQLite throws if the column already exists, which is the normal case for fresh databases.\n\nTEST PARADIGM: Unit/property-based test for the week filter invariant: for any item where validUntil < weekStart, it must be absent from the result; for validUntil >= weekStart, it must be present."
         }
       ]
     }
