@@ -940,3 +940,42 @@ Gaps classified:
 - C5b: `AT_GAP_IN_DELIVERY_SCOPE` — deferred to S02 when multi-store `CATALOGUE_SOURCE` flag matters
 - C7a: `AT_GAP_IN_DELIVERY_SCOPE` — environment matrix deferred to DEVOPS wave
 - C7b: N/A for single-user localhost app
+
+---
+
+## Wave: DELIVER / [REF] Demo Evidence
+
+**Date**: 2026-07-14 | **Gate**: Post-Merge Integration (Phase 3.5)
+
+Acceptance suite: **3 pass, 4 skip, 0 fail** (Scenario 2 remains @skip per DISTILL prereq #4 — enable after S01 commit).
+
+### S01 Elevator Pitch Verification
+
+**US-01 — View this week's discount feed (GET /)**
+```
+Status: 200
+Contains item names (Bio Haferflocken, Rote Linsen): true
+Contains both prices (2.29 was, 1.49 sale): true
+Contains "Generate Meal Plan": true
+```
+Decision enabled: ✓ Discounts visible with "was" price and sale price.
+
+**US-02 — Generate a discount-driven meal plan (POST /plan/generate → GET /plan)**
+```
+POST /plan/generate: 200
+GET /plan: 200
+data-estimated-savings: 210 cents (€2.10)
+```
+Decision enabled: ✓ Plan generated with estimated savings displayed.
+
+**US-04 — View weekly savings (GET /savings)**
+```
+Status: 200
+data-saved-amount: 210 cents (€2.10)
+D23 invariant (plan savings == savings record): true
+```
+Decision enabled: ✓ Savings tracker shows confirmed amount matching plan estimate.
+
+**US-03** (recipe detail) — deferred to S05 (not in S01 scope).
+**US-05** (dietary settings) — deferred to S03 (not in S01 scope).
+**US-06** (@infrastructure) — excluded per demo gate rule.

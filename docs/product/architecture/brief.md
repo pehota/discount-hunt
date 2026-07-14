@@ -668,37 +668,39 @@ flowchart TB
 
 ### Slice → Component Map
 
-| Component | First slice | Incremental additions |
-|---|---|---|
-| `src/scraping/scraper-runner.ts` | S01 | S02: add Edeka + V-Markt adapter flags |
-| `src/scraping/scraping-service.ts` | S01 | S02: multi-store loop |
-| `src/scraping/adapters/aldi-sud-catalogue-fetcher.ts` | S01 | — |
-| `src/scraping/adapters/catalogue-normalizer.ts` | S01 | S02: extended dietary tag set; S03: validate all tags covered |
-| `src/scraping/adapters/edeka-catalogue-fetcher.ts` | S02 | — |
-| `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | S02 | — |
-| `src/scraping/probes/catalogue-probe.ts` | S01 | S02: per-store probe instances |
-| `src/discount/http/discount-handler.ts` | S01 | S03: passes `dietary_filter` to `getByWeek` |
-| `src/discount/discount-service.ts` | S01 | S03: `isCompatible()` applied in `getByWeek` |
-| `src/discount/adapters/sqlite-discount-item-repository.ts` | S01 | — |
-| `src/meal-planning/http/plan-handler.ts` | S01 | S02: 7-day render; S03: no change (filter already in service) |
-| `src/meal-planning/plan-service.ts` | S01 (1-meal stub) | S02: full 7-day algorithm; S03: `isCompatible()` pre-filter hardened |
-| `src/meal-planning/adapters/sqlite-meal-plan-repository.ts` | S01 | S04: `replaceCurrentWeek` tested with history |
-| `src/savings/http/savings-handler.ts` | S01 (current week only) | S04: historical list + month-to-date |
-| `src/savings/savings-service.ts` | S01 | S04: `getHistory()` + month aggregation |
-| `src/savings/adapters/sqlite-savings-repository.ts` | S01 | S04: history queries |
-| `src/preferences/http/settings-handler.ts` | S03 | — |
-| `src/preferences/preferences-service.ts` | S03 | — |
-| `src/preferences/adapters/sqlite-preferences-repository.ts` | S03 | — |
-| `src/recipe/http/recipe-handler.ts` | S05 | — |
-| `src/recipe/recipe-service.ts` | S01 (stub: hardcoded URL) | S05: real Brave + Chefkoch integration |
-| `src/recipe/adapters/brave-search-client.ts` | S05 | — |
-| `src/recipe/adapters/chefkoch-recipe-fetcher.ts` | S05 | — |
-| `src/recipe/adapters/sqlite-recipe-repository.ts` | S01 (stub cache) | S05: TTL refresh + `markDead` |
-| `src/recipe/probes/recipe-source-probe.ts` | S05 | — |
-| `src/shared/dietary.ts` | S01 | S03: full restriction enum; S05: tags cross-checked against recipe ingredients |
-| `src/shared/schema.ts` | S01 | Each slice adds table definitions as new tables are introduced |
-| `src/shared/db.ts` | S01 | — |
-| `src/server.ts` | S01 | Each slice: new handler registered |
+*Last updated: 2026-07-14 — S01 DELIVERED*
+
+| Component | First slice | S01 Status | Incremental additions |
+|---|---|---|---|
+| `src/scraping/scraper-runner.ts` | S01 | IMPLEMENTED | S02: add Edeka + V-Markt adapter flags |
+| `src/scraping/scraping-service.ts` | S01 | IMPLEMENTED | S02: multi-store loop |
+| `src/scraping/adapters/aldi-sud-catalogue-fetcher.ts` | S01 | IMPLEMENTED | — |
+| `src/scraping/adapters/catalogue-normalizer.ts` | S01 | IMPLEMENTED | S02: extended dietary tag set; S03: validate all tags covered |
+| `src/scraping/adapters/edeka-catalogue-fetcher.ts` | S02 | PLANNED | — |
+| `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | S02 | PLANNED | — |
+| `src/scraping/probes/catalogue-probe.ts` | S01 | IMPLEMENTED | S02: per-store probe instances |
+| `src/discount/http/discount-handler.ts` | S01 | IMPLEMENTED | S03: passes `dietary_filter` to `getByWeek` |
+| `src/discount/discount-service.ts` | S01 | IMPLEMENTED | S03: `isCompatible()` applied in `getByWeek` |
+| `src/discount/adapters/sqlite-discount-item-repository.ts` | S01 | IMPLEMENTED | — |
+| `src/meal-planning/http/plan-handler.ts` | S01 | IMPLEMENTED | S02: 7-day render; S03: no change (filter already in service) |
+| `src/meal-planning/plan-service.ts` | S01 (1-meal stub) | IMPLEMENTED (S01 stub) | S02: full 7-day algorithm; S03: `isCompatible()` pre-filter hardened |
+| `src/meal-planning/adapters/sqlite-meal-plan-repository.ts` | S01 | IMPLEMENTED | S04: `replaceCurrentWeek` tested with history |
+| `src/savings/http/savings-handler.ts` | S01 (current week only) | IMPLEMENTED (S01 scope) | S04: historical list + month-to-date |
+| `src/savings/savings-service.ts` | S01 | IMPLEMENTED | S04: `getHistory()` + month aggregation |
+| `src/savings/adapters/sqlite-savings-repository.ts` | S01 | IMPLEMENTED | S04: history queries |
+| `src/preferences/http/settings-handler.ts` | S03 | PLANNED | — |
+| `src/preferences/preferences-service.ts` | S03 | PLANNED | — |
+| `src/preferences/adapters/sqlite-preferences-repository.ts` | S03 | PLANNED | — |
+| `src/recipe/http/recipe-handler.ts` | S05 | PLANNED | — |
+| `src/recipe/recipe-service.ts` | S01 (stub: hardcoded URL) | IMPLEMENTED (stub) | S05: real Brave + Chefkoch integration |
+| `src/recipe/adapters/brave-search-client.ts` | S05 | PLANNED | — |
+| `src/recipe/adapters/chefkoch-recipe-fetcher.ts` | S05 | PLANNED | — |
+| `src/recipe/adapters/sqlite-recipe-repository.ts` | S01 (stub cache) | IMPLEMENTED (stub) | S05: TTL refresh + `markDead` |
+| `src/recipe/probes/recipe-source-probe.ts` | S05 | PLANNED | — |
+| `src/shared/dietary.ts` | S01 | IMPLEMENTED | S03: full restriction enum; S05: tags cross-checked against recipe ingredients |
+| `src/shared/schema.ts` | S01 | IMPLEMENTED | Each slice adds table definitions as new tables are introduced |
+| `src/shared/db.ts` | S01 | IMPLEMENTED | — |
+| `src/server.ts` | S01 | IMPLEMENTED | Each slice: new handler registered |
 
 ---
 
