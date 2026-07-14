@@ -32,7 +32,11 @@ function hasNoCompatibleItems(plan: MealPlan): boolean {
   return plan.meals.every((meal) => meal.discountItemId === null);
 }
 
-function renderEmptyPlanHtml(plan: MealPlan): string {
+/**
+ * Restriction-filtered empty state: a restriction (!== "none") removed every
+ * compatible item. Steer the user to relax their dietary restriction.
+ */
+function renderRestrictionFilteredHtml(plan: MealPlan): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="UTF-8"><title>Meal Plan</title></head>
@@ -44,9 +48,28 @@ function renderEmptyPlanHtml(plan: MealPlan): string {
 </html>`;
 }
 
+/**
+ * No-data empty state: the discount DB is empty (fresh install / failed scrape).
+ * Steering a no-data user to change dietary settings is the wrong contract — instead
+ * tell them to check back after the next catalogue update. No /settings steer.
+ */
+function renderNoDataHtml(plan: MealPlan): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><title>Meal Plan</title></head>
+<body>
+  <h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  <p class="no-discounts-warning">No discounts available this week — please check back after the next catalogue update.</p>
+</body>
+</html>`;
+}
+
 function renderPlanHtml(plan: MealPlan): string {
   if (hasNoCompatibleItems(plan)) {
-    return renderEmptyPlanHtml(plan);
+    // Discriminate no-data (dietaryFilter "none") from restriction-filtered.
+    return plan.dietaryFilter === "none"
+      ? renderNoDataHtml(plan)
+      : renderRestrictionFilteredHtml(plan);
   }
   const mealRows = plan.meals
     .map((meal) =>
