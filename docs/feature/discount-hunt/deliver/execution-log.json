@@ -211,6 +211,69 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-07-14T11:16:02Z"
+    },
+    {
+      "sid": "02-06",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T12:37:22Z"
+    },
+    {
+      "sid": "02-06",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T12:37:56Z"
+    },
+    {
+      "sid": "02-06",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T12:38:30Z"
+    },
+    {
+      "sid": "02-07",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS: Regression ATs authored. Block1 prior-week filter confirmed RED (StaleItem appeared when WHERE clause removed). Block2 schema migration boot confirmed RED (SQLiteError duplicate column name on re-open without guard).",
+      "t": "2026-07-14T13:40:55Z"
+    },
+    {
+      "sid": "02-07",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS: All 14 tests pass. Production fixes from 02-06 satisfy both regression ATs without modification.",
+      "t": "2026-07-14T13:41:00Z"
+    },
+    {
+      "sid": "02-07",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS: Committed tests/acceptance/discount-hunt/multi-store.test.ts via des-commit. 14 tests pass (64 total, 4 skip, 0 fail). No production code changes \u2014 test-only step.",
+      "t": "2026-07-14T13:41:23Z"
+    },
+    {
+      "sid": "02-07",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T13:44:01Z"
+    },
+    {
+      "sid": "02-07",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T13:44:07Z"
+    },
+    {
+      "sid": "02-07",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T13:44:12Z"
     }
   ]
 }

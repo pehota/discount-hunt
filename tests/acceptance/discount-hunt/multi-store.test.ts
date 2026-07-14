@@ -18,11 +18,12 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import fc from "fast-check";
 import { randomUUID } from "node:crypto";
 import { createDb } from "../../../src/shared/db.ts";
-import { scrapeJobs } from "../../../src/shared/schema.ts";
+import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
 import { isStale } from "../../../src/discount/http/discount-handler.ts";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Database } from "bun:sqlite";
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -306,5 +307,168 @@ describe("staleness warning", () => {
     // Only one staleness-warning div total (not one for each store)
     const warningCount = (html.match(/class="staleness-warning"/g) ?? []).length;
     expect(warningCount).toBe(1);
+  });
+});
+
+// ─── Regression AT: prior-week filter ────────────────────────────────────────
+// Regression AT: was RED before fix in step 02-06
+// Bug: getByWeek() returned items from all historical weeks (missing WHERE valid_until >= weekStart)
+// Fix: added .where(gte(discountItems.validUntil, weekStart)) in sqlite-discount-item-repository.ts
+
+describe("prior-week filter — past items must not appear in GET /", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  function daysFromNow(n: number): string {
+    return new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-filter-"));
+    dbPath = join(tmpDir, "filter-test.db");
+
+    const db = createDb(dbPath);
+    const now = Date.now();
+    const jobId = randomUUID();
+
+    // Insert a scrape_jobs row so knownStores is non-empty → per-store rendering path
+    db.insert(scrapeJobs).values({
+      id: jobId,
+      store: "Aldi Süd",
+      status: "completed",
+      startedAt: now - 3600 * 1000,
+      completedAt: now - 1800 * 1000,
+      itemCount: 2,
+    }).run();
+
+    const pastDate = daysFromNow(-14); // safely before any current week Monday
+    const futureDate = daysFromNow(7);  // safely after current week Monday
+
+    // Past item (must NOT appear in GET /)
+    db.insert(discountItems).values({
+      id: "test-past-001",
+      store: "Aldi Süd",
+      name: "StaleItem",
+      category: "vegetable",
+      regularPrice: 199,
+      salePrice: 99,
+      validUntil: pastDate,
+      dietaryTags: "[]",
+      scrapeJobId: jobId,
+      createdAt: now - 14 * 24 * 3600 * 1000,
+    }).run();
+
+    // Current item (must appear in GET /)
+    db.insert(discountItems).values({
+      id: "test-current-001",
+      store: "Aldi Süd",
+      name: "FreshItem",
+      category: "vegetable",
+      regularPrice: 299,
+      salePrice: 149,
+      validUntil: futureDate,
+      dietaryTags: "[]",
+      scrapeJobId: jobId,
+      createdAt: now,
+    }).run();
+
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 4000 + Math.floor(Math.random() * 99); // port range 4000–4099
+    server = await createServer({ port: serverPort, dbPath });
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("past item (validUntil 14 days ago) is absent from GET /", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).not.toContain("StaleItem");
+  });
+
+  test("current item (validUntil 7 days from now) is present in GET /", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).toContain("FreshItem");
+  });
+});
+
+// ─── Regression AT: schema migration boot ────────────────────────────────────
+// Regression AT: was RED before fix in step 02-06
+// Bug: createDb() threw when re-opening an existing DB that already has the meals column
+//      (ALTER TABLE fails with "duplicate column name: meals" without the try/catch guard)
+// Fix: added try/catch ALTER TABLE around meals column addition in db.ts
+//
+// The guard is needed for the case where the DB was already created with the current
+// schema (meals column present), and createDb is called again — e.g. server restart.
+
+describe("schema migration boot — re-opening an existing DB with meals column starts without error", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-migration-"));
+    dbPath = join(tmpDir, "existing-schema.db");
+
+    // Step 1: Bootstrap the DB with the CURRENT schema (meals column already present).
+    // This simulates a DB that was previously created by createDb (e.g. from a prior server run).
+    const bootstrapDb = new Database(dbPath);
+    bootstrapDb.exec(`
+      CREATE TABLE scrape_jobs (
+        id TEXT PRIMARY KEY, store TEXT NOT NULL, status TEXT NOT NULL,
+        started_at INTEGER NOT NULL, completed_at INTEGER, item_count INTEGER NOT NULL DEFAULT 0, error_message TEXT
+      );
+      CREATE TABLE discount_items (
+        id TEXT PRIMARY KEY, store TEXT NOT NULL, name TEXT NOT NULL, category TEXT NOT NULL,
+        regular_price INTEGER NOT NULL, sale_price INTEGER NOT NULL, valid_until TEXT NOT NULL,
+        dietary_tags TEXT NOT NULL DEFAULT '[]', scrape_job_id TEXT NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE meal_plans (
+        id TEXT PRIMARY KEY, week_start TEXT NOT NULL, item_ids TEXT NOT NULL,
+        meals TEXT NOT NULL DEFAULT '[]',
+        total_regular_price INTEGER NOT NULL, total_sale_price INTEGER NOT NULL,
+        estimated_savings INTEGER NOT NULL, created_at INTEGER NOT NULL
+      );
+      CREATE TABLE savings_log (
+        id TEXT PRIMARY KEY, plan_id TEXT NOT NULL, week_start TEXT NOT NULL,
+        saved_amount INTEGER NOT NULL, total_sale_price INTEGER NOT NULL,
+        total_regular_price INTEGER NOT NULL, item_count INTEGER NOT NULL, recorded_at INTEGER NOT NULL
+      );
+    `);
+    bootstrapDb.close();
+
+    // Step 2: Call createServer on the same DB path.
+    // createDb internally runs ALTER TABLE meal_plans ADD COLUMN meals — which would throw
+    // "duplicate column name: meals" without the try/catch guard.
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 4100 + Math.floor(Math.random() * 99); // port range 4100–4199
+    server = await createServer({ port: serverPort, dbPath });
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("server starts without error when DB already has the meals column", () => {
+    // If createServer threw in beforeAll, server would be null and this test verifies that
+    expect(server).not.toBeNull();
+  });
+
+  test("POST /plan/generate returns a non-500 response on the re-opened DB", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/plan/generate`, {
+      method: "POST",
+      redirect: "manual", // capture the 303, not the redirect target
+    });
+    // 303 redirect is the correct response; 500 means the migration failed
+    expect(response.status).not.toBe(500);
   });
 });

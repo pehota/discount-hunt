@@ -2,7 +2,7 @@
   "roadmap": {
     "project_id": "discount-hunt",
     "created_at": "2026-07-13T20:49:27Z",
-    "total_steps": 11
+    "total_steps": 12
   },
   "phases": [
     {
@@ -243,6 +243,25 @@
           ],
           "deps": ["02-04"],
           "implementation_notes": "Two bug fixes found during /verify:\n\n1. getByWeek() currently does a full table scan ignoring weekStart. Fix: add a WHERE clause `valid_until >= weekStart` using Drizzle's gte() operator (import from drizzle-orm). This filters out items whose validUntil date is before the requested week started.\n\n2. createDb() uses CREATE TABLE IF NOT EXISTS which does not add new columns to existing databases. Fix: after the CREATE TABLE statements, run `ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'` wrapped in a try/catch — SQLite throws if the column already exists, which is the normal case for fresh databases.\n\nTEST PARADIGM: Unit/property-based test for the week filter invariant: for any item where validUntil < weekStart, it must be absent from the result; for validUntil >= weekStart, it must be present."
+        }
+      ]
+    }
+  ],
+        {
+          "id": "02-07",
+          "name": "Regression ATs: prior-week filter + schema migration boot",
+          "criteria": [
+            "Given discount items seeded with validUntil in the previous week, when GET / is fetched, then those items do NOT appear in the HTML",
+            "Given discount items seeded with validUntil in the current or future week, when GET / is fetched, then those items DO appear in the HTML",
+            "Given a SQLite file DB created without the meals column, when createServer() is called, then the server starts without error and POST /plan/generate returns a non-error response"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/multi-store.test.ts",
+          "scenario_name": "Regression: prior-week items excluded + schema migration boot",
+          "files_to_modify": [
+            "tests/acceptance/discount-hunt/multi-store.test.ts"
+          ],
+          "deps": ["02-06"],
+          "implementation_notes": "Add two new describe blocks to multi-store.test.ts:\n\n**Block 1 — prior-week filter**:\n- Compute current week Monday using the same formula as discount-handler (getUTCDay → daysToMonday). Also compute a past date (10 days ago) that is definitely before the current Monday.\n- Seed two scrape_jobs rows (one for Aldi Süd, one for V-Markt) and insert discount_items directly via the DB client (same pattern as staleness block). Two items with validUntil = pastDate (last week), two items with validUntil = futureDate (7 days from now).\n- Start the server.\n- GET / → assert past-week items (by name) are ABSENT. Assert future-week items ARE present.\n- No scraper subprocess needed — insert via db.insert(discountItems) directly.\n\n**Block 2 — schema migration boot**:\n- Open a raw bun:sqlite Database, create meal_plans WITHOUT the meals column (use `CREATE TABLE meal_plans (id TEXT PRIMARY KEY, week_start TEXT NOT NULL, item_ids TEXT NOT NULL, total_regular_price INTEGER NOT NULL, total_sale_price INTEGER NOT NULL, estimated_savings INTEGER NOT NULL, created_at INTEGER NOT NULL)`), close it.\n- Call createServer() against this DB path.\n- Assert server starts without throwing.\n- POST /plan/generate → assert response is not a 500 (accepts 303 redirect or 200).\n- Confirms the try/catch ALTER TABLE in createDb() handles pre-meals DBs.\n\nUse bun:sqlite's Database directly for the schema migration test (not createDb) so you can create the old schema without the meals column. Import: `import { Database } from 'bun:sqlite'`."
         }
       ]
     }
