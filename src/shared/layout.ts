@@ -21,6 +21,8 @@ export interface PageOptions {
   readonly title: string;
   readonly activeNav: NavKey;
   readonly body: string;
+  /** Current-week shopping-list item count; renders a badge on the "list" nav item when > 0. */
+  readonly listCount?: number;
 }
 
 const NAV_ITEMS: ReadonlyArray<{ key: NavKey; href: string; label: string; icon: string }> = [
@@ -101,6 +103,7 @@ const STYLE = `
       color: var(--accent);
     }
     .site-nav a {
+      position: relative;         /* anchor for the absolutely-positioned .nav-badge */
       flex: 1 1 0;
       min-width: 0;
       min-height: 56px;
@@ -120,6 +123,28 @@ const STYLE = `
       font-weight: 600;
     }
     .site-nav a.active .nav-icon { transform: translateY(-1px); }
+
+    /* List-counter badge — a small circular pill. Absolutely positioned over the
+       upper-right of the tab (mobile) so it NEVER widens the 5-tab flex row at 375px.
+       Repositioned inline on the desktop bar below. */
+    .site-nav a .nav-badge {
+      position: absolute;
+      top: var(--sp-1);
+      left: 50%;
+      margin-left: 0.4rem;             /* sit just right of the centered icon */
+      min-width: 1.15rem;
+      height: 1.15rem;
+      padding: 0 0.25rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--sale);
+      color: #fff;
+      border-radius: 999px;
+      font-size: var(--fs-sm);
+      font-weight: 700;
+      line-height: 1;
+    }
 
     /* ── Layout container ─────────────────────────────────────────────────
        Bottom padding clears the fixed mobile tab bar. */
@@ -647,6 +672,14 @@ const STYLE = `
       }
       .site-nav a .nav-icon { font-size: var(--fs-base); }
       .site-nav a.active { background: var(--accent-soft); }
+      /* Desktop: the badge flows inline at the end of the icon/label row (no absolute
+         positioning needed — the top bar is not a fixed-width 5-tab strip). */
+      .site-nav a .nav-badge {
+        position: static;
+        top: auto;
+        left: auto;
+        margin-left: var(--sp-1);
+      }
 
       .container { padding: var(--sp-5); padding-bottom: var(--sp-6); }
       .card-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-4); }
@@ -706,12 +739,16 @@ const STYLE = `
     }
 `;
 
-function renderNav(activeNav: NavKey): string {
+function renderNav(activeNav: NavKey, listCount?: number): string {
   const links = NAV_ITEMS.map(({ key, href, label, icon }) => {
     const isActive = key === activeNav;
     const cls = isActive ? ` class="active"` : "";
     const current = isActive ? ` aria-current="page"` : "";
-    return `<a href="${href}"${cls}${current}><span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label">${label}</span></a>`;
+    // List nav badge: only on the "list" item, only when the current-week count > 0.
+    const badge = key === "list" && typeof listCount === "number" && listCount > 0
+      ? `<span class="nav-badge" data-nav-badge>${listCount}</span>`
+      : "";
+    return `<a href="${href}"${cls}${current}><span class="nav-icon" aria-hidden="true">${icon}</span><span class="nav-label">${label}</span>${badge}</a>`;
   }).join("\n    ");
 
   return `<nav class="site-nav">
@@ -721,7 +758,7 @@ function renderNav(activeNav: NavKey): string {
 }
 
 /** Wraps caller-supplied body HTML in the shared page shell. Body is never altered. */
-export function renderPage({ title, activeNav, body }: PageOptions): string {
+export function renderPage({ title, activeNav, body, listCount }: PageOptions): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -731,7 +768,7 @@ export function renderPage({ title, activeNav, body }: PageOptions): string {
   <style>${STYLE}</style>
 </head>
 <body>
-  ${renderNav(activeNav)}
+  ${renderNav(activeNav, listCount)}
   <main class="container">
     ${body}
   </main>

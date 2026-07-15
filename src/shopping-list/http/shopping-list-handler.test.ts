@@ -79,6 +79,19 @@ describe("ShoppingListHandler", () => {
     expect(html).toContain(`name="name"`);
   });
 
+  test("B2b: the list nav badge is absent on GET when the list is empty", async () => {
+    const html = await bodyText(await handler.handleGet(new Request("http://localhost/list")));
+    expect(html).not.toContain("data-nav-badge");
+  });
+
+  test("B3b: GET /list passes listCount → the nav badge renders with the item count", async () => {
+    await handler.handlePostAdd(postForm("/list/add", "itemIds=aldi:z1"));
+    const html = await bodyText(await handler.handleGet(new Request("http://localhost/list")));
+    // The badge sits inside the /list nav anchor with the current-week count.
+    const listAnchor = html.match(/<a[^>]*href="\/list"[\s\S]*?<\/a>/)?.[0] ?? "";
+    expect(listAnchor).toMatch(/<span class="nav-badge" data-nav-badge>1<\/span>/);
+  });
+
   test("B3: POST itemIds → 303 → /list, and the item then renders with total + savings", async () => {
     const addRes = await handler.handlePostAdd(postForm("/list/add", "itemIds=aldi:z1"));
     expect(addRes.status).toBe(303);

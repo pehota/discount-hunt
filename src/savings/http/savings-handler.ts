@@ -14,6 +14,7 @@ import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 import type { SavingsRecord } from "../adapters/sqlite-savings-repository.ts";
 import { isSavingsUnavailable, type SavingsService, type SavingsSummary } from "../savings-service.ts";
+import type { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 
 function formatEuros(cents: number): string {
   return `€${(cents / 100).toFixed(2)}`;
@@ -60,7 +61,11 @@ function renderHistoryRow(record: SavingsRecord): string {
 }
 
 export class SavingsHandler {
-  constructor(private readonly savingsService: SavingsService) {}
+  constructor(
+    private readonly savingsService: SavingsService,
+    // Optional trailing param: production injects it for the nav badge; tests may omit it.
+    private readonly shoppingListService?: ShoppingListService,
+  ) {}
 
   async handleGet(request: Request): Promise<Response> {
     const summary: SavingsSummary = await this.savingsService.getSummary();
@@ -82,7 +87,12 @@ export class SavingsHandler {
     </tbody>
   </table>`;
 
-    const html = renderPage({ title: "Savings Tracker", activeNav: "savings", body });
+    const html = renderPage({
+      title: "Savings Tracker",
+      activeNav: "savings",
+      body,
+      listCount: this.shoppingListService?.count() ?? 0,
+    });
 
     return new Response(html, {
       status: 200,

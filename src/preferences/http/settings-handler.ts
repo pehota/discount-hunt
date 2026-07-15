@@ -12,6 +12,7 @@
 
 import type { PreferencesService } from "../preferences-service.ts";
 import type { CookingTime, DietaryRestriction, MealSlot } from "../../shared/types.ts";
+import type { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { renderPage } from "../../shared/layout.ts";
 
 const DIETARY_OPTIONS: Array<{ value: DietaryRestriction; label: string }> = [
@@ -106,7 +107,7 @@ interface SettingsView {
   mealTypes: MealSlot[];
 }
 
-function renderSettingsHtml(view: SettingsView, savedBanner: boolean): string {
+function renderSettingsHtml(view: SettingsView, savedBanner: boolean, listCount: number): string {
   const dietaryOptions = DIETARY_OPTIONS.map(({ value, label }) => {
     const selected = value === view.dietaryRestriction ? " selected" : "";
     return `<option value="${value}"${selected}>${label}</option>`;
@@ -152,14 +153,18 @@ function renderSettingsHtml(view: SettingsView, savedBanner: boolean): string {
     <button type="submit">Save</button>
   </form>`;
 
-  return renderPage({ title: "Preferences", activeNav: "settings", body });
+  return renderPage({ title: "Preferences", activeNav: "settings", body, listCount });
 }
 
 export class SettingsHandler {
-  constructor(private readonly preferencesService: PreferencesService) {}
+  constructor(
+    private readonly preferencesService: PreferencesService,
+    // Optional trailing param: production injects it for the nav badge; tests may omit it.
+    private readonly shoppingListService?: ShoppingListService,
+  ) {}
 
   handleGet(_request: Request): Response {
-    return this.htmlResponse(renderSettingsHtml(this.currentView(), false));
+    return this.htmlResponse(renderSettingsHtml(this.currentView(), false, this.listCount()));
   }
 
   async handlePost(request: Request): Promise<Response> {
@@ -180,7 +185,12 @@ export class SettingsHandler {
       cookingTime: view.cookingTime,
       mealTypes: view.mealTypes,
     });
-    return this.htmlResponse(renderSettingsHtml(view, true));
+    return this.htmlResponse(renderSettingsHtml(view, true, this.listCount()));
+  }
+
+  /** Current-week list count for the nav badge; 0 when the service is not injected. */
+  private listCount(): number {
+    return this.shoppingListService?.count() ?? 0;
   }
 
   private currentView(): SettingsView {

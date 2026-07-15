@@ -124,6 +124,13 @@ describe("ShoppingListService", () => {
     expect(summary.savingsCents).toBe(100 + 70);
   });
 
+  test("B6: count returns 0 for an empty list and N after adding N items", async () => {
+    expect(service.count()).toBe(0);
+    await service.addFromDiscountSelection(["aldi:z1", "rewe:t1"]);
+    service.addManualItem("Bread", 149);
+    expect(service.count()).toBe(3);
+  });
+
   test("B5: remove delegates to repo for the current week", async () => {
     await service.addFromDiscountSelection(["aldi:z1"]);
     const row = service.getCurrentList().items[0]!;

@@ -17,6 +17,7 @@ import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
 import type { MealSlot } from "../../shared/types.ts";
 import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
 import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
+import type { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 
@@ -60,11 +61,11 @@ function renderOverBudgetBanner(plan: MealPlan): string {
  * Restriction-filtered empty state: a restriction (!== "none") removed every
  * compatible item. Steer the user to relax their dietary restriction.
  */
-function renderRestrictionFilteredHtml(plan: MealPlan): string {
+function renderRestrictionFilteredHtml(plan: MealPlan, listCount: number): string {
   const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
   <p class="empty-plan-warning">No compatible meals found with your current restrictions</p>
   <p><a href="/settings">Change your dietary restriction</a></p>`;
-  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
 }
 
 /**
@@ -72,10 +73,10 @@ function renderRestrictionFilteredHtml(plan: MealPlan): string {
  * Steering a no-data user to change dietary settings is the wrong contract — instead
  * tell them to check back after the next catalogue update. No /settings steer.
  */
-function renderNoDataHtml(plan: MealPlan): string {
+function renderNoDataHtml(plan: MealPlan, listCount: number): string {
   const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
   <p class="no-discounts-warning">No discounts available this week — please check back after the next catalogue update.</p>`;
-  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
 }
 
 /**
@@ -130,12 +131,13 @@ function renderPlanHtml(
   plan: MealPlan,
   scopedSlots: MealSlot[],
   itemsById: Map<string, StoredDiscountItem>,
+  listCount: number,
 ): string {
   if (hasNoCompatibleItems(plan)) {
     // Discriminate no-data (dietaryFilter "none") from restriction-filtered.
     return plan.dietaryFilter === "none"
-      ? renderNoDataHtml(plan)
-      : renderRestrictionFilteredHtml(plan);
+      ? renderNoDataHtml(plan, listCount)
+      : renderRestrictionFilteredHtml(plan, listCount);
   }
   const mealRows = plan.meals
     .map((meal) => {
@@ -157,7 +159,7 @@ function renderPlanHtml(
     <thead><tr><th>Day</th><th>Slot</th><th>Meal</th><th>Store</th><th>Price</th></tr></thead>
     <tbody>${mealRows}</tbody>
   </table>`;
-  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
 }
 
 /**
@@ -165,11 +167,11 @@ function renderPlanHtml(
  * products. NOT a redirect to /plan (that would auto-generate from ALL items). Steers
  * the user back to the feed to pick at least one product and generate again.
  */
-function renderNoSelectionHtml(): string {
+function renderNoSelectionHtml(listCount: number): string {
   const body = `<h1>Meal Plan</h1>
   <p class="empty-plan-warning">No products selected — pick at least one and generate again.</p>
   <p><a href="/">Back to the discount feed</a></p>`;
-  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
 }
 
 const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
@@ -181,6 +183,8 @@ export class PlanHandler {
     // mirroring the PlanService precedent. Production (server.ts) always injects it; when
     // absent, scope defaults to both slots (prior all-meals-linked behavior).
     private readonly preferencesRepository?: UserPreferencesRepository,
+    // Optional trailing param (same precedent): production injects it for the nav badge.
+    private readonly shoppingListService?: ShoppingListService,
   ) {}
 
   async handleGetPlan(request: Request): Promise<Response> {
@@ -190,11 +194,16 @@ export class PlanHandler {
     // Live-feed lookup to surface the store + sale price behind each meal (degrades
     // gracefully per meal when a discount item is missing from the current feed).
     const itemsById = await this.planService.getCurrentWeekItemsById();
-    const html = renderPlanHtml(plan, scopedSlots, itemsById);
+    const html = renderPlanHtml(plan, scopedSlots, itemsById, this.listCount());
     return new Response(html, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });
+  }
+
+  /** Current-week list count for the nav badge; 0 when the service is not injected. */
+  private listCount(): number {
+    return this.shoppingListService?.count() ?? 0;
   }
 
   async handlePostGenerate(request: Request): Promise<Response> {
@@ -214,7 +223,7 @@ export class PlanHandler {
     // re-trigger get-or-generate-from-ALL-items — the exact junk-meal bug this fixes.
     const plan = await this.planService.generateFromSelection(selectedIds);
     if (plan === null) {
-      return new Response(renderNoSelectionHtml(), {
+      return new Response(renderNoSelectionHtml(this.listCount()), {
         status: 200,
         headers: { "content-type": "text/html; charset=utf-8" },
       });

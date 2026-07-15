@@ -29,6 +29,7 @@ import type { UserPreferencesRepository } from "../../preferences/ports/preferen
 import type { RecipeService } from "../recipe-service.ts";
 import type { ResolvedRecipe } from "../recipe-service.ts";
 import type { RecipeQueryPreferences } from "../recipe-query.ts";
+import type { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
@@ -68,11 +69,11 @@ function htmlResponse(html: string, status: number): Response {
   });
 }
 
-function renderNotFound(): string {
+function renderNotFound(listCount: number): string {
   const body = `<h1>Recipe not found</h1>
   <p>That meal is not part of your current plan.</p>
   <p>${BACK_LINK}</p>`;
-  return renderPage({ title: "Recipe not found", activeNav: "plan", body });
+  return renderPage({ title: "Recipe not found", activeNav: "plan", body, listCount });
 }
 
 function renderIngredients(ingredients: string[], weekItems: StoredDiscountItem[]): string {
@@ -103,7 +104,7 @@ function renderUnavailableNotice(): string {
   return `<div class="staleness-warning">Original source is currently unavailable — showing the last cached version.</div>`;
 }
 
-function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountItem[]): string {
+function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountItem[], listCount: number): string {
   const notice = recipe.sourceUrlValid === false ? renderUnavailableNotice() : "";
   const body = `${notice}<h1>${escapeHtml(recipe.name)}</h1>
   <h2>Ingredients</h2>
@@ -112,7 +113,7 @@ function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountIte
   ${renderSteps(recipe.steps)}
   <p><a href="${escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener" class="btn-primary">Open original recipe</a></p>
   <p>${BACK_LINK}</p>`;
-  return renderPage({ title: recipe.name, activeNav: "plan", body });
+  return renderPage({ title: recipe.name, activeNav: "plan", body, listCount });
 }
 
 /**
@@ -120,7 +121,7 @@ function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountIte
  * Show the meal's ingredient (= meal.name, the discounted item) plus a pre-filled
  * manual Chefkoch search link opened in a new tab. Back-to-plan always present.
  */
-function renderNoMatch(mealName: string): string {
+function renderNoMatch(mealName: string, listCount: number): string {
   const searchUrl = `https://www.chefkoch.de/suche.php?suche=${encodeURIComponent(mealName)}`;
   const body = `<h1>${escapeHtml(mealName)}</h1>
   <p class="empty-state"><span class="state-illustration" aria-hidden="true">🍳</span>No recipe found — search Chefkoch for this ingredient.</p>
@@ -128,7 +129,7 @@ function renderNoMatch(mealName: string): string {
   <ul class="recipe-ingredients"><li>${escapeHtml(mealName)}</li></ul>
   <p><a href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener" class="btn-primary">Search Chefkoch</a></p>
   <p>${BACK_LINK}</p>`;
-  return renderPage({ title: mealName, activeNav: "plan", body });
+  return renderPage({ title: mealName, activeNav: "plan", body, listCount });
 }
 
 export class RecipeHandler {
@@ -137,12 +138,15 @@ export class RecipeHandler {
     private readonly recipeService: RecipeService,
     private readonly discountService: DiscountService,
     private readonly preferencesRepository: UserPreferencesRepository,
+    // Optional trailing param: production injects it for the nav badge; tests may omit it.
+    private readonly shoppingListService?: ShoppingListService,
   ) {}
 
   async handleGet(_request: Request, mealId: string): Promise<Response> {
+    const listCount = this.shoppingListService?.count() ?? 0;
     const meal = this.findMeal(mealId);
     if (meal === null) {
-      return htmlResponse(renderNotFound(), 404);
+      return htmlResponse(renderNotFound(listCount), 404);
     }
 
     // Compose a meal-aware query from the meal's slot + the user's recipe-search prefs
@@ -151,12 +155,12 @@ export class RecipeHandler {
     const recipe = await this.recipeService.getRecipeForMeal(meal.name, meal.slot, searchPrefs);
     // Fallback (b): no recipe found and nothing cached → 200 no-match view (never crash).
     if (recipe === null) {
-      return htmlResponse(renderNoMatch(meal.name), 200);
+      return htmlResponse(renderNoMatch(meal.name, listCount), 200);
     }
 
     // Live this-week feed for ingredient↔discount highlighting (design §7, restriction "none").
     const weekItems = await this.discountService.getWeeklyItems(currentWeekMonday(), "none");
-    return htmlResponse(renderRecipeDetail(recipe, weekItems), 200);
+    return htmlResponse(renderRecipeDetail(recipe, weekItems, listCount), 200);
   }
 
   /** Read the recipe-search preferences live from the repo (repo returns defaults if unset). */

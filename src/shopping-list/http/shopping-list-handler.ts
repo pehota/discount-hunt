@@ -112,7 +112,12 @@ export class ShoppingListHandler {
     const body = `<h1>Shopping List</h1>
   ${renderList(summary)}
   ${renderManualAddForm()}`;
-    const html = renderPage({ title: "Shopping List", activeNav: "list", body });
+    const html = renderPage({
+      title: "Shopping List",
+      activeNav: "list",
+      body,
+      listCount: summary.items.length,
+    });
     return new Response(html, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },

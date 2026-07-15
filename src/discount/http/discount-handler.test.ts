@@ -17,6 +17,8 @@ import { SQLiteDiscountItemRepository } from "../adapters/sqlite-discount-item-r
 import { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 import { DiscountService } from "../discount-service.ts";
 import { DiscountHandler } from "./discount-handler.ts";
+import { SQLiteShoppingListRepository } from "../../shopping-list/adapters/sqlite-shopping-list-repository.ts";
+import { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
 
 /** A validUntil comfortably inside the current week so getByWeek (validUntil >= Monday) keeps it. */
@@ -429,5 +431,35 @@ describe("DiscountHandler feed action-hub", () => {
     expect(toast).toContain(`role="status"`);
     expect(toast).toContain(`aria-live="polite"`);
     expect(toast).toContain("hidden");
+  });
+
+  // The feed passes the injected ShoppingListService's current-week count as listCount →
+  // the shared nav renders a list badge. Without the service, no badge (default 0).
+  test("injected ShoppingListService count renders the list nav badge on the feed", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    await seed(service, "Edeka", 1, "job-e");
+    const listService = new ShoppingListService(new SQLiteShoppingListRepository(db), service);
+    listService.addManualItem("Bread", 149);
+    listService.addManualItem("Milk", 99);
+
+    const handler = new DiscountHandler(service, undefined, undefined, listService);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const listAnchor = html.match(/<a[^>]*href="\/list"[\s\S]*?<\/a>/)?.[0] ?? "";
+    expect(listAnchor).toMatch(/<span class="nav-badge" data-nav-badge>2<\/span>/);
+  });
+
+  test("no ShoppingListService → no list nav badge on the feed", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    await seed(service, "Edeka", 1, "job-e");
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+    // Scope to the /list nav anchor: the inline FILTER_SCRIPT references data-nav-badge
+    // as a string literal (create-on-add path), so a page-wide substring check is invalid.
+    const listAnchor = html.match(/<a[^>]*href="\/list"[\s\S]*?<\/a>/)?.[0] ?? "";
+    expect(listAnchor).not.toContain("nav-badge");
   });
 });

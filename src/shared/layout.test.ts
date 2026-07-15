@@ -74,4 +74,47 @@ describe("renderPage — shared page shell", () => {
     const html = renderPage({ title: "Feed", activeNav: "feed", body: "<p>inner</p>" });
     expect(html).toMatch(/<main[^>]*class="container"[^>]*>/);
   });
+
+  /** Isolate the anchor for a given href (opening tag through its closing </a>). */
+  function listAnchor(html: string): string {
+    return html.match(/<a[^>]*href="\/list"[\s\S]*?<\/a>/)?.[0] ?? "";
+  }
+
+  test("renders a nav-badge with the count inside the list link when listCount > 0", () => {
+    const html = renderPage({ title: "List", activeNav: "list", body: "", listCount: 3 });
+    const anchor = listAnchor(html);
+    expect(anchor).toContain(`class="nav-badge" data-nav-badge`);
+    expect(anchor).toMatch(/<span class="nav-badge" data-nav-badge>3<\/span>/);
+  });
+
+  test("renders the nav-badge regardless of which page is active (badge count only)", () => {
+    // On a non-list page (feed active), the list badge still shows the count.
+    const html = renderPage({ title: "Feed", activeNav: "feed", body: "", listCount: 5 });
+    const anchor = listAnchor(html);
+    expect(anchor).toMatch(/<span class="nav-badge" data-nav-badge>5<\/span>/);
+  });
+
+  test("renders NO nav-badge element when listCount is 0 or undefined", () => {
+    // Scope to the /list anchor: the STYLE block always defines a .nav-badge rule, so a
+    // page-wide substring check is invalid — the badge ELEMENT lives inside the anchor.
+    for (const html of [
+      renderPage({ title: "List", activeNav: "list", body: "", listCount: 0 }),
+      renderPage({ title: "List", activeNav: "list", body: "" }),
+    ]) {
+      expect(listAnchor(html)).not.toContain("nav-badge");
+      expect(listAnchor(html)).not.toContain("data-nav-badge");
+    }
+  });
+
+  test("the nav-badge appears ONLY on the list item, never on other nav items", () => {
+    const html = renderPage({ title: "Feed", activeNav: "feed", body: "", listCount: 2 });
+    // Exactly one badge, and it lives inside the /list anchor.
+    expect(html.match(/data-nav-badge/g)).toHaveLength(1);
+    expect(listAnchor(html)).toContain("data-nav-badge");
+    // The other anchors carry no badge.
+    for (const href of ["/", "/plan", "/savings", "/settings"]) {
+      const anchor = html.match(new RegExp(`<a[^>]*href="${href.replace("/", "\\/")}"[\\s\\S]*?</a>`))?.[0] ?? "";
+      expect(anchor).not.toContain("nav-badge");
+    }
+  });
 });

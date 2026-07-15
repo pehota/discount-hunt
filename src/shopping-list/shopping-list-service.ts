@@ -76,6 +76,11 @@ export class ShoppingListService {
     this.repo.addItems([row]);
   }
 
+  /** Number of items in the current week's list (reuses the same repo read as getCurrentList). */
+  count(): number {
+    return this.repo.listByWeek(currentWeekMonday()).length;
+  }
+
   getCurrentList(): ShoppingListSummary {
     const items = this.repo.listByWeek(currentWeekMonday());
     let totalCents = 0;

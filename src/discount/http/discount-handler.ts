@@ -18,6 +18,7 @@
 import type { DiscountService } from "../discount-service.ts";
 import type { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
+import type { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
@@ -132,6 +133,26 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 3000);
   }
 
+  // Live-update the List nav badge by the number of items just added. At true count 0
+  // there is NO badge element in the server-rendered nav, so create-and-append it;
+  // otherwise increment its text. (Server-side dedup may make this drift high by re-adds;
+  // a reload/nav reconciles from the server-rendered count — KISS.)
+  function bumpNavBadge(n) {
+    var link = document.querySelector('a[href="/list"]');
+    if (!link) return;
+    var badge = link.querySelector('[data-nav-badge]');
+    if (badge) {
+      var current = parseInt(badge.textContent, 10) || 0;
+      badge.textContent = String(current + n);
+    } else {
+      badge = document.createElement('span');
+      badge.className = 'nav-badge';
+      badge.setAttribute('data-nav-badge', '');
+      badge.textContent = String(n);
+      link.appendChild(badge);
+    }
+  }
+
   function addToList() {
     if (checkedCount === 0) return;
     if (!form) return;
@@ -142,7 +163,7 @@ document.addEventListener('DOMContentLoaded', function () {
       headers: { 'X-Requested-With': 'fetch' },
       body: body,
     }).then(function (res) {
-      if (res.ok) { showToast(n); }
+      if (res.ok) { showToast(n); bumpNavBadge(n); }
     });
   }
 
@@ -253,6 +274,9 @@ export class DiscountHandler {
     private readonly discountService: DiscountService,
     private readonly scrapeJobRepo?: SQLiteScrapeJobRepository,
     private readonly preferencesRepo?: UserPreferencesRepository,
+    // Optional trailing param (mirrors the existing scrapeJobRepo/preferencesRepo precedent):
+    // preserves direct-construction call sites in tests. Production injects it for the nav badge.
+    private readonly shoppingListService?: ShoppingListService,
   ) {}
 
   async handleGet(_request: Request): Promise<Response> {
@@ -292,6 +316,7 @@ export class DiscountHandler {
       title: "Discount Hunt — Weekly Deals",
       activeNav: "feed",
       body,
+      listCount: this.shoppingListService?.count() ?? 0,
     });
 
     return new Response(html, {

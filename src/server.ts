@@ -83,11 +83,13 @@ export async function createServer(
   const shoppingListService = new ShoppingListService(shoppingListRepo, discountService);
 
   // 4. Handlers
-  const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo);
-  const planHandler = new PlanHandler(planService, preferencesRepo);
-  const savingsHandler = new SavingsHandler(savingsService);
-  const settingsHandler = new SettingsHandler(preferencesService);
-  const recipeHandler = new RecipeHandler(planService, recipeService, discountService, preferencesRepo);
+  // shoppingListService is injected into every page handler so each render can show the
+  // current-week list-count nav badge (ShoppingListHandler already holds it as its service).
+  const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo, shoppingListService);
+  const planHandler = new PlanHandler(planService, preferencesRepo, shoppingListService);
+  const savingsHandler = new SavingsHandler(savingsService, shoppingListService);
+  const settingsHandler = new SettingsHandler(preferencesService, shoppingListService);
+  const recipeHandler = new RecipeHandler(planService, recipeService, discountService, preferencesRepo, shoppingListService);
   const shoppingListHandler = new ShoppingListHandler(shoppingListService);
 
   // 5. Routes
