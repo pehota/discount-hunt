@@ -38,6 +38,7 @@ import { SettingsHandler } from "./preferences/http/settings-handler.ts";
 import { SQLiteRecipeRepository } from "./recipe/adapters/sqlite-recipe-repository.ts";
 import { ChefkochRecipeSource } from "./recipe/adapters/chefkoch-recipe-source.ts";
 import { RecipeService } from "./recipe/recipe-service.ts";
+import { RecipeHandler } from "./recipe/http/recipe-handler.ts";
 import type { RecipeSource } from "./recipe/ports/recipe-source.ts";
 
 export type { ServerConfig, ServerHandle };
@@ -74,15 +75,14 @@ export async function createServer(
   const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo);
   const preferencesService = new PreferencesService(preferencesRepo);
   // Recipe lookup: prod default hits Chefkoch; tests inject a FakeRecipeSource.
-  // Wired now; the GET /plan/{meal_id} handler + route arrive in 08-03.
   const recipeService = new RecipeService(recipeRepo, config.recipeSource ?? new ChefkochRecipeSource());
-  void recipeService;
 
   // 4. Handlers
   const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo);
   const planHandler = new PlanHandler(planService);
   const savingsHandler = new SavingsHandler(savingsService);
   const settingsHandler = new SettingsHandler(preferencesService);
+  const recipeHandler = new RecipeHandler(planService, recipeService);
 
   // 5. Routes
   const server = Bun.serve({
@@ -99,6 +99,12 @@ export async function createServer(
       }
       if (method === "GET" && url.pathname === "/plan") {
         return planHandler.handleGetPlan(request);
+      }
+      // Recipe detail: matched AFTER the exact /plan and /plan/generate checks so it
+      // never clobbers them. meal_id is everything after "/plan/".
+      if (method === "GET" && url.pathname.startsWith("/plan/")) {
+        const mealId = url.pathname.slice("/plan/".length);
+        return recipeHandler.handleGet(request, mealId);
       }
       if (method === "GET" && url.pathname === "/savings") {
         return savingsHandler.handleGet(request);

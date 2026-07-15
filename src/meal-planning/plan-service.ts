@@ -107,6 +107,16 @@ export class PlanService {
     });
   }
 
+  /**
+   * Read-only current-week plan lookup — NO generate, NO save (contrast with
+   * getOrGenerateCurrentWeekPlan). The recipe detail route (GET /plan/{meal_id})
+   * needs to locate an existing meal without mutating any state: resolving a recipe
+   * must never trigger plan generation or a savings_log write.
+   */
+  getCurrentWeekPlan(): MealPlan | null {
+    return this.mealPlanRepository.findByWeek(currentWeekMonday());
+  }
+
   async getOrGenerateCurrentWeekPlan(): Promise<MealPlan> {
     const weekStart = currentWeekMonday();
     const existing = this.mealPlanRepository.findByWeek(weekStart);
