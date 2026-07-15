@@ -7,14 +7,28 @@
 /** Dietary restriction set by user in UserPreferences. */
 export type DietaryRestriction = "vegetarian" | "vegan" | "none";
 
+/** Cooking-time preference for recipe search. 'any' = no constraint, 'quick' = fast recipes only. */
+export type CookingTime = "any" | "quick";
+
 /**
  * Household preferences.
  * increment 1: dietary dimension. increment 1.5: budget cap (euros stored as cents).
- * budgetCapCents null / undefined = no cap. household / kid-friendly deferred until they ship.
+ * phase 12: recipe-search params (kid-friendly, household size, cooking time, meal types).
+ * Optional fields carry sane defaults on read (mirrors budgetCapCents idiom): the repo's
+ * get() always returns concrete values, upsert() coalesces undefined → default before writing.
+ * budgetCapCents null / undefined = no cap.
  */
 export interface UserPreferences {
   dietaryRestriction: DietaryRestriction;
   budgetCapCents?: number | null;
+  /** Prefer kid-friendly recipes. Default false. */
+  kidFriendly?: boolean;
+  /** Number of people to cook for. Default 2, valid 1–12. */
+  householdSize?: number;
+  /** Cooking-time constraint. Default 'any'. */
+  cookingTime?: CookingTime;
+  /** Which plan slots get recipe suggestions. Default ['lunch','dinner']. */
+  mealTypes?: MealSlot[];
 }
 
 /** Dietary classification tag applied at scrape time by catalogue-normalizer. */

@@ -15,11 +15,17 @@ import { join } from "node:path";
 import { createDb, type DbClient } from "../../shared/db.ts";
 import { userSettings } from "../../shared/schema.ts";
 import { SQLiteUserPreferencesRepository } from "./sqlite-user-preferences-repository.ts";
-import type { DietaryRestriction } from "../../shared/types.ts";
+import type { CookingTime, DietaryRestriction, MealSlot } from "../../shared/types.ts";
 
 const restrictionArb: fc.Arbitrary<DietaryRestriction> = fc.constantFrom(
   "none", "vegetarian", "vegan",
 );
+
+const cookingTimeArb: fc.Arbitrary<CookingTime> = fc.constantFrom("any", "quick");
+
+// Non-empty subset of the two valid meal slots (order-insensitive round-trip).
+const mealTypesArb: fc.Arbitrary<MealSlot[]> = fc
+  .subarray<MealSlot>(["lunch", "dinner"], { minLength: 1 });
 
 function rowCount(db: DbClient): number {
   // drizzle-orm/bun-sqlite .get() returns a positional value array.
@@ -37,10 +43,17 @@ function withDb<T>(run: (db: DbClient) => T): T {
 }
 
 describe("SQLiteUserPreferencesRepository", () => {
-  test("get() returns the honest defaults { dietaryRestriction: 'none', budgetCapCents: null } when no row exists", () => {
+  test("get() returns the honest defaults when no row exists", () => {
     withDb((db) => {
       const repo = new SQLiteUserPreferencesRepository(db);
-      expect(repo.get()).toEqual({ dietaryRestriction: "none", budgetCapCents: null });
+      expect(repo.get()).toEqual({
+        dietaryRestriction: "none",
+        budgetCapCents: null,
+        kidFriendly: false,
+        householdSize: 2,
+        cookingTime: "any",
+        mealTypes: ["lunch", "dinner"],
+      });
       // Universe guard: reading must not create a row.
       expect(rowCount(db)).toBe(0);
     });
@@ -60,6 +73,10 @@ describe("SQLiteUserPreferencesRepository", () => {
           expect(repo.get()).toEqual({
             dietaryRestriction: seq[seq.length - 1]!,
             budgetCapCents: null,
+            kidFriendly: false,
+            householdSize: 2,
+            cookingTime: "any",
+            mealTypes: ["lunch", "dinner"],
           });
         });
       }),
@@ -84,16 +101,81 @@ describe("SQLiteUserPreferencesRepository", () => {
           withDb((db) => {
             const repo = new SQLiteUserPreferencesRepository(db);
             repo.upsert({ dietaryRestriction: restriction, budgetCapCents });
-            // Singleton still holds; both fields round-trip.
+            // Singleton still holds; both fields round-trip. Recipe params fall back to defaults.
             expect(rowCount(db)).toBe(1);
             expect(repo.get()).toEqual({
               dietaryRestriction: restriction,
               budgetCapCents,
+              kidFriendly: false,
+              householdSize: 2,
+              cookingTime: "any",
+              mealTypes: ["lunch", "dinner"],
             });
           });
         },
       ),
       { numRuns: 40 },
     );
+  });
+
+  // ─── Step 12-01: recipe-search params round-trip (kidFriendly, householdSize,
+  //     cookingTime, mealTypes) ────────────────────────────────────────────────
+  test("get() returns the documented recipe-param defaults when no row exists", () => {
+    withDb((db) => {
+      const repo = new SQLiteUserPreferencesRepository(db);
+      const prefs = repo.get();
+      expect(prefs.kidFriendly).toBe(false);
+      expect(prefs.householdSize).toBe(2);
+      expect(prefs.cookingTime).toBe("any");
+      expect(prefs.mealTypes).toEqual(["lunch", "dinner"]);
+    });
+  });
+
+  test("for any recipe params, upsert→get round-trips them faithfully (singleton preserved)", () => {
+    fc.assert(
+      fc.property(
+        restrictionArb,
+        fc.boolean(),
+        fc.integer({ min: 1, max: 12 }),
+        cookingTimeArb,
+        mealTypesArb,
+        (dietaryRestriction, kidFriendly, householdSize, cookingTime, mealTypes) => {
+          withDb((db) => {
+            const repo = new SQLiteUserPreferencesRepository(db);
+            repo.upsert({
+              dietaryRestriction,
+              budgetCapCents: null,
+              kidFriendly,
+              householdSize,
+              cookingTime,
+              mealTypes,
+            });
+            expect(rowCount(db)).toBe(1);
+            // Per-field assertions so household_size (1–12) and kid_friendly (0/1)
+            // cannot silently alias across a misaligned positional SELECT tuple.
+            const got = repo.get();
+            expect(got.dietaryRestriction).toBe(dietaryRestriction);
+            expect(got.kidFriendly).toBe(kidFriendly);
+            expect(got.householdSize).toBe(householdSize);
+            expect(got.cookingTime).toBe(cookingTime);
+            expect([...got.mealTypes!].sort()).toEqual([...mealTypes].sort());
+          });
+        },
+      ),
+      { numRuns: 40 },
+    );
+  });
+
+  test("upsert() coalesces omitted recipe params to defaults (undefined → default columns)", () => {
+    withDb((db) => {
+      const repo = new SQLiteUserPreferencesRepository(db);
+      // Only dietary provided — recipe params omitted entirely.
+      repo.upsert({ dietaryRestriction: "vegan" });
+      const got = repo.get();
+      expect(got.kidFriendly).toBe(false);
+      expect(got.householdSize).toBe(2);
+      expect(got.cookingTime).toBe("any");
+      expect(got.mealTypes).toEqual(["lunch", "dinner"]);
+    });
   });
 });

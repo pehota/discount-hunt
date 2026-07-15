@@ -49,6 +49,10 @@ export const userSettings = sqliteTable("user_settings", {
   userId: text("user_id").primaryKey().default("dimitar"), // single-user singleton (D9)
   dietaryRestriction: text("dietary_restriction").notNull().default("none"), // 'none'|'vegetarian'|'vegan'
   budgetCapCents: integer("budget_cap_cents"), // nullable weekly cap; NULL = no cap
+  kidFriendly: integer("kid_friendly").notNull().default(0), // SQLite boolean (0/1)
+  householdSize: integer("household_size").notNull().default(2), // people to cook for (1–12)
+  cookingTime: text("cooking_time").notNull().default("any"), // 'any'|'quick'
+  mealTypes: text("meal_types").notNull().default('["lunch","dinner"]'), // JSON array of MealSlot
   updatedAt: integer("updated_at").notNull(), // ms since epoch
 });
 

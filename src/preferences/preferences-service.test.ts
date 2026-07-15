@@ -25,7 +25,14 @@ describe("PreferencesService", () => {
     try {
       const db = createDb(join(dir, "svc.db"));
       const service = new PreferencesService(new SQLiteUserPreferencesRepository(db));
-      expect(service.getPreferences()).toEqual({ dietaryRestriction: "none", budgetCapCents: null });
+      expect(service.getPreferences()).toEqual({
+        dietaryRestriction: "none",
+        budgetCapCents: null,
+        kidFriendly: false,
+        householdSize: 2,
+        cookingTime: "any",
+        mealTypes: ["lunch", "dinner"],
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -39,7 +46,14 @@ describe("PreferencesService", () => {
           const db = createDb(join(dir, "svc.db"));
           const service = new PreferencesService(new SQLiteUserPreferencesRepository(db));
           service.updatePreferences({ dietaryRestriction: restriction });
-          expect(service.getPreferences()).toEqual({ dietaryRestriction: restriction, budgetCapCents: null });
+          expect(service.getPreferences()).toEqual({
+            dietaryRestriction: restriction,
+            budgetCapCents: null,
+            kidFriendly: false,
+            householdSize: 2,
+            cookingTime: "any",
+            mealTypes: ["lunch", "dinner"],
+          });
         } finally {
           rmSync(dir, { recursive: true, force: true });
         }

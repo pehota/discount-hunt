@@ -65,6 +65,10 @@ const CREATE_USER_SETTINGS = `
     user_id TEXT PRIMARY KEY DEFAULT 'dimitar',
     dietary_restriction TEXT NOT NULL DEFAULT 'none',
     budget_cap_cents INTEGER,
+    kid_friendly INTEGER NOT NULL DEFAULT 0,
+    household_size INTEGER NOT NULL DEFAULT 2,
+    cooking_time TEXT NOT NULL DEFAULT 'any',
+    meal_types TEXT NOT NULL DEFAULT '["lunch","dinner"]',
     updated_at INTEGER NOT NULL
   )
 `;
@@ -132,6 +136,31 @@ export function createDb(dbPath: string): DbClient {
   // Idempotent migration: add budget_cap_cents (nullable) to user_settings if the table pre-dates it
   try {
     sqlite.exec("ALTER TABLE user_settings ADD COLUMN budget_cap_cents INTEGER");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
+  // Idempotent migrations: add phase-12 recipe-search params to user_settings if the table pre-dates them
+  try {
+    sqlite.exec("ALTER TABLE user_settings ADD COLUMN kid_friendly INTEGER NOT NULL DEFAULT 0");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
+  try {
+    sqlite.exec("ALTER TABLE user_settings ADD COLUMN household_size INTEGER NOT NULL DEFAULT 2");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
+  try {
+    sqlite.exec("ALTER TABLE user_settings ADD COLUMN cooking_time TEXT NOT NULL DEFAULT 'any'");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
+  try {
+    sqlite.exec(`ALTER TABLE user_settings ADD COLUMN meal_types TEXT NOT NULL DEFAULT '["lunch","dinner"]'`);
   } catch {
     // Column already exists — expected for fresh databases created with the current schema
   }
