@@ -19,7 +19,7 @@ import { SQLiteMealPlanRepository } from "./adapters/sqlite-meal-plan-repository
 import { SQLiteSavingsRepository } from "../savings/adapters/sqlite-savings-repository.ts";
 import { SavingsService } from "../savings/savings-service.ts";
 import { DiscountService } from "../discount/discount-service.ts";
-import { SQLiteDiscountItemRepository } from "../discount/adapters/sqlite-discount-item-repository.ts";
+import { SQLiteDiscountItemRepository, type StoredDiscountItem } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import { PlanService } from "./plan-service.ts";
 import type { WeekStart } from "../shared/types.ts";
 
@@ -112,6 +112,7 @@ describe("PlanService", () => {
       salePrice: row.salePrice,
       validUntil: row.validUntil,
       dietaryTags: JSON.parse(row.dietaryTags),
+      taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -137,6 +138,7 @@ describe("PlanService", () => {
       salePrice: row.salePrice,
       validUntil: row.validUntil,
       dietaryTags: JSON.parse(row.dietaryTags),
+      taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -162,6 +164,7 @@ describe("PlanService", () => {
       salePrice: row.salePrice,
       validUntil: row.validUntil,
       dietaryTags: JSON.parse(row.dietaryTags),
+      taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -243,6 +246,7 @@ describe("PlanService — generate from a user-selected subset", () => {
       salePrice: row.salePrice,
       validUntil: row.validUntil,
       dietaryTags: JSON.parse(row.dietaryTags),
+      taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -323,6 +327,7 @@ describe("PlanService.generatePlan — 14-meal structure (PBT)", () => {
     salePrice: fc.integer({ min: 50, max: 99 }),
     validUntil: fc.constant("2026-07-20"),
     dietaryTags: fc.constant([]),
+    taxonomyCategory: fc.constant(null),
     scrapeJobId: fc.constant("job-pbt"),
     createdAt: fc.constant(0),
   });

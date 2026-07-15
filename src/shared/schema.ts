@@ -28,6 +28,7 @@ export const discountItems = sqliteTable("discount_items", {
   salePrice: integer("sale_price").notNull(), // cents
   validUntil: text("valid_until").notNull(), // ISO date
   dietaryTags: text("dietary_tags").notNull().default("[]"), // JSON array
+  taxonomyCategory: text("taxonomy_category"), // nullable — assigned by categorisation context; NULL = unclassified
   scrapeJobId: text("scrape_job_id").notNull(),
   createdAt: integer("created_at").notNull(), // ms since epoch
 });

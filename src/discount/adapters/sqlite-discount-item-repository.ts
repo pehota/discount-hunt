@@ -13,11 +13,12 @@
  * INSERT OR IGNORE preserves regular_price on conflict (write-once).
  */
 
-import { sql, gte } from "drizzle-orm";
+import { sql, gte, isNull, eq } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { discountItems } from "../../shared/schema.ts";
 import { isCompatible } from "../../shared/dietary.ts";
-import type { NormalizedItem, WeekStart, DietaryRestriction, DietaryTag } from "../../shared/types.ts";
+import type { NormalizedItem, WeekStart, DietaryRestriction, DietaryTag, TaxonomyCategory } from "../../shared/types.ts";
+import type { DiscountCategoryStore } from "../../categorisation/ports.ts";
 
 export interface StoredDiscountItem {
   id: string;
@@ -28,11 +29,12 @@ export interface StoredDiscountItem {
   salePrice: number;
   validUntil: string;
   dietaryTags: DietaryTag[];
+  taxonomyCategory: TaxonomyCategory | null;
   scrapeJobId: string;
   createdAt: number;
 }
 
-export class SQLiteDiscountItemRepository {
+export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
   constructor(private readonly db: DbClient) {}
 
   async register(item: NormalizedItem, scrapeJobId: string): Promise<void> {
@@ -90,8 +92,37 @@ export class SQLiteDiscountItemRepository {
         salePrice: row.salePrice,
         validUntil: row.validUntil,
         dietaryTags: JSON.parse(row.dietaryTags) as DietaryTag[],
+        taxonomyCategory: row.taxonomyCategory as TaxonomyCategory | null,
         scrapeJobId: row.scrapeJobId,
         createdAt: row.createdAt,
       }));
+  }
+
+  // ── DiscountCategoryStore port (single writer of discount_items) ────────────
+
+  /**
+   * Uncategorised rows (taxonomy_category IS NULL) for the categorisation run.
+   * NAMING REMAP: the DB `category` column holds the raw German productType; it
+   * is surfaced under the port field `productType`. taxonomy_category is the
+   * OUTPUT column and is never read as input here.
+   */
+  findUncategorised(): { id: string; name: string; productType: string }[] {
+    const rows = this.db.select({
+      id: discountItems.id,
+      name: discountItems.name,
+      productType: discountItems.category,
+    })
+      .from(discountItems)
+      .where(isNull(discountItems.taxonomyCategory))
+      .all();
+    return rows;
+  }
+
+  /** Persist the classified bucket for one item. */
+  setTaxonomyCategory(id: string, cat: TaxonomyCategory): void {
+    this.db.update(discountItems)
+      .set({ taxonomyCategory: cat })
+      .where(eq(discountItems.id, id))
+      .run();
   }
 }

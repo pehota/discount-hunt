@@ -1,0 +1,61 @@
+/**
+ * categoriser-runner unit test — wiring of the testable runCategorisation factory.
+ *
+ * Injects a fake store + fake classifier + recording logger so no real DB/LLM is
+ * hit. Asserts the run completes, drains uncategorised rows, and logs the summary.
+ */
+
+import { describe, test, expect } from "bun:test";
+import { runCategorisation } from "./categoriser-runner.ts";
+import type { CategoryClassifier, DiscountCategoryStore } from "./ports.ts";
+import type { TaxonomyCategory } from "../shared/types.ts";
+import type { LogLevel, Logger } from "../shared/logger.ts";
+
+class FakeStore implements DiscountCategoryStore {
+  private readonly rows = new Map<string, { name: string; productType: string; cat: TaxonomyCategory | null }>();
+  seed(id: string, name: string, productType: string): void {
+    this.rows.set(id, { name, productType, cat: null });
+  }
+  findUncategorised(): { id: string; name: string; productType: string }[] {
+    return [...this.rows.entries()]
+      .filter(([, r]) => r.cat === null)
+      .map(([id, r]) => ({ id, name: r.name, productType: r.productType }));
+  }
+  setTaxonomyCategory(id: string, cat: TaxonomyCategory): void {
+    const r = this.rows.get(id);
+    if (r) r.cat = cat;
+  }
+}
+
+class FakeClassifier implements CategoryClassifier {
+  async classify(items: { name: string; productType: string }[]): Promise<TaxonomyCategory[]> {
+    return items.map(() => "Other");
+  }
+}
+
+class RecordingLogger implements Logger {
+  events: { level: LogLevel; event: string; fields?: Record<string, unknown> }[] = [];
+  log(level: LogLevel, event: string, fields?: Record<string, unknown>): void {
+    this.events.push({ level, event, ...(fields ? { fields } : {}) });
+  }
+}
+
+describe("runCategorisation", () => {
+  test("completes, classifies all rows, and logs the summary", async () => {
+    const store = new FakeStore();
+    store.seed("a", "Blattsalat", "Salate - Blattsalate"); // rules → Produce
+    store.seed("c", "Mystery", "unknown"); // LLM → Other
+    const logger = new RecordingLogger();
+
+    const result = await runCategorisation({ store, classifier: new FakeClassifier(), logger });
+
+    expect(result.rulesCount).toBe(1);
+    expect(result.llmCount).toBe(1);
+    expect(result.pendingCount).toBe(0);
+    expect(store.findUncategorised()).toHaveLength(0);
+
+    const summary = logger.events.find((e) => e.event === "categorise.run.done");
+    expect(summary).toBeDefined();
+    expect(summary?.fields).toMatchObject({ rulesCount: 1, llmCount: 1, pendingCount: 0 });
+  });
+});

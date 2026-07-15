@@ -34,6 +34,32 @@ export interface UserPreferences {
 /** Dietary classification tag applied at scrape time by catalogue-normalizer. */
 export type DietaryTag = "vegetarian" | "vegan" | "contains-meat" | "contains-fish" | "unknown";
 
+/**
+ * Coarse product taxonomy — the classified shelf/aisle bucket a discount item
+ * belongs to. Assigned by the categorisation context (rules + LLM fallback),
+ * stored in discount_items.taxonomy_category (nullable = not yet classified).
+ * "Other" is the final, unclassifiable bucket (LLM fallback only — rules never emit it).
+ */
+export type TaxonomyCategory =
+  | "Produce" | "Meat & Fish" | "Dairy & Cheese" | "Bakery"
+  | "Pantry" | "Snacks & Sweets" | "Drinks" | "Frozen"
+  | "Household" | "Other";
+
+/** The ONE canonical taxonomy list. Consumers import this — never re-list the literals. */
+export const TAXONOMY_CATEGORIES: readonly TaxonomyCategory[] = [
+  "Produce", "Meat & Fish", "Dairy & Cheese", "Bakery",
+  "Pantry", "Snacks & Sweets", "Drinks", "Frozen", "Household", "Other",
+];
+
+/**
+ * Type guard for taxonomy membership. Needed under strict mode: calling
+ * `TAXONOMY_CATEGORIES.includes(x)` with `x: string` is rejected by the
+ * readonly union's `.includes`, so we widen to `readonly string[]` here.
+ */
+export function isTaxonomyCategory(value: string): value is TaxonomyCategory {
+  return (TAXONOMY_CATEGORIES as readonly string[]).includes(value);
+}
+
 /** ISO date string representing the Monday of a week (e.g. "2026-07-13"). */
 export type WeekStart = string;
 

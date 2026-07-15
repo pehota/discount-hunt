@@ -140,3 +140,36 @@ describe("SQLiteDiscountItemRepository.register", () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// DiscountCategoryStore port — taxonomy_category read/write (categorisation)
+// ---------------------------------------------------------------------------
+
+describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
+  test("fresh item is uncategorised (null via getByWeek); findUncategorised surfaces it with the raw category as productType; setTaxonomyCategory persists and removes it from the uncategorised set", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    // makeItem sets category: "test" — that raw German-source category becomes productType.
+    await repo.register(makeItem("prod", "2026-07-20"), "job-1");
+
+    // 1. Fresh item: taxonomyCategory null via getByWeek.
+    const before = await repo.getByWeek("2026-07-14", "none");
+    const storedBefore = before.find((r) => r.id === "test-store:prod");
+    expect(storedBefore?.taxonomyCategory).toBeNull();
+
+    // 2. findUncategorised returns it; DB `category` is remapped to port `productType`.
+    const uncategorised = repo.findUncategorised();
+    const target = uncategorised.find((r) => r.id === "test-store:prod");
+    expect(target).toBeDefined();
+    expect(target?.productType).toBe("test"); // raw category, NOT taxonomy_category
+
+    // 3. After setTaxonomyCategory: no longer uncategorised; getByWeek shows the new value.
+    repo.setTaxonomyCategory("test-store:prod", "Produce");
+    expect(repo.findUncategorised().map((r) => r.id)).not.toContain("test-store:prod");
+
+    const after = await repo.getByWeek("2026-07-14", "none");
+    const storedAfter = after.find((r) => r.id === "test-store:prod");
+    expect(storedAfter?.taxonomyCategory).toBe("Produce");
+  });
+});

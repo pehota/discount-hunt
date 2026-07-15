@@ -52,6 +52,7 @@ import { AldiSudCatalogueFetcher } from "./adapters/aldi-sud-catalogue-fetcher.t
 import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts";
 import { AiSdkCatalogueExtractor } from "./adapters/ai-sdk-catalogue-extractor.ts";
 import { resolveCatalogueLlm } from "./adapters/catalogue-llm-config.ts";
+import { runCategorisation, buildDeps as buildCategoriseDeps } from "../categorisation/categoriser-runner.ts";
 import { ConsoleLogger, type Logger } from "../shared/logger.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -206,11 +207,17 @@ async function runFakeScrape(): Promise<StoreResult[]> {
 async function main(): Promise<StoreResult[]> {
   const source = process.env.CATALOGUE_SOURCE ?? "live";
 
-  if (source === CATALOGUE_SOURCE_FAKE) {
-    return runFakeScrape();
+  const summary = source === CATALOGUE_SOURCE_FAKE ? await runFakeScrape() : await runLiveScrape();
+
+  // Post-scrape categorisation over all products (NULL-only → only new items).
+  // Isolated: a failure here logs but MUST NOT fail the scrape run.
+  try {
+    await runCategorisation(buildCategoriseDeps());
+  } catch (error) {
+    new ConsoleLogger().log("warn", "categorise.post_scrape.failed", { error: String(error) });
   }
 
-  return runLiveScrape();
+  return summary;
 }
 
 if (import.meta.main) {
