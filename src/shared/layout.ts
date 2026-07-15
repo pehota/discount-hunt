@@ -4,7 +4,7 @@
  * renderPage({ title, activeNav, body }) wraps caller-supplied inner-body markup
  * in a full HTML document: doctype, <head> (charset, viewport, escaped <title>),
  * an inline <style> implementing a clean utility theme (light bg, system-ui font,
- * max-width container, a top .site-nav bar with the brand + four route links, a
+ * max-width container, a top .site-nav bar with the brand + five route links, a
  * responsive .card-grid, and basic table/banner styling), and a top nav with the
  * active page marked.
  *
@@ -15,7 +15,7 @@
 
 import { escapeHtml } from "./html.ts";
 
-export type NavKey = "feed" | "plan" | "savings" | "settings";
+export type NavKey = "feed" | "plan" | "savings" | "list" | "settings";
 
 export interface PageOptions {
   readonly title: string;
@@ -27,6 +27,7 @@ const NAV_ITEMS: ReadonlyArray<{ key: NavKey; href: string; label: string; icon:
   { key: "feed", href: "/", label: "Feed", icon: "🛒" },
   { key: "plan", href: "/plan", label: "Plan", icon: "📋" },
   { key: "savings", href: "/savings", label: "Savings", icon: "💰" },
+  { key: "list", href: "/list", label: "List", icon: "🧾" },
   { key: "settings", href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

@@ -140,6 +140,18 @@ describe("DiscountHandler.handleGet", () => {
     expect(html).toContain("No discounts available this week");
     expect(html).toContain("Generate Meal Plan");
   });
+
+  test("B3: the selection form offers an Add-to-Shopping-List submit alongside Generate", async () => {
+    // The #meal-plan-action section keeps Generate first, then a second submit that
+    // formaction-overrides to /list/add so the SAME checked itemIds POST to the list.
+    const response = await handler.handleGet(makeRequest());
+    const html = await response.text();
+
+    expect(html).toContain(`formaction="/list/add"`);
+    expect(html).toContain("Add to Shopping List");
+    // Generate remains present and unaltered.
+    expect(html).toContain("Generate Meal Plan");
+  });
 });
 
 /**

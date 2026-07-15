@@ -29,12 +29,13 @@ describe("renderPage — shared page shell", () => {
     expect(html).toContain("</style>");
   });
 
-  test("renders a top nav with class=site-nav and all four route links", () => {
+  test("renders a top nav with class=site-nav and all five route links", () => {
     const html = renderPage({ title: "Feed", activeNav: "feed", body: "" });
     expect(html).toContain(`class="site-nav"`);
     expect(html).toMatch(/href="\/"/);
     expect(html).toMatch(/href="\/plan"/);
     expect(html).toMatch(/href="\/savings"/);
+    expect(html).toMatch(/href="\/list"/);
     expect(html).toMatch(/href="\/settings"/);
   });
 
@@ -43,6 +44,7 @@ describe("renderPage — shared page shell", () => {
       { activeNav: "feed", href: "/" },
       { activeNav: "plan", href: "/plan" },
       { activeNav: "savings", href: "/savings" },
+      { activeNav: "list", href: "/list" },
       { activeNav: "settings", href: "/settings" },
     ];
     for (const { activeNav, href } of cases) {

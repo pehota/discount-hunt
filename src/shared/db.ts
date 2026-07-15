@@ -98,6 +98,20 @@ const CREATE_RECIPES = `
   )
 `;
 
+const CREATE_SHOPPING_LIST_ITEMS = `
+  CREATE TABLE IF NOT EXISTS shopping_list_items (
+    id TEXT PRIMARY KEY,
+    week_start TEXT NOT NULL,
+    source TEXT NOT NULL,
+    name TEXT NOT NULL,
+    store TEXT,
+    sale_price_cents INTEGER,
+    regular_price_cents INTEGER,
+    discount_item_id TEXT,
+    added_at INTEGER NOT NULL
+  )
+`;
+
 const PROBE_ID = "__probe__";
 
 export function createDb(dbPath: string): DbClient {
@@ -167,6 +181,7 @@ export function createDb(dbPath: string): DbClient {
 
   sqlite.exec(CREATE_SAVINGS_LOG);
   sqlite.exec(CREATE_RECIPES);
+  sqlite.exec(CREATE_SHOPPING_LIST_ITEMS);
 
   // Write-read-delete probe on scrape_jobs to verify R/W access
   const insert = sqlite.prepare(

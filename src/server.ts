@@ -40,6 +40,9 @@ import { ChefkochRecipeSource } from "./recipe/adapters/chefkoch-recipe-source.t
 import { RecipeService } from "./recipe/recipe-service.ts";
 import { RecipeHandler } from "./recipe/http/recipe-handler.ts";
 import type { RecipeSource } from "./recipe/ports/recipe-source.ts";
+import { SQLiteShoppingListRepository } from "./shopping-list/adapters/sqlite-shopping-list-repository.ts";
+import { ShoppingListService } from "./shopping-list/shopping-list-service.ts";
+import { ShoppingListHandler } from "./shopping-list/http/shopping-list-handler.ts";
 
 export type { ServerConfig, ServerHandle };
 
@@ -68,6 +71,7 @@ export async function createServer(
   const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
   const preferencesRepo = new SQLiteUserPreferencesRepository(db);
   const recipeRepo = new SQLiteRecipeRepository(db);
+  const shoppingListRepo = new SQLiteShoppingListRepository(db);
 
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
@@ -76,6 +80,7 @@ export async function createServer(
   const preferencesService = new PreferencesService(preferencesRepo);
   // Recipe lookup: prod default hits Chefkoch; tests inject a FakeRecipeSource.
   const recipeService = new RecipeService(recipeRepo, config.recipeSource ?? new ChefkochRecipeSource());
+  const shoppingListService = new ShoppingListService(shoppingListRepo, discountService);
 
   // 4. Handlers
   const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo);
@@ -83,6 +88,7 @@ export async function createServer(
   const savingsHandler = new SavingsHandler(savingsService);
   const settingsHandler = new SettingsHandler(preferencesService);
   const recipeHandler = new RecipeHandler(planService, recipeService, discountService, preferencesRepo);
+  const shoppingListHandler = new ShoppingListHandler(shoppingListService);
 
   // 5. Routes
   const server = Bun.serve({
@@ -114,6 +120,15 @@ export async function createServer(
       }
       if (method === "POST" && url.pathname === "/settings") {
         return settingsHandler.handlePost(request);
+      }
+      if (method === "GET" && url.pathname === "/list") {
+        return shoppingListHandler.handleGet(request);
+      }
+      if (method === "POST" && url.pathname === "/list/add") {
+        return shoppingListHandler.handlePostAdd(request);
+      }
+      if (method === "POST" && url.pathname === "/list/remove") {
+        return shoppingListHandler.handlePostRemove(request);
       }
 
       return new Response("Not Found", { status: 404 });

@@ -4,7 +4,7 @@
  * All secondary adapters import from here.
  * Only src/{context}/adapters/sqlite-*.ts files may import this module (enforced by dependency-cruiser D34).
  *
- * Tables: discount_items, meal_plans, savings_log, scrape_jobs
+ * Tables: discount_items, meal_plans, savings_log, scrape_jobs, shopping_list_items
  */
 
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
@@ -64,6 +64,18 @@ export const recipes = sqliteTable("recipes", {
   sourceUrl: text("source_url").notNull(), // url ?? mainEntityOfPage from JSON-LD
   sourceUrlValid: integer("source_url_valid").notNull().default(1), // SQLite boolean (0/1)
   cachedAt: integer("cached_at").notNull(), // ms epoch — canonical freshness, TTL 7 days
+});
+
+export const shoppingListItems = sqliteTable("shopping_list_items", {
+  id: text("id").primaryKey(),
+  weekStart: text("week_start").notNull(), // ISO Monday
+  source: text("source").notNull(), // 'discount' | 'manual'
+  name: text("name").notNull(),
+  store: text("store"), // nullable — manual rows have no store
+  salePriceCents: integer("sale_price_cents"), // nullable — cents snapshot
+  regularPriceCents: integer("regular_price_cents"), // nullable — cents snapshot
+  discountItemId: text("discount_item_id"), // nullable — null for manual rows
+  addedAt: integer("added_at").notNull(), // ms since epoch
 });
 
 export const savingsLog = sqliteTable("savings_log", {

@@ -224,6 +224,7 @@ export class DiscountHandler {
     </section>
     <section id="meal-plan-action">
       <button type="submit" id="generate-meal-plan">Generate Meal Plan</button>
+      <button type="submit" formaction="/list/add">Add to Shopping List</button>
     </section>
   </form>`;
 
