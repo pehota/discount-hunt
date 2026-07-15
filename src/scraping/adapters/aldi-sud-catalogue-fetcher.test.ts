@@ -1,24 +1,30 @@
 /**
  * AldiSudCatalogueFetcher unit tests — PBT with fast-check + stub fetch.
  *
+ * REAL schema (SPIKE 2026-07-15): a hotspots_data.json entry with type:"product"
+ * carries its data in a NESTED products:[] array. A genuine deal = nested
+ * discountedPrice present AND parseFloat(discountedPrice) < parseFloat(price).
+ *
  * Properties tested:
  *   AC2  — slug parsing: given Location header matching pattern, parseSlug extracts slug correctly
- *   AC1/4/5 — filter invariant: only product entries with discountedPrice < price survive
- *   AC3  — pagination stop: fetcher stops after first 404 page and flattens preceding results
+ *   AC1/2 — nested extraction + discount filter: only nested products with discountedPrice < price survive
+ *   AC2  — ISO validUntil: kept items carry customLabel1 = ISO end-of-current-week (Monday+6)
+ *   AC3  — de-overlapped pagination (1-2,3-4,5-6…) + dedupe by nested product id
  *   AC6  — network error: HEAD failure rejects fetchCurrentWeek with structured error
  *
  * Approach:
  *   - parseSlug is an exported pure function — PBT it directly.
- *   - HTTP interactions: stub globalThis.fetch in beforeEach; restore in afterEach.
+ *   - HTTP interactions: stub globalThis.fetch; restore in afterEach.
  *   - Drive AldiSudCatalogueFetcher through fetchCurrentWeek() at the public port.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, afterEach } from "bun:test";
 import fc from "fast-check";
 import {
   AldiSudCatalogueFetcher,
   parseSlug,
 } from "./aldi-sud-catalogue-fetcher.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
 import type { LogLevel, Logger } from "../../shared/logger.ts";
 
 // ── Spy logger for stage-event assertions ─────────────────────────────────────
@@ -42,31 +48,53 @@ class SpyLogger implements Logger {
   }
 }
 
+// ── Expected ISO validUntil = end-of-current-week (Monday + 6 days), UTC ──────
+
+function expectedValidUntil(): string {
+  const monday = new Date(`${currentWeekMonday()}T00:00:00Z`);
+  monday.setUTCDate(monday.getUTCDate() + 6);
+  return monday.toISOString().slice(0, 10);
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-/** Build a raw hotspot entry (product type with genuine discount). */
-function hotspotProduct(overrides: Partial<{
-  type: string;
-  id: string;
-  title: string;
-  brand: string;
-  price: string;
-  discountedPrice: string | undefined;
-  customLabel1: string;
-  productType: string;
-  photoUrls: string[];
-}> = {}) {
-  return {
-    type: "product",
+interface NestedProductOverrides {
+  id?: string;
+  title?: string;
+  price?: string;
+  discountedPrice?: string | undefined;
+  productType?: string;
+  customLabel1?: string;
+  photoUrls?: string[];
+}
+
+/** Build a NESTED product (the real shape carried inside entry.products[]). */
+function nestedProduct(overrides: NestedProductOverrides = {}) {
+  const base = {
     id: "item-001",
     title: "Zucchini",
-    brand: "Aldi",
+    description: "Frische Zucchini",
     price: "2.99",
-    discountedPrice: "1.49",
-    customLabel1: "2026-07-14",
-    productType: "vegetable",
-    photoUrls: [] as string[],
-    ...overrides,
+    discountedPrice: "1.49" as string | undefined,
+    productType: "Gemüse - Zucchini",
+    customLabel1: "13.7.",
+    photoUrls: ["https://img/1.jpg"],
+  };
+  const merged = { ...base, ...overrides };
+  // Allow explicitly dropping discountedPrice (catalogue listing, no deal).
+  if ("discountedPrice" in overrides && overrides.discountedPrice === undefined) {
+    delete (merged as { discountedPrice?: string }).discountedPrice;
+  }
+  return merged;
+}
+
+/** Build a hotspot ENTRY of type:"product" wrapping the given nested products. */
+function productEntry(products: ReturnType<typeof nestedProduct>[]) {
+  return {
+    type: "product",
+    id: "entry-{first_product_title}",
+    title: "{first_product_title}",
+    products,
   };
 }
 
@@ -98,7 +126,7 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-// ── AC2: slug parsing property ────────────────────────────────────────────────
+// ── AC2: slug parsing property (unchanged — parseSlug is untouched) ───────────
 
 describe("parseSlug", () => {
   test("Property: extracts slug from any valid Location header with no slashes in slug", () => {
@@ -131,32 +159,70 @@ describe("parseSlug", () => {
   });
 });
 
-// ── AC1/4/5: filter invariant ─────────────────────────────────────────────────
+// ── AC1: nested extraction + discount filter + ISO validUntil ─────────────────
 
-describe("AldiSudCatalogueFetcher — filter invariant", () => {
-  test("Property: only product entries where discountedPrice < price survive", async () => {
+describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () => {
+  test("returns only the discounted nested product with ISO end-of-week validUntil", async () => {
+    const slug = "kw27-26-op-mp";
+    // One entry with two nested products: one discounted, one catalogue-only (no deal).
+    const entry = productEntry([
+      nestedProduct({ id: "deal-1", price: "0.65", discountedPrice: "0.59", title: "Tomaten" }),
+      nestedProduct({ id: "listing-1", price: "1.19", discountedPrice: undefined, title: "Gurke" }),
+    ]);
+
+    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+      if (opts?.method === "HEAD") {
+        return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
+      }
+      const urlStr = String(url);
+      if (urlStr.includes("/page/1-2/")) return makeResponse(200, [entry]);
+      return makeResponse(404, null);
+    };
+
+    const fetcher = new AldiSudCatalogueFetcher();
+    const result = await fetcher.fetchCurrentWeek();
+
+    // Only the discounted nested product survives.
+    expect(result).toHaveLength(1);
+    const item = result[0] as {
+      id: string;
+      title: string;
+      brand: string;
+      price: string;
+      discountedPrice?: string;
+      customLabel1: string;
+      productType: string;
+      photoUrls: string[];
+    };
+    expect(item.id).toBe("deal-1");
+    expect(item.title).toBe("Tomaten");
+    expect(item.brand).toBe("Aldi Süd");
+    expect(item.price).toBe("0.65");
+    expect(item.discountedPrice).toBe("0.59");
+    // ISO validUntil (end-of-week), NOT the raw German "d.m." start date.
+    expect(item.customLabel1).toBe(expectedValidUntil());
+    expect(item.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(item.photoUrls).toEqual([]);
+  });
+
+  test("Property: only nested products with discountedPrice < price survive, all carrying ISO validUntil", async () => {
     await fc.assert(
       fc.asyncProperty(
-        // Generate a mix of items
         fc.array(
           fc.oneof(
-            // Included: product, discountedPrice < price
+            // Included: discountedPrice < price
             fc.tuple(
               fc.integer({ min: 200, max: 9999 }),
               fc.integer({ min: 1, max: 199 })
-            ).map(([p, dp]) => hotspotProduct({
-              type: "product",
+            ).map(([p, dp]) => nestedProduct({
               price: (p / 100).toFixed(2),
               discountedPrice: (dp / 100).toFixed(2),
             })),
-            // Excluded: banner
-            fc.constant(hotspotProduct({ type: "banner" })),
-            // Excluded: product but discountedPrice absent
-            fc.constant(hotspotProduct({ type: "product", discountedPrice: undefined })),
-            // Excluded: product but discountedPrice >= price
+            // Excluded: no discountedPrice (catalogue listing)
+            fc.constant(nestedProduct({ discountedPrice: undefined })),
+            // Excluded: discountedPrice >= price
             fc.integer({ min: 100, max: 9999 }).map((cents) =>
-              hotspotProduct({
-                type: "product",
+              nestedProduct({
                 price: (cents / 100).toFixed(2),
                 discountedPrice: (cents / 100).toFixed(2), // equal — excluded
               })
@@ -164,40 +230,35 @@ describe("AldiSudCatalogueFetcher — filter invariant", () => {
           ),
           { minLength: 1, maxLength: 20 }
         ),
-        async (items) => {
-          // Setup: stub fetch — HEAD returns slug, page 1 returns items, page 2 returns 404
+        async (products) => {
+          // Assign unique ids so dedupe does not collapse distinct products.
+          const withIds = products.map((p, i) => ({ ...p, id: `p-${i}` }));
           const slug = "kw27-26-op-mp";
-          let callCount = 0;
           globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
-            const urlStr = String(url);
             if (opts?.method === "HEAD") {
               return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
             }
-            callCount++;
-            if (callCount === 1) {
-              return makeResponse(200, items);
-            }
+            const urlStr = String(url);
+            if (urlStr.includes("/page/1-2/")) return makeResponse(200, [productEntry(withIds)]);
             return makeResponse(404, null);
           };
 
           const fetcher = new AldiSudCatalogueFetcher();
           const result = await fetcher.fetchCurrentWeek();
 
-          // All returned items must be: type=product AND have discountedPrice AND dp < p
-          const allValid = result.every((item: unknown) => {
-            const h = item as typeof items[0];
+          const iso = expectedValidUntil();
+          const allValid = result.every((raw: unknown) => {
+            const h = raw as { discountedPrice?: string; price: string; customLabel1: string };
             return (
-              h.type === "product" &&
               h.discountedPrice !== undefined &&
               h.discountedPrice !== "" &&
-              parseFloat(h.discountedPrice) < parseFloat(h.price)
+              parseFloat(h.discountedPrice) < parseFloat(h.price) &&
+              h.customLabel1 === iso
             );
           });
 
-          // Count of expected-to-survive items: type=product AND dp present AND dp < p
-          const expectedCount = items.filter(
+          const expectedCount = withIds.filter(
             (i) =>
-              i.type === "product" &&
               i.discountedPrice !== undefined &&
               (i.discountedPrice as string) !== "" &&
               parseFloat(i.discountedPrice as string) < parseFloat(i.price)
@@ -211,37 +272,63 @@ describe("AldiSudCatalogueFetcher — filter invariant", () => {
   });
 });
 
-// ── AC3: pagination stop on 404 ───────────────────────────────────────────────
+// ── AC3: de-overlapped pagination + dedupe ────────────────────────────────────
 
 describe("AldiSudCatalogueFetcher — pagination", () => {
-  test("Stops after first 404 and returns flattened items from preceding pages", async () => {
+  test("fetches non-overlapping page ranges (1-2, 3-4, …) and stops after first 404", async () => {
     const slug = "kw27-26-op-mp";
-    const page1Items = [hotspotProduct({ id: "p1" }), hotspotProduct({ id: "p2" })];
-    const page2Items = [hotspotProduct({ id: "p3" })];
+    const page1 = [productEntry([nestedProduct({ id: "p1", price: "2.00", discountedPrice: "1.00" })])];
+    const page2 = [productEntry([nestedProduct({ id: "p3", price: "2.00", discountedPrice: "1.00" })])];
 
-    let pageRequests: string[] = [];
+    const pageRequests: string[] = [];
     globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
-      const urlStr = String(url);
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
+      const urlStr = String(url);
       pageRequests.push(urlStr);
-      if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1Items);
-      if (urlStr.includes("/page/2-3/")) return makeResponse(200, page2Items);
+      if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
+      if (urlStr.includes("/page/3-4/")) return makeResponse(200, page2);
       return makeResponse(404, null);
     };
 
     const fetcher = new AldiSudCatalogueFetcher();
     const result = await fetcher.fetchCurrentWeek();
 
-    // Should have items from pages 1 and 2 (page 3 → 404, stop)
     const ids = result.map((i: unknown) => (i as { id: string }).id);
     expect(ids).toContain("p1");
-    expect(ids).toContain("p2");
     expect(ids).toContain("p3");
-    // Page 3 was requested (returned 404, causing stop) but page 4 was not
+
+    // De-overlapped stepping: 1-2 then 3-4 then 5-6 (404, stop). NO overlap (no 2-3).
+    expect(pageRequests.some((u) => u.includes("/page/1-2/"))).toBe(true);
     expect(pageRequests.some((u) => u.includes("/page/3-4/"))).toBe(true);
+    expect(pageRequests.some((u) => u.includes("/page/5-6/"))).toBe(true);
+    expect(pageRequests.some((u) => u.includes("/page/2-3/"))).toBe(false);
     expect(pageRequests.some((u) => u.includes("/page/4-5/"))).toBe(false);
+    expect(pageRequests.some((u) => u.includes("/page/7-8/"))).toBe(false);
+  });
+
+  test("dedupes nested products by id across pages", async () => {
+    const slug = "kw27-26-op-mp";
+    // Same product id "dup" appears on two different pages.
+    const dup = nestedProduct({ id: "dup", price: "2.00", discountedPrice: "1.00" });
+    const unique = nestedProduct({ id: "unique", price: "3.00", discountedPrice: "1.50" });
+
+    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+      if (opts?.method === "HEAD") {
+        return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
+      }
+      const urlStr = String(url);
+      if (urlStr.includes("/page/1-2/")) return makeResponse(200, [productEntry([dup, unique])]);
+      if (urlStr.includes("/page/3-4/")) return makeResponse(200, [productEntry([dup])]);
+      return makeResponse(404, null);
+    };
+
+    const fetcher = new AldiSudCatalogueFetcher();
+    const result = await fetcher.fetchCurrentWeek();
+
+    const ids = result.map((i: unknown) => (i as { id: string }).id).sort();
+    expect(ids).toEqual(["dup", "unique"]);
   });
 
   test("Returns empty array when page 1 immediately returns 404", async () => {
@@ -265,7 +352,11 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
 
   test("emits slug, per-page, and fetched events with counts", async () => {
     const slug = "kw27-26-op-mp";
-    const page1 = [hotspotProduct({ id: "p1" }), hotspotProduct({ id: "p2" })];
+    // One entry, two nested products, both discounted → rawTotal=2, kept=2.
+    const page1 = [productEntry([
+      nestedProduct({ id: "p1", price: "2.00", discountedPrice: "1.00" }),
+      nestedProduct({ id: "p2", price: "2.00", discountedPrice: "1.00" }),
+    ])];
     globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
@@ -281,19 +372,20 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
 
     expect(spy.find("scrape.aldi.slug")!.fields.slug).toBe(slug);
     const page = spy.find("scrape.aldi.page")!;
+    // count = nested products flattened this page (2 nested products in the single entry).
     expect(page.fields).toMatchObject({ page: 1, count: 2 });
     const fetched = spy.find("scrape.aldi.fetched")!;
     expect(fetched.fields).toMatchObject({ rawTotal: 2, kept: 2 });
   });
 
-  test("emits zero_kept WARN when raw entries exist but none survive the filter", async () => {
+  test("emits zero_kept WARN when raw products exist but none survive the filter", async () => {
     const slug = "kw27-26-op-mp";
-    // 3 raw entries, all excluded (banners) → rawTotal>0, kept===0 → drift warning.
-    const page1 = [
-      hotspotProduct({ type: "banner" }),
-      hotspotProduct({ type: "banner" }),
-      hotspotProduct({ type: "banner" }),
-    ];
+    // 3 nested products, all catalogue-only (no discountedPrice) → rawTotal>0, kept===0.
+    const page1 = [productEntry([
+      nestedProduct({ id: "a", discountedPrice: undefined }),
+      nestedProduct({ id: "b", discountedPrice: undefined }),
+      nestedProduct({ id: "c", discountedPrice: undefined }),
+    ])];
     globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
@@ -315,9 +407,12 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
     expect(String(zeroKept!.fields.hint)).toContain("schema drift");
   });
 
-  test("does NOT emit zero_kept when at least one item is kept", async () => {
+  test("does NOT emit zero_kept when at least one product is kept", async () => {
     const slug = "kw27-26-op-mp";
-    const page1 = [hotspotProduct({ id: "p1" }), hotspotProduct({ type: "banner" })];
+    const page1 = [productEntry([
+      nestedProduct({ id: "p1", price: "2.00", discountedPrice: "1.00" }),
+      nestedProduct({ id: "p2", discountedPrice: undefined }),
+    ])];
     globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
@@ -335,7 +430,7 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
   });
 });
 
-// ── AC6: HEAD network error rejects ──────────────────────────────────────────
+// ── AC6: HEAD network error rejects (unchanged) ───────────────────────────────
 
 describe("AldiSudCatalogueFetcher — network error", () => {
   test("Rejects with structured error when HEAD request throws", async () => {
