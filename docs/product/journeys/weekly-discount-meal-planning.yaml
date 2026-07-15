@@ -70,6 +70,16 @@ steps:
       - "No discounts match dietary restrictions: show 'No compatible discounts found this week' with manual refresh option"
       - "One store unavailable: show available stores only, indicate which store is missing"
 
+    usability:
+      # Added by feature discount-hunt-ui (2026-07-15). Presentation dimension only —
+      # the feed already ships (grouped by store, was/sale price, staleness warnings).
+      mobile_readability: >
+        Feed must be readable at 375px with no horizontal scroll (site nav + card-grid).
+        Card-grid already collapses to single column; nav responsiveness is the risk (SLICE-01).
+      glanceability: >
+        Each card should show the explicit per-item saving (save €X) so the deal is legible
+        without mental arithmetic — matches the mockup "save €0.80" (SLICE-04).
+
     gherkin: |
       Scenario: Dimitar sees this week's discount feed on Monday
         Given it is Monday and the weekly scraper has completed successfully
@@ -79,6 +89,12 @@ steps:
         And each item shows both the sale price and the original regular price
         And a "Last refreshed" timestamp shows when the data was fetched
         And a "Generate Meal Plan" button is visible
+
+      Scenario: Dimitar reads the discount feed on his phone (UI polish — feature discount-hunt-ui)
+        Given Dimitar opens the app on a 375px-wide phone screen
+        When the discount feed renders
+        Then the site navigation and discount cards fit the screen width with no horizontal scroll
+        And each discount card shows an explicit "save €X" amount
 
       Scenario: Discount feed is stale due to scraper failure
         Given the weekly scraper has not run successfully in the past 5 days
@@ -140,6 +156,17 @@ steps:
       - "No compatible recipe found for a discounted item: skip that item from plan; log for future recipe expansion"
       - "Dietary restriction yields zero valid meals: show error 'Cannot generate plan with current restrictions — consider relaxing restrictions or checking settings'"
 
+    usability:
+      # Added by feature discount-hunt-ui (2026-07-15). Presentation dimension only.
+      discount_visibility: >
+        Each planned meal that uses a discounted item must show that item's store and sale
+        price INLINE in the plan (currently only visible after clicking into recipe detail).
+        This is what makes the plan feel discount-driven at the accept/regenerate moment (SLICE-02).
+      mobile_readability: >
+        The plan table must be readable at 375px with no horizontal scroll. Adding per-meal
+        store + price WIDENS the table, so the mobile-survivable layout (SLICE-01) must land
+        first; the added content stacks rather than overflows.
+
     gherkin: |
       Scenario: Dimitar generates a 7-day meal plan driven by this week's discounts
         Given the discount feed contains at least 5 items compatible with Dimitar's dietary restrictions
@@ -148,6 +175,13 @@ steps:
         And at least 70% of meals highlight a discounted ingredient
         And no meal contains ingredients excluded by Dimitar's dietary restrictions
         And an estimated weekly savings amount is shown in euros
+
+      Scenario: Dimitar sees the discount behind each meal without leaving the plan (UI polish — feature discount-hunt-ui)
+        Given a meal plan has been generated and at least one meal uses a discounted item
+        When Dimitar views the plan
+        Then each meal that uses a discounted item shows that item's store and sale price inline
+        And meals that use no discounted item are visually differentiated
+        And the plan is readable at 375px with no horizontal scroll
 
       Scenario: Dietary restrictions filter the plan correctly
         Given Dimitar has "vegetarian" set as his dietary restriction
@@ -255,6 +289,17 @@ steps:
       - "First week (no history): show 'This is your first week — history will build over time' with current week only"
       - "No prices captured (scraper missing regular_price): show 'Savings comparison unavailable — regular prices not captured this week'"
 
+    usability:
+      # Added by feature discount-hunt-ui (2026-07-15). Presentation dimension only.
+      headline_emphasis: >
+        The weekly SAVED figure must be the visually dominant, first element on the page
+        (currently the third equal-weight line after Paid / Would-have-paid). The payoff of
+        JOB-002 only lands emotionally if the saved number is the hero (SLICE-03).
+      mobile_readability: >
+        The SAVED hero figure must be legible above the fold at 375px with no horizontal scroll.
+        The load-bearing data-* attributes (data-week-saved, data-saved-amount, data-month-to-date)
+        must survive any presentation change (D23 acceptance-suite structural assertions).
+
     gherkin: |
       Scenario: Dimitar reviews his savings after the first week
         Given a meal plan was generated and the discount data included regular prices
@@ -262,6 +307,12 @@ steps:
         Then this week's total savings are displayed in euros
         And the comparison between total sale prices and total regular prices is visible
         And a savings history section is shown (even if it contains only the current week)
+
+      Scenario: Dimitar registers his savings at a glance on his phone (UI polish — feature discount-hunt-ui)
+        Given Dimitar has at least one week of savings recorded
+        When he opens the Savings page on a 375px-wide phone screen
+        Then the weekly SAVED amount is the first and most prominent figure on the page
+        And it is legible above the fold with no horizontal scroll
 
       Scenario: Savings history grows over multiple weeks
         Given Dimitar has used the app for 3 consecutive weeks
@@ -285,3 +336,10 @@ changelog:
   - date: "2026-07-13"
     feature: "discount-hunt"
     change: "Initial journey schema bootstrapped during DISCUSS wave (greenfield)"
+  - date: "2026-07-15"
+    feature: "discount-hunt-ui"
+    change: >
+      Added a usability (presentation) dimension to steps 1, 2, and 4 and one UI-polish
+      Gherkin scenario per step. Flow is unchanged — this feature polishes the already-shipped
+      shell (styled layout + responsive card-grid, phases 05–08) for mobile readability and
+      glanceability. Step 3 (recipe detail) already ships store+price inline; no delta added.

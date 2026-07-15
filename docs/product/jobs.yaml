@@ -50,6 +50,13 @@ jobs:
         Extremely high importance (weekly recurring pain, real monetary impact) and
         nearly zero satisfaction with current manual process. Strongest opportunity
         in the product scope.
+    usability_criteria:
+      # Added by feature discount-hunt-ui (2026-07-15). Solution-quality ACs on the EXISTING
+      # job — NOT a new job. The function ships; these raise the presentation bar for the
+      # Monday planning moment on Dimitar's own devices (incl. phone).
+      - "Discount feed and meal plan are readable at 375px with no horizontal scroll"
+      - "Each planned meal that uses a discounted item shows its store + sale price inline (0 clicks)"
+      - "Each discount card shows an explicit per-item saving amount (save €X)"
 
   - id: JOB-002
     title: "Track actual grocery savings vs full price"
@@ -88,6 +95,10 @@ jobs:
       rationale: >
         High importance as a motivational reinforcer; zero current satisfaction since
         no tracking exists. Strong opportunity, second after JOB-001.
+    usability_criteria:
+      # Added by feature discount-hunt-ui (2026-07-15). Solution-quality AC on the EXISTING job.
+      - "The weekly SAVED figure is the first and most prominent element on the Savings page,
+        legible above the fold at 375px (the emotional payoff must land at a glance)"
 
   - id: JOB-003
     title: "Ensure meal plan respects dietary restrictions"

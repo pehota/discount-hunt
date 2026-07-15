@@ -35,6 +35,12 @@ vocabulary:
 technical_profile:
   - Software engineer: comfortable with the app's internals
   - Will tolerate rough UI in v1 if core function works
+  - "v2 (feature discount-hunt-ui, 2026-07-15): core function is now production-validated;
+    with the function proven, the UI-tolerance no longer applies for the weekly-planning moment.
+    Dimitar now expects the Monday planning flow to be readable and glanceable on his own
+    devices INCLUDING his phone (375px) — no horizontal scroll, saved figure and per-meal
+    discount visible without hunting. This is a solution-quality expectation on the EXISTING
+    jobs (JOB-001/002/003), not a new job or a new in-store circumstance."
   - May inspect raw data directly if needed
   - Expected to run the app locally; no multi-user requirements
 
