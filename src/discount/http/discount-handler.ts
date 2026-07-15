@@ -48,9 +48,15 @@ document.addEventListener('DOMContentLoaded', function () {
   var overviewCount = bar.querySelector('.selection-overview-count');
   var overviewToggle = bar.querySelector('.selection-overview-toggle');
   var form = document.querySelector('.selection-form');
+  var toast = document.querySelector('.feed-toast');
+  var overviewAdd = bar.querySelector('.selection-overview-add');
+  var overviewGenerate = bar.querySelector('.selection-overview-generate');
+  var nativeAdd = document.querySelector('#meal-plan-action button[formaction="/list/add"]');
 
   var activeStore = '__all__';
   var query = '';
+  var checkedCount = 0;
+  var toastTimer = null;
 
   function applyFilters() {
     var groups = document.querySelectorAll('#discount-items .store-group[data-store]');
@@ -87,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function refreshSelection() {
     var checkboxes = document.querySelectorAll('input[name="itemIds"]');
-    var checkedCount = 0;
+    checkedCount = 0;
     if (overviewList) { overviewList.textContent = ''; }
     for (var i = 0; i < checkboxes.length; i++) {
       var checkbox = checkboxes[i];
@@ -110,6 +116,34 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
     if (overviewCount) { overviewCount.textContent = 'Selected (' + checkedCount + ')'; }
+    if (overviewAdd) { overviewAdd.disabled = checkedCount === 0; }
+    if (overviewGenerate) { overviewGenerate.disabled = checkedCount === 0; }
+  }
+
+  function showToast(n) {
+    if (!toast) return;
+    if (toastTimer) { clearTimeout(toastTimer); }
+    toast.textContent = 'Added ' + n + ' item(s) to your list';
+    toast.hidden = false;
+    toastTimer = setTimeout(function () {
+      toast.hidden = true;
+      toast.textContent = '';
+      toastTimer = null;
+    }, 3000);
+  }
+
+  function addToList() {
+    if (checkedCount === 0) return;
+    if (!form) return;
+    var n = checkedCount;
+    var body = new URLSearchParams(new FormData(form));
+    fetch('/list/add', {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'fetch' },
+      body: body,
+    }).then(function (res) {
+      if (res.ok) { showToast(n); }
+    });
   }
 
   bar.addEventListener('click', function (e) {
@@ -162,6 +196,31 @@ document.addEventListener('DOMContentLoaded', function () {
     overviewToggle.addEventListener('click', function () {
       var expanded = overview.classList.toggle('expanded');
       overviewToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    });
+  }
+
+  // Entry point 1: intercept the native "Add to Shopping List" submit → async add.
+  // Hide it once enhanced so it isn't duplicated (it stays in the no-JS DOM).
+  if (nativeAdd) {
+    nativeAdd.addEventListener('click', function (e) {
+      e.preventDefault();
+      addToList();
+    });
+    nativeAdd.hidden = true;
+  }
+
+  // Entry point 2: overview "Add to Shopping List" action → async add.
+  if (overviewAdd) {
+    overviewAdd.addEventListener('click', function () { addToList(); });
+  }
+
+  // Entry point 3: overview "Generate Meal Plan" action. The overview lives OUTSIDE
+  // the selection form, so requestSubmit() (no submitter) posts the form's default
+  // action (/plan/generate) → normal navigation to /plan.
+  if (overviewGenerate && form) {
+    overviewGenerate.addEventListener('click', function () {
+      if (checkedCount === 0) return;
+      form.requestSubmit();
     });
   }
 
@@ -226,7 +285,8 @@ export class DiscountHandler {
       <button type="submit" id="generate-meal-plan">Generate Meal Plan</button>
       <button type="submit" formaction="/list/add">Add to Shopping List</button>
     </section>
-  </form>`;
+  </form>
+  <div class="feed-toast" role="status" aria-live="polite" hidden></div>`;
 
     const html = renderPage({
       title: "Discount Hunt — Weekly Deals",
@@ -279,6 +339,10 @@ export class DiscountHandler {
           <span class="selection-overview-count" aria-live="polite">Selected (0)</span>
         </button>
         <ul id="selection-overview-list" class="selection-overview-list"></ul>
+        <div class="selection-overview-actions">
+          <button type="button" class="selection-overview-add" disabled>Add to Shopping List</button>
+          <button type="button" class="selection-overview-generate" disabled>Generate Meal Plan</button>
+        </div>
       </section>
     </div>
     <p class="filter-status" aria-live="polite">Showing: All (${total})</p>

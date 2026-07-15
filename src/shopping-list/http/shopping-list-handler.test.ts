@@ -33,10 +33,10 @@ function thisWeekValidUntil(): string {
   return monday.toISOString().slice(0, 10);
 }
 
-function postForm(path: string, body: string): Request {
+function postForm(path: string, body: string, headers?: Record<string, string>): Request {
   return new Request(`http://localhost${path}`, {
     method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
+    headers: { "content-type": "application/x-www-form-urlencoded", ...headers },
     body,
   });
 }
@@ -140,5 +140,43 @@ describe("ShoppingListHandler", () => {
     expect(res.status).toBe(303);
     const html = await bodyText(await handler.handleGet(new Request("http://localhost/list")));
     expect(html).toContain(`class="empty-state"`);
+  });
+
+  // ── Async (X-Requested-With: fetch) response contract ─────────────────────
+  // The overview action-hub POSTs itemIds via fetch with X-Requested-With: fetch.
+  // The handler MUST answer 204 No Content (no Location) so the SPA-ish flow stays
+  // on the feed, while STILL adding the item (assert via a subsequent GET /list).
+
+  test("B7: POST itemIds WITH X-Requested-With:fetch → 204, no Location, item still added", async () => {
+    const addRes = await handler.handlePostAdd(
+      postForm("/list/add", "itemIds=aldi:z1", { "X-Requested-With": "fetch" }),
+    );
+    expect(addRes.status).toBe(204);
+    expect(addRes.headers.get("Location")).toBeNull();
+
+    const html = await bodyText(await handler.handleGet(new Request("http://localhost/list")));
+    expect(html).toContain("Zucchini");
+    expect(html).toContain("Total €0.99");
+  });
+
+  test("B8: POST name(+price) WITH X-Requested-With:fetch → 204, no Location, manual row appears", async () => {
+    const addRes = await handler.handlePostAdd(
+      postForm("/list/add", "name=Bread&price=1.49", { "X-Requested-With": "fetch" }),
+    );
+    expect(addRes.status).toBe(204);
+    expect(addRes.headers.get("Location")).toBeNull();
+
+    const html = await bodyText(await handler.handleGet(new Request("http://localhost/list")));
+    expect(html).toContain(`class="list-item-name">Bread`);
+    expect(html).toContain("added by you");
+    expect(html).toContain("Total €1.49");
+  });
+
+  test("B9: POST itemIds WITHOUT the header still 303 → /list (sync baseline preserved)", async () => {
+    // Contrast to B7 with the same body but no X-Requested-With header: the no-JS
+    // baseline must keep the Post/Redirect/Get 303 → /list contract.
+    const addRes = await handler.handlePostAdd(postForm("/list/add", "itemIds=aldi:z1"));
+    expect(addRes.status).toBe(303);
+    expect(addRes.headers.get("Location")).toBe("/list");
   });
 });

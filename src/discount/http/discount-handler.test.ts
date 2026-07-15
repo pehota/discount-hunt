@@ -355,3 +355,79 @@ describe("DiscountHandler feed enhancements", () => {
     expect(html).toMatch(/<ul[^>]*id="selection-overview-list"/);
   });
 });
+
+/**
+ * Feed action-hub — server-rendered contract for the selection-overview action
+ * buttons and the toast live-region. These are STATIC markup (present at load),
+ * bound/enhanced by the inline controller. The interactive fetch+toast flow is
+ * verified in-browser by the orchestrator; here we assert ONLY the static markup.
+ *
+ * # bypass: single-shot server-rendered markup contract (class + label + role),
+ * not an equivalence-class invariant — property-framing adds no coverage.
+ */
+describe("DiscountHandler feed action-hub", () => {
+  const VU = thisWeekValidUntil();
+
+  async function seed(service: DiscountService, store: string, count: number, jobId: string): Promise<void> {
+    for (let i = 0; i < count; i++) {
+      await service.registerDiscountItem(
+        {
+          externalId: `${store}-${i}`,
+          store,
+          name: `${store} item ${i}`,
+          category: "vegetable",
+          regularPrice: 200 + i,
+          salePrice: 100 + i,
+          validUntil: VU,
+          dietaryTags: ["vegan"],
+        },
+        jobId,
+      );
+    }
+  }
+
+  test("overview renders TWO static action buttons (add + generate) with stable classes, disabled at load", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    await seed(service, "Edeka", 2, "job-e");
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Add-to-list overview action: stable class + label, starts disabled (count 0).
+    const addBtn = html.match(/<button[^>]*class="selection-overview-add"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
+    expect(addBtn).toContain("selection-overview-add");
+    expect(addBtn).toContain("Add to Shopping List");
+    expect(addBtn).toContain("disabled");
+
+    // Generate-meal-plan overview action: stable class + label, starts disabled.
+    const genBtn = html.match(/<button[^>]*class="selection-overview-generate"[^>]*>[^<]*<\/button>/)?.[0] ?? "";
+    expect(genBtn).toContain("selection-overview-generate");
+    expect(genBtn).toContain("Generate Meal Plan");
+    expect(genBtn).toContain("disabled");
+
+    // Both overview buttons live inside the .selection-overview <section>.
+    const overview = html.match(/<section[^>]*class="selection-overview"[\s\S]*?<\/section>/)?.[0] ?? "";
+    expect(overview).toContain("selection-overview-add");
+    expect(overview).toContain("selection-overview-generate");
+
+    // Native #meal-plan-action buttons remain the no-JS baseline (distinct, still present).
+    expect(html).toContain(`formaction="/list/add"`);
+    expect(html).toContain(`id="generate-meal-plan"`);
+  });
+
+  test("feed body carries a toast live-region (role=status, feed-toast class, hidden at load)", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    await seed(service, "Edeka", 1, "job-e");
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const toast = html.match(/<div[^>]*class="feed-toast"[^>]*>|<div[^>]*feed-toast[^>]*>/)?.[0] ?? "";
+    expect(toast).toContain("feed-toast");
+    expect(toast).toContain(`role="status"`);
+    expect(toast).toContain(`aria-live="polite"`);
+    expect(toast).toContain("hidden");
+  });
+});

@@ -43,6 +43,16 @@ function redirectToList(): Response {
   return new Response(null, { status: 303, headers: { Location: "/list" } });
 }
 
+/**
+ * Add-result response: a bodyless 204 (no Location) for async fetch callers so the
+ * page stays put, else the Post/Redirect/Get 303 → /list. One helper routes all
+ * three exit paths of handlePostAdd — the branch logic never duplicates it.
+ */
+function respond(wantsAsync: boolean): Response {
+  if (wantsAsync) return new Response(null, { status: 204 });
+  return redirectToList();
+}
+
 /** Renders the source line: the escaped store, or the literal "added by you" for manual rows. */
 function renderSource(item: ShoppingListItem): string {
   if (item.source === "manual") return `<span class="list-item-source">added by you</span>`;
@@ -110,17 +120,20 @@ export class ShoppingListHandler {
   }
 
   async handlePostAdd(request: Request): Promise<Response> {
+    // Async callers (the feed action-hub fetch) send X-Requested-With: fetch and
+    // want a bodyless 204 so the page stays put; the no-JS baseline gets a 303 → /list.
+    const wantsAsync = request.headers.get("X-Requested-With") === "fetch";
     const form = new URLSearchParams(await request.text());
     const ids = form.getAll("itemIds").filter((id) => id.trim() !== "");
     if (ids.length > 0) {
       await this.service.addFromDiscountSelection(ids);
-      return redirectToList();
+      return respond(wantsAsync);
     }
     const name = form.get("name");
     if (name !== null && name.trim() !== "") {
       this.service.addManualItem(name.trim(), parsePriceCents(form.get("price")));
     }
-    return redirectToList();
+    return respond(wantsAsync);
   }
 
   async handlePostRemove(request: Request): Promise<Response> {

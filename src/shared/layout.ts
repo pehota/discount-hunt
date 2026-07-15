@@ -286,6 +286,57 @@ const STYLE = `
       cursor: pointer;
     }
 
+    /* Overview action buttons (add-to-list / generate) — sit under the deselect list
+       inside the dropdown overlay. Reuse the light overview-entry look. */
+    .selection-overview-actions {
+      display: grid;
+      gap: var(--sp-2);
+      margin-top: var(--sp-2);
+    }
+    .selection-overview-actions button {
+      width: 100%;
+      min-height: var(--tap);
+      font-size: var(--fs-sm);
+      font-weight: 600;
+    }
+    .selection-overview-add {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--r-sm);
+    }
+    .selection-overview-generate {
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      border-radius: var(--r-sm);
+    }
+    .selection-overview-actions button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ── Feed toast (live region) ─────────────────────────────────────────
+       Fixed above the mobile tab bar, inset left/right so it can NEVER cause
+       375px horizontal overflow. z-index above the overview dropdown (60) and
+       nav (100). Hidden when [hidden]. Desktop centers with a max-width. */
+    .feed-toast {
+      position: fixed;
+      bottom: calc(var(--tabbar-h) + var(--sp-3));
+      left: var(--sp-4);
+      right: var(--sp-4);
+      z-index: 200;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--r-md);
+      box-shadow: var(--shadow-md);
+      padding: var(--sp-3) var(--sp-4);
+      font-weight: 600;
+      font-size: var(--fs-sm);
+      text-align: center;
+    }
+    .feed-toast[hidden] { display: none; }
+
     /* No-match empty state (toggled by the client controller). */
     .no-match-state {
       text-align: center;
@@ -643,6 +694,15 @@ const STYLE = `
 
       button, .btn-primary { width: auto; }
       #meal-plan-action .btn-primary { width: auto; }
+
+      /* Toast: centered pill with a bounded width on desktop. */
+      .feed-toast {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        max-width: 420px;
+        width: max-content;
+      }
     }
 `;
 
