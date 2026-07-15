@@ -82,6 +82,18 @@ const CREATE_SAVINGS_LOG = `
   )
 `;
 
+const CREATE_RECIPES = `
+  CREATE TABLE IF NOT EXISTS recipes (
+    id TEXT PRIMARY KEY,
+    query_key TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    cached_content TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    source_url_valid INTEGER NOT NULL DEFAULT 1,
+    cached_at INTEGER NOT NULL
+  )
+`;
+
 const PROBE_ID = "__probe__";
 
 export function createDb(dbPath: string): DbClient {
@@ -125,6 +137,7 @@ export function createDb(dbPath: string): DbClient {
   }
 
   sqlite.exec(CREATE_SAVINGS_LOG);
+  sqlite.exec(CREATE_RECIPES);
 
   // Write-read-delete probe on scrape_jobs to verify R/W access
   const insert = sqlite.prepare(

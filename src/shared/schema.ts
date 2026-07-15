@@ -52,6 +52,16 @@ export const userSettings = sqliteTable("user_settings", {
   updatedAt: integer("updated_at").notNull(), // ms since epoch
 });
 
+export const recipes = sqliteTable("recipes", {
+  id: text("id").primaryKey(),
+  queryKey: text("query_key").notNull().unique(), // normalized meal/ingredient name; cache-by-query
+  name: text("name").notNull(),
+  cachedContent: text("cached_content").notNull(), // JSON { ingredients: string[], steps: string[] } — NOT NULL
+  sourceUrl: text("source_url").notNull(), // url ?? mainEntityOfPage from JSON-LD
+  sourceUrlValid: integer("source_url_valid").notNull().default(1), // SQLite boolean (0/1)
+  cachedAt: integer("cached_at").notNull(), // ms epoch — canonical freshness, TTL 7 days
+});
+
 export const savingsLog = sqliteTable("savings_log", {
   id: text("id").primaryKey(),
   planId: text("plan_id").notNull(),
