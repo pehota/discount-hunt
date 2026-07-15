@@ -378,13 +378,14 @@ export class DiscountHandler {
         const badge = pct > 0
           ? `<span class="savings-badge" aria-label="save ${pct} percent">−${pct}%</span>`
           : "";
-        // Selection checkbox — checked by default so Generate uses ALL items unless the
-        // user deselects. The <label> (associated via for/id) toggles it; a ≥44px tap
-        // target comes from CSS. The checkbox is independent of the filter: the filter JS
-        // only sets .hidden on sections, so a hidden card's checkbox STILL submits.
+        // Selection checkbox — UNCHECKED by default: nothing is preselected, so Generate
+        // hits the server-side no-selection guard until the user opts items in. The <label>
+        // (associated via for/id) toggles it; a ≥44px tap target comes from CSS. The
+        // checkbox is independent of the filter: the filter JS only sets .hidden on
+        // sections, so a hidden card's checkbox STILL submits when checked.
         const inputId = `select-${escapeHtml(item.id)}`;
         const selection = `<label class="card-select" for="${inputId}">
-          <input type="checkbox" id="${inputId}" name="itemIds" value="${escapeHtml(item.id)}" checked>
+          <input type="checkbox" id="${inputId}" name="itemIds" value="${escapeHtml(item.id)}">
           <span class="card-select-text">Include</span>
         </label>`;
         return `

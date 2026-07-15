@@ -220,11 +220,14 @@ const STYLE = `
     }
 
     /* ── Selection overview (feed) ────────────────────────────────────────
-       ONE DOM node; CSS repositions per breakpoint. Mobile (default): renders
-       below the filter bar (it is a sibling AFTER the pills row in the DOM), the
-       list is collapsed and revealed via .expanded (toggle button). The list
-       scrolls internally and items wrap → never causes 375px PAGE h-overflow. */
-    .selection-overview { margin-top: var(--sp-2); }
+       ONE DOM node; a fixed-height "Selected (N)" toggle whose list opens as an
+       ABSOLUTELY-POSITIONED overlay (dropdown) on BOTH breakpoints. Because the
+       list is out of flow, the overview's in-flow footprint is always just the
+       toggle height — opening/closing or adding/removing items NEVER reflows the
+       pills, "Showing:" status, or search input. Default closed (matches the
+       markup's aria-expanded="false"). The list scrolls internally and items wrap
+       → never causes 375px PAGE h-overflow. */
+    .selection-overview { position: relative; margin-top: var(--sp-2); }
     .selection-overview-toggle {
       /* Override the global primary button: a lighter, full-width summary row. */
       width: 100%;
@@ -243,8 +246,23 @@ const STYLE = `
     .selection-overview-list {
       list-style: none;
       padding: 0;
-      margin: var(--sp-2) 0 0;
-      display: none;                       /* collapsed on mobile by default */
+      margin: 0;
+      display: none;                       /* closed by default (both breakpoints) */
+      /* Absolute overlay under the toggle: floats OVER the content below so its
+         size never changes the flow footprint. Opaque bg + border + shadow + z-index
+         so card text below never bleeds through; left/right:0 (full parent width) =
+         no horizontal spill at 375px. */
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      z-index: 60;
+      margin-top: var(--sp-1);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      box-shadow: var(--shadow-md);
+      padding: var(--sp-2);
       max-height: 40vh;
       overflow-y: auto;
     }
@@ -590,16 +608,15 @@ const STYLE = `
         gap: var(--sp-4);
       }
       .filter-bar-row .filter-pills { flex: 1 1 auto; min-width: 0; }
+      /* Desktop: fixed-height toggle sits right of the pills; its list still opens
+         as the absolute overlay (never grows the row → no reflow). Bounded width so
+         the dropdown does not span the whole row. */
       .filter-bar-row .selection-overview {
         flex: 0 0 auto;
         width: 260px;
         max-width: 40%;
         margin-top: 0;
       }
-      /* Desktop: the toggle is a static header, the list is ALWAYS visible. */
-      .selection-overview-toggle { cursor: default; }
-      .selection-overview-list { display: block; max-height: 260px; }
-      .selection-overview.expanded .selection-overview-list { display: block; }
 
       /* Real table on desktop */
       table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }

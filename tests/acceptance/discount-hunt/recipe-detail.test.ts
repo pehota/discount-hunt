@@ -223,14 +223,16 @@ function seedStaleRecipeRow(
 }
 
 /**
- * Extract the CHECKED itemIds from the rendered feed (GET /) exactly as a browser
- * would submit them. Faithful browser simulation: the feed is restriction-filtered,
- * so this yields precisely the ids the user would send by clicking Generate.
+ * Extract every itemIds checkbox value from the rendered feed (GET /), simulating a
+ * user who checks all shown boxes before clicking Generate. Checkboxes are UNCHECKED
+ * by default, so the helper no longer filters on `checked`. Faithful browser
+ * simulation: the feed is restriction-filtered, so this yields precisely the ids the
+ * user would send.
  */
 async function selectedFeedItemIds(port: number): Promise<string[]> {
   const html = await (await fetch(`http://localhost:${port}/`)).text();
   const ids: string[] = [];
-  const re = /<input type="checkbox"[^>]*name="itemIds"[^>]*value="([^"]*)"[^>]*checked/g;
+  const re = /<input type="checkbox"[^>]*name="itemIds"[^>]*value="([^"]*)"/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) ids.push(m[1]!);
   return ids;
@@ -238,7 +240,7 @@ async function selectedFeedItemIds(port: number): Promise<string[]> {
 
 /**
  * Generate a plan through the driving port so meals exist for GET /plan/{meal_id}.
- * Submits the feed's checked selection form-encoded (post-SLICE contract: Generate
+ * Submits the feed's full selection form-encoded (post-SLICE contract: Generate
  * builds the plan from EXACTLY the submitted items). Returns the POST Response.
  */
 async function generatePlan(port: number): Promise<Response> {
@@ -597,7 +599,7 @@ describe("@driving_port — /plan and /plan/generate are not clobbered; bad meal
   });
 
   test("POST /plan/generate still redirects (303) — not clobbered", async () => {
-    // Post the feed's checked selection (post-SLICE contract) — a non-empty selection
+    // Post the feed's full selection (post-SLICE contract) — a non-empty selection
     // still redirects with 303. (The empty-selection → inline 200 path is covered by
     // the PlanHandler unit test.)
     const response = await generatePlan(serverPort);

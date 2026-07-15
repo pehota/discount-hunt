@@ -111,17 +111,18 @@ describe("DiscountHandler.handleGet", () => {
     // Selection form wraps the feed and posts to the generate route.
     expect(html).toMatch(/<form[^>]*action="\/plan\/generate"/);
 
-    // Each item card carries a CHECKED itemIds checkbox with an associated label.
-    // Extract item ids from the discount_items DB rows to assert value= wiring.
+    // Each item card carries an UNCHECKED itemIds checkbox with an associated label:
+    // nothing is preselected. Extract item ids from the discount_items DB rows to assert
+    // value= wiring.
     const seededIds = db.select().from(discountItems).all().map((r) => r.id);
     expect(seededIds).toHaveLength(3);
     for (const id of seededIds) {
-      // A single checkbox input carrying name="itemIds", the item id as value, and
-      // checked by default (attribute order-agnostic; all three on the same tag).
-      const re = new RegExp(
-        `<input type="checkbox"[^>]*name="itemIds"[^>]*value="${id}"[^>]*checked`,
-      );
-      expect(html).toMatch(re);
+      // Isolate this item's checkbox tag, then assert it is present (fails loud if the
+      // regex missed the tag) AND carries no `checked` attribute (default-unchecked).
+      const tag =
+        html.match(new RegExp(`<input type="checkbox"[^>]*name="itemIds"[^>]*value="${id}"[^>]*>`))?.[0] ?? "";
+      expect(tag).toContain(`value="${id}"`);
+      expect(tag).not.toContain("checked");
       // an associated label references this checkbox by id (for="select-<id>")
       expect(html).toContain(`for="select-${id}"`);
       expect(html).toContain(`id="select-${id}"`);

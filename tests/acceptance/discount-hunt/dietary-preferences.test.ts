@@ -182,15 +182,16 @@ async function saveDietaryRestriction(port: number, restriction: string): Promis
 }
 
 /**
- * Generate a plan by submitting the feed's CHECKED selection (post-SLICE contract:
- * Generate builds from EXACTLY the submitted items). Extracts checked itemIds from
- * GET / — the feed is restriction-filtered, so this faithfully simulates the browser
- * and keeps every dietary scenario's meaning (veg feed → veg ids → veg-only plan).
+ * Generate a plan by submitting the feed's full selection (post-SLICE contract:
+ * Generate builds from EXACTLY the submitted items). Checkboxes are UNCHECKED by
+ * default, so the helper extracts every itemIds value from GET / — simulating a user
+ * who checks all shown boxes. The feed is restriction-filtered, so this keeps every
+ * dietary scenario's meaning (veg feed → veg ids → veg-only plan).
  */
 async function generatePlanFromFeed(port: number): Promise<Response> {
   const html = await (await fetch(`http://localhost:${port}/`)).text();
   const ids: string[] = [];
-  const re = /<input type="checkbox"[^>]*name="itemIds"[^>]*value="([^"]*)"[^>]*checked/g;
+  const re = /<input type="checkbox"[^>]*name="itemIds"[^>]*value="([^"]*)"/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) ids.push(m[1]!);
   return fetch(`http://localhost:${port}/plan/generate`, {
