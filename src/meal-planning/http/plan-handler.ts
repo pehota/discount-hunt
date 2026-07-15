@@ -15,9 +15,13 @@
 import type { PlanService } from "../plan-service.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
 import type { MealSlot } from "../../shared/types.ts";
+import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
 import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
+
+/** Per-meal store + sale price, resolved from the live feed; null when unavailable. */
+type MealSource = { store: string; salePrice: number } | null;
 
 const DAY_LABELS: Record<number, string> = {
   1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat', 7: 'Sun',
@@ -82,12 +86,51 @@ function renderNoDataHtml(plan: MealPlan): string {
 function renderMealNameCell(meal: MealPlan["meals"][number], scopedSlots: MealSlot[]): string {
   const escapedName = escapeHtml(meal.name);
   if (!scopedSlots.includes(meal.slot)) {
-    return `<td>${escapedName}</td>`;
+    return `<td data-label="Meal">${escapedName}</td>`;
   }
-  return `<td><a href="/plan/${meal.day}-${meal.slot}">${escapedName}</a></td>`;
+  return `<td data-label="Meal"><a href="/plan/${meal.day}-${meal.slot}">${escapedName}</a></td>`;
 }
 
-function renderPlanHtml(plan: MealPlan, scopedSlots: MealSlot[]): string {
+/** Store cell — degrades to an em dash when the meal has no resolvable discount item. */
+function renderStoreCell(source: MealSource): string {
+  const text = source === null ? "—" : escapeHtml(source.store);
+  return `<td data-label="Store">${text}</td>`;
+}
+
+/** Price cell — the sale price driving this meal; em dash when unavailable. */
+function renderPriceCell(source: MealSource): string {
+  if (source === null) return `<td data-label="Price">—</td>`;
+  return `<td data-label="Price"><span class="sale-price">${formatEuros(source.salePrice)}</span></td>`;
+}
+
+/** Resolve the store + sale price behind a meal from the live-feed item map. */
+function mealSource(
+  meal: MealPlan["meals"][number],
+  itemsById: Map<string, StoredDiscountItem>,
+): MealSource {
+  if (meal.discountItemId === null) return null;
+  const item = itemsById.get(meal.discountItemId);
+  return item ? { store: item.store, salePrice: item.salePrice } : null;
+}
+
+function renderSavingsHero(plan: MealPlan): string {
+  const pct = plan.totalRegularPrice > 0
+    ? Math.round((plan.estimatedSavings / plan.totalRegularPrice) * 100)
+    : 0;
+  const pctChip = pct > 0 ? `<span class="hero-pct">−${pct}%</span>` : "";
+  return `<section class="savings-hero plan-hero">
+    <p class="hero-label">Estimated savings</p>
+    <span class="hero-amount" data-estimated-savings="${plan.estimatedSavings}">${formatEuros(plan.estimatedSavings)}</span>
+    <p class="hero-sub">paid ${formatEuros(plan.totalSalePrice)} of ${formatEuros(plan.totalRegularPrice)}</p>
+    ${pctChip}
+  </section>`;
+}
+
+function renderPlanHtml(
+  plan: MealPlan,
+  scopedSlots: MealSlot[],
+  itemsById: Map<string, StoredDiscountItem>,
+): string {
   if (hasNoCompatibleItems(plan)) {
     // Discriminate no-data (dietaryFilter "none") from restriction-filtered.
     return plan.dietaryFilter === "none"
@@ -95,25 +138,23 @@ function renderPlanHtml(plan: MealPlan, scopedSlots: MealSlot[]): string {
       : renderRestrictionFilteredHtml(plan);
   }
   const mealRows = plan.meals
-    .map((meal) =>
-      `<tr data-meal-slot="${meal.slot}">` +
-      `<td>Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
-      `<td>${capitalizeFirst(meal.slot)}</td>` +
-      renderMealNameCell(meal, scopedSlots) +
-      `</tr>`
-    )
+    .map((meal) => {
+      const source = mealSource(meal, itemsById);
+      return `<tr data-meal-slot="${meal.slot}">` +
+        `<td data-label="Day">Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
+        `<td data-label="Slot"><span class="slot-badge">${capitalizeFirst(meal.slot)}</span></td>` +
+        renderMealNameCell(meal, scopedSlots) +
+        renderStoreCell(source) +
+        renderPriceCell(source) +
+        `</tr>`;
+    })
     .join("");
 
   const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
   ${renderOverBudgetBanner(plan)}
-  <p>
-    Estimated savings:
-    <span data-estimated-savings="${plan.estimatedSavings}">${formatEuros(plan.estimatedSavings)}</span>
-  </p>
-  <p>Regular price total: ${formatEuros(plan.totalRegularPrice)}</p>
-  <p>Sale price total: ${formatEuros(plan.totalSalePrice)}</p>
+  ${renderSavingsHero(plan)}
   <table>
-    <thead><tr><th>Day</th><th>Slot</th><th>Meal</th></tr></thead>
+    <thead><tr><th>Day</th><th>Slot</th><th>Meal</th><th>Store</th><th>Price</th></tr></thead>
     <tbody>${mealRows}</tbody>
   </table>`;
   return renderPage({ title: "Meal Plan", activeNav: "plan", body });
@@ -134,7 +175,10 @@ export class PlanHandler {
     const plan = await this.planService.getOrGenerateCurrentWeekPlan();
     // Read the in-scope meal types LIVE (render-time), never from the plan snapshot.
     const scopedSlots = this.preferencesRepository?.get().mealTypes ?? DEFAULT_MEAL_TYPES;
-    const html = renderPlanHtml(plan, scopedSlots);
+    // Live-feed lookup to surface the store + sale price behind each meal (degrades
+    // gracefully per meal when a discount item is missing from the current feed).
+    const itemsById = await this.planService.getCurrentWeekItemsById();
+    const html = renderPlanHtml(plan, scopedSlots, itemsById);
     return new Response(html, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },

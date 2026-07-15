@@ -34,7 +34,7 @@ import { renderPage } from "../../shared/layout.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
 import { matchIngredient } from "../ingredient-match.ts";
 
-const BACK_LINK = `<a href="/plan">Back to meal plan</a>`;
+const BACK_LINK = `<a href="/plan" class="btn-secondary">Back to meal plan</a>`;
 
 function formatEuros(cents: number): string {
   return `€${(cents / 100).toFixed(2)}`;
@@ -110,7 +110,7 @@ function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountIte
   ${renderIngredients(recipe.ingredients, weekItems)}
   <h2>Preparation</h2>
   ${renderSteps(recipe.steps)}
-  <p><a href="${escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener">Open original recipe</a></p>
+  <p><a href="${escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener" class="btn-primary">Open original recipe</a></p>
   <p>${BACK_LINK}</p>`;
   return renderPage({ title: recipe.name, activeNav: "plan", body });
 }
@@ -123,10 +123,10 @@ function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountIte
 function renderNoMatch(mealName: string): string {
   const searchUrl = `https://www.chefkoch.de/suche.php?suche=${encodeURIComponent(mealName)}`;
   const body = `<h1>${escapeHtml(mealName)}</h1>
-  <p>No recipe found — search Chefkoch for this ingredient.</p>
+  <p class="empty-state"><span class="state-illustration" aria-hidden="true">🍳</span>No recipe found — search Chefkoch for this ingredient.</p>
   <h2>Ingredients</h2>
   <ul class="recipe-ingredients"><li>${escapeHtml(mealName)}</li></ul>
-  <p><a href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener">Search Chefkoch</a></p>
+  <p><a href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener" class="btn-primary">Search Chefkoch</a></p>
   <p>${BACK_LINK}</p>`;
   return renderPage({ title: mealName, activeNav: "plan", body });
 }

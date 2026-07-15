@@ -121,6 +121,19 @@ export class PlanService {
     return this.mealPlanRepository.findByWeek(currentWeekMonday());
   }
 
+  /**
+   * Read-only lookup of THIS week's live discount items, keyed by their id
+   * (StoredDiscountItem.id === Meal.discountItemId). Lets the plan view surface the
+   * store + sale price behind each meal without touching the plan snapshot. Restriction
+   * "none" so every item a meal could reference is resolvable; a meal whose discountItemId
+   * is null or absent from the live feed (frozen plan vs live feed diverging) degrades
+   * gracefully at the call site. No writes.
+   */
+  async getCurrentWeekItemsById(): Promise<Map<string, StoredDiscountItem>> {
+    const items = await this.discountService.getWeeklyItems(currentWeekMonday(), "none");
+    return new Map(items.map((item) => [item.id, item]));
+  }
+
   async getOrGenerateCurrentWeekPlan(): Promise<MealPlan> {
     const weekStart = currentWeekMonday();
     const existing = this.mealPlanRepository.findByWeek(weekStart);

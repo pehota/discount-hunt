@@ -21,35 +21,41 @@ function formatEuros(cents: number): string {
 
 function renderThisWeekBreakdown(thisWeek: SavingsRecord | null): string {
   if (thisWeek === null) {
-    return `<section class="this-week"><p>No plan generated for this week yet.</p></section>`;
+    return `<section class="this-week secondary-stat"><p>No plan generated for this week yet.</p></section>`;
   }
   if (isSavingsUnavailable(thisWeek)) {
-    return `<section class="this-week">
+    return `<section class="this-week secondary-stat">
     <h2>This Week</h2>
     <p>Savings unavailable</p>
   </section>`;
   }
-  return `<section class="this-week">
-    <h2>This Week</h2>
-    <p>Paid: <span data-week-paid="${thisWeek.totalSalePrice}">${formatEuros(thisWeek.totalSalePrice)}</span></p>
-    <p>Would have paid: <span data-week-would-have-paid="${thisWeek.totalRegularPrice}">${formatEuros(thisWeek.totalRegularPrice)}</span></p>
-    <p>Saved: <span data-week-saved="${thisWeek.savedAmount}">${formatEuros(thisWeek.savedAmount)}</span></p>
+  const pct = thisWeek.totalRegularPrice > 0
+    ? Math.round((thisWeek.savedAmount / thisWeek.totalRegularPrice) * 100)
+    : 0;
+  const pctChip = pct > 0 ? `<span class="hero-pct">−${pct}%</span>` : "";
+  // The saved figure is the emotional core — rendered as the hero. The exact
+  // data-week-* spans are preserved verbatim (D23 / savings-history AT contract).
+  return `<section class="this-week savings-hero">
+    <p class="hero-label">Saved this week</p>
+    <span class="hero-amount" data-week-saved="${thisWeek.savedAmount}">${formatEuros(thisWeek.savedAmount)}</span>
+    <p class="hero-sub">paid <span data-week-paid="${thisWeek.totalSalePrice}">${formatEuros(thisWeek.totalSalePrice)}</span> · would've paid <span data-week-would-have-paid="${thisWeek.totalRegularPrice}">${formatEuros(thisWeek.totalRegularPrice)}</span></p>
+    ${pctChip}
   </section>`;
 }
 
 function renderSavedCell(record: SavingsRecord): string {
   if (isSavingsUnavailable(record)) {
-    return `<td>Savings unavailable</td>`;
+    return `<td data-label="Saved">Savings unavailable</td>`;
   }
-  return `<td><span data-saved-amount="${record.savedAmount}">${formatEuros(record.savedAmount)}</span></td>`;
+  return `<td data-label="Saved"><span data-saved-amount="${record.savedAmount}">${formatEuros(record.savedAmount)}</span></td>`;
 }
 
 function renderHistoryRow(record: SavingsRecord): string {
   return `
       <tr>
-        <td>${escapeHtml(record.weekStart)}</td>
+        <td data-label="Week">${escapeHtml(record.weekStart)}</td>
         ${renderSavedCell(record)}
-        <td>${record.itemCount}</td>
+        <td data-label="Items">${record.itemCount}</td>
       </tr>`;
 }
 
@@ -63,7 +69,7 @@ export class SavingsHandler {
 
     const body = `<h1>Weekly Savings</h1>
   ${renderThisWeekBreakdown(summary.thisWeek)}
-  <section class="month-to-date">
+  <section class="month-to-date secondary-stat">
     <h2>Month to date</h2>
     <p>Saved so far: <span data-month-to-date="${summary.monthToDateCents}">${formatEuros(summary.monthToDateCents)}</span></p>
   </section>

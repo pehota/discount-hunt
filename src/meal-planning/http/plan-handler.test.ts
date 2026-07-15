@@ -70,6 +70,24 @@ describe("PlanHandler", () => {
     expect(html).toMatch(/data-estimated-savings="290"/);
   });
 
+  test("handleGetPlan surfaces the store + sale price behind each meal (live-feed lookup)", async () => {
+    const db = createDb(":memory:");
+    const { discountService, planHandler } = buildDeps(db);
+
+    // Distinctive store name + sale price so we can assert they surface per meal.
+    await discountService.registerDiscountItem(
+      { externalId: "i1", store: "Netto Marken", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [] },
+      "job-001"
+    );
+
+    await planHandler.handlePostGenerate(new Request("http://localhost/plan/generate", { method: "POST" }));
+
+    const html = await (await planHandler.handleGetPlan(new Request("http://localhost/plan"))).text();
+    // Store name and sale price (€0.99) are shown against the meal driven by that item.
+    expect(html).toContain("Netto Marken");
+    expect(html).toMatch(/data-label="Price"[\s\S]*?0\.99/);
+  });
+
   test("handleGetPlan renders 200 with HTML content-type", async () => {
     const db = createDb(":memory:");
     const { discountService, planHandler } = buildDeps(db);
