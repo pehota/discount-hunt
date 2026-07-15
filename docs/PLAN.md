@@ -29,7 +29,7 @@ All session work is committed (latest `24dc45a`: feed add-to-list toast + overvi
 
 **Definition of Done — applies to EVERY item:** `bun run typecheck` = 0 errors AND `bun test` = 0 fail; UI items also **browser-verified @375px** (0 horizontal overflow + real interaction exercised, not just markup); committed as its own conventional-commit bundle. The per-item `Verify:` below is the item-SPECIFIC acceptance on top of this baseline.
 
-1. **List counter in the header nav** — the "List" 🧾 nav item shows a badge with the number of items in the shopping list.
+1. **[SHIPPED `32109fb`]** **List counter in the header nav** — the "List" 🧾 nav item shows a badge with the number of items in the shopping list. Browser-verified @375px: server-render badge, remove-decrement (server round-trip), live create 0→1 + increment on feed add, nav reconciliation, 0 overflow.
    - How: add optional `listCount` to `renderPage`/`PageOptions`; each page handler passes the current week's shopping-list count (new `ShoppingListService.count()`); `layout.ts` renders a small badge on the List nav item when count>0. Live update: on a successful add-to-list (toast path) the feed JS increments the badge immediately (no reload); server-render keeps it accurate on nav/reload; remove decrements.
    - Verify: tests (renderPage badge when count>0 / absent at 0; handlers pass the count; service count); in-browser — List tab badge = list size, add-via-feed bumps it live, navigate persists, remove decrements; 0 overflow + badge fits the 5-tab bar @375px.
 2. **Vercel AI SDK provider abstraction** — decouple LLM from Anthropic.
