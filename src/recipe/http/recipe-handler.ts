@@ -30,16 +30,9 @@ import type { ResolvedRecipe } from "../recipe-service.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
+import { matchIngredient } from "../ingredient-match.ts";
 
 const BACK_LINK = `<a href="/plan">Back to meal plan</a>`;
-
-/** Minimum ingredient-token length considered significant (design §9, length-≥4 rule). */
-const MIN_TOKEN_LENGTH = 4;
-
-/** German quantity/unit stop-list stripped before matching (design §9). */
-const UNIT_STOP_LIST = new Set([
-  "g", "kg", "ml", "l", "el", "tl", "stk", "prise", "stück", "dose", "packung",
-]);
 
 function formatEuros(cents: number): string {
   return `€${(cents / 100).toFixed(2)}`;
@@ -52,47 +45,18 @@ type AnnotatedIngredient = {
 };
 
 /**
- * Normalizes a string for matching: lowercase, split on whitespace/punctuation,
- * drop leading quantity tokens and unit stop-words, keep tokens of length ≥ 4.
- */
-function significantTokens(value: string): string[] {
-  return value
-    .toLowerCase()
-    .split(/[^a-zäöüß0-9]+/i)
-    .filter((token) => token.length > 0 && !UNIT_STOP_LIST.has(token) && !/^\d+$/.test(token))
-    .filter((token) => token.length >= MIN_TOKEN_LENGTH);
-}
-
-/** True when any significant token of a matches/contains a significant token of b (either direction). */
-function tokensOverlap(a: string, b: string): boolean {
-  const tokensA = significantTokens(a);
-  const tokensB = significantTokens(b);
-  for (const ta of tokensA) {
-    for (const tb of tokensB) {
-      if (ta === tb || ta.includes(tb) || tb.includes(ta)) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-/**
- * Pure ingredient↔discount matcher (design §9). For each ingredient, the first
- * this-week discount item whose name token-overlaps it wins; else no match.
- * Display-only heuristic — a miss is cosmetic, never affects savings math.
+ * Pure ingredient↔discount annotation (design §9). Delegates the per-ingredient
+ * matching to the extracted `matchIngredient` heuristic (see ingredient-match.ts).
+ * Display-only — a miss is cosmetic, never affects savings math.
  */
 export function annotate(
   ingredients: string[],
   weekItems: StoredDiscountItem[],
 ): AnnotatedIngredient[] {
-  return ingredients.map((text) => {
-    const match = weekItems.find((item) => tokensOverlap(text, item.name)) ?? null;
-    return {
-      text,
-      match: match ? { store: match.store, salePrice: match.salePrice } : null,
-    };
-  });
+  return ingredients.map((text) => ({
+    text,
+    match: matchIngredient(text, weekItems),
+  }));
 }
 
 function htmlResponse(html: string, status: number): Response {
