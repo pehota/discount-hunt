@@ -84,7 +84,7 @@ function renderPlanHtml(plan: MealPlan): string {
       `<tr data-meal-slot="${meal.slot}">` +
       `<td>Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
       `<td>${capitalizeFirst(meal.slot)}</td>` +
-      `<td>${escapeHtml(meal.name)}</td>` +
+      `<td><a href="/plan/${meal.day}-${meal.slot}">${escapeHtml(meal.name)}</a></td>` +
       `</tr>`
     )
     .join("");
