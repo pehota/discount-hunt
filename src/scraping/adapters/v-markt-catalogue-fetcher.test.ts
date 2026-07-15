@@ -94,7 +94,7 @@ describe("VMarktCatalogueFetcher — slug discovery", () => {
       ];
       const extractor = new FakeCatalogueExtractor(fixture);
 
-      globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+      globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
         const urlStr = String(url);
         if (urlStr.includes("v-markt.de/angebote/muenchen")) {
           return makeHtmlResponse(discoveryHtml);
@@ -103,7 +103,7 @@ describe("VMarktCatalogueFetcher — slug discovery", () => {
           return makeHtmlResponse(catalogueHtml);
         }
         throw new Error(`Unexpected URL: ${urlStr}`);
-      };
+      }) as unknown as typeof fetch;
 
       const fetcher = new VMarktCatalogueFetcher(extractor);
       await fetcher.fetchCurrentWeek(); // must not throw — correct slug selected
@@ -128,13 +128,13 @@ describe("VMarktCatalogueFetcher — paragraph delegation", () => {
     ];
     const extractor = new FakeCatalogueExtractor(fixture);
 
-    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
       const urlStr = String(url);
       if (urlStr.includes("v-markt.de/angebote/muenchen")) {
         return makeHtmlResponse(discoveryHtml);
       }
       return makeHtmlResponse(catalogueHtml);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new VMarktCatalogueFetcher(extractor);
     await fetcher.fetchCurrentWeek();
@@ -193,13 +193,13 @@ describe("VMarktCatalogueFetcher — price filter invariant", () => {
             const catalogueHtml = makeCatalogueHtml(["dummy paragraph"]);
             const extractor = new FakeCatalogueExtractor(extractedItems);
 
-            globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+            globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
               const urlStr = String(url);
               if (urlStr.includes("v-markt.de/angebote/muenchen")) {
                 return makeHtmlResponse(discoveryHtml);
               }
               return makeHtmlResponse(catalogueHtml);
-            };
+            }) as unknown as typeof fetch;
 
             const fetcher = new VMarktCatalogueFetcher(extractor);
             const result = await fetcher.fetchCurrentWeek();
@@ -249,13 +249,13 @@ describe("VMarktCatalogueFetcher — output shape", () => {
       ]);
       const catalogueHtml = makeCatalogueHtml(["some text"]);
 
-      globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+      globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
         const urlStr = String(url);
         if (urlStr.includes("v-markt.de/angebote/muenchen")) {
           return makeHtmlResponse(discoveryHtml);
         }
         return makeHtmlResponse(catalogueHtml);
-      };
+      }) as unknown as typeof fetch;
 
       const fetcher = new VMarktCatalogueFetcher(extractor);
       const result = await fetcher.fetchCurrentWeek();
@@ -265,7 +265,7 @@ describe("VMarktCatalogueFetcher — output shape", () => {
 
       // Each item must carry the full CatalogueNormalizer-compatible shape
       for (const item of result) {
-        const r = item as Record<string, unknown>;
+        const r = item as unknown as Record<string, unknown>;
         expect(typeof r.id).toBe("string");
         expect(r.title).toBeDefined();
         expect(r.brand).toBe("V-Markt");
@@ -286,13 +286,13 @@ describe("VMarktCatalogueFetcher — output shape", () => {
     ]);
     const catalogueHtml = makeCatalogueHtml(["text"]);
 
-    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
       const urlStr = String(url);
       if (urlStr.includes("v-markt.de/angebote/muenchen")) {
         return makeHtmlResponse(discoveryHtml);
       }
       return makeHtmlResponse(catalogueHtml);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new VMarktCatalogueFetcher(extractor);
     // Must not throw — no real API key needed, FakeCatalogueExtractor handles it.
@@ -318,11 +318,11 @@ describe("VMarktCatalogueFetcher — stage logging", () => {
     ];
     const extractor = new FakeCatalogueExtractor(fixture);
 
-    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
       const urlStr = String(url);
       if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
       return makeHtmlResponse(catalogueHtml);
-    };
+    }) as unknown as typeof fetch;
 
     const spy = new SpyLogger();
     const fetcher = new VMarktCatalogueFetcher(extractor, undefined, spy);
@@ -345,11 +345,11 @@ describe("VMarktCatalogueFetcher — stage logging", () => {
     ];
     const extractor = new FakeCatalogueExtractor(fixture);
 
-    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
       const urlStr = String(url);
       if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
       return makeHtmlResponse(catalogueHtml);
-    };
+    }) as unknown as typeof fetch;
 
     const spy = new SpyLogger();
     const fetcher = new VMarktCatalogueFetcher(extractor, undefined, spy);
@@ -370,11 +370,11 @@ describe("VMarktCatalogueFetcher — stage logging", () => {
     const fixture = [{ name: "A", regularPrice: "2.00", salePrice: "1.00" }];
     const extractor = new FakeCatalogueExtractor(fixture);
 
-    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
       const urlStr = String(url);
       if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
       return makeHtmlResponse(catalogueHtml);
-    };
+    }) as unknown as typeof fetch;
 
     const spy = new SpyLogger();
     const fetcher = new VMarktCatalogueFetcher(extractor, undefined, spy);

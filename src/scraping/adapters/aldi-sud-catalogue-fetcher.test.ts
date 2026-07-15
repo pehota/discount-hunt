@@ -170,14 +170,14 @@ describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () =
       nestedProduct({ id: "listing-1", price: "1.19", discountedPrice: undefined, title: "Gurke" }),
     ]);
 
-    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
       const urlStr = String(url);
       if (urlStr.includes("/page/1-2/")) return makeResponse(200, [entry]);
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new AldiSudCatalogueFetcher();
     const result = await fetcher.fetchCurrentWeek();
@@ -234,14 +234,14 @@ describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () =
           // Assign unique ids so dedupe does not collapse distinct products.
           const withIds = products.map((p, i) => ({ ...p, id: `p-${i}` }));
           const slug = "kw27-26-op-mp";
-          globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+          globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
             if (opts?.method === "HEAD") {
               return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
             }
             const urlStr = String(url);
             if (urlStr.includes("/page/1-2/")) return makeResponse(200, [productEntry(withIds)]);
             return makeResponse(404, null);
-          };
+          }) as unknown as typeof fetch;
 
           const fetcher = new AldiSudCatalogueFetcher();
           const result = await fetcher.fetchCurrentWeek();
@@ -281,7 +281,7 @@ describe("AldiSudCatalogueFetcher — pagination", () => {
     const page2 = [productEntry([nestedProduct({ id: "p3", price: "2.00", discountedPrice: "1.00" })])];
 
     const pageRequests: string[] = [];
-    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
@@ -290,7 +290,7 @@ describe("AldiSudCatalogueFetcher — pagination", () => {
       if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
       if (urlStr.includes("/page/3-4/")) return makeResponse(200, page2);
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new AldiSudCatalogueFetcher();
     const result = await fetcher.fetchCurrentWeek();
@@ -314,7 +314,7 @@ describe("AldiSudCatalogueFetcher — pagination", () => {
     const dup = nestedProduct({ id: "dup", price: "2.00", discountedPrice: "1.00" });
     const unique = nestedProduct({ id: "unique", price: "3.00", discountedPrice: "1.50" });
 
-    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
@@ -322,7 +322,7 @@ describe("AldiSudCatalogueFetcher — pagination", () => {
       if (urlStr.includes("/page/1-2/")) return makeResponse(200, [productEntry([dup, unique])]);
       if (urlStr.includes("/page/3-4/")) return makeResponse(200, [productEntry([dup])]);
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new AldiSudCatalogueFetcher();
     const result = await fetcher.fetchCurrentWeek();
@@ -332,12 +332,12 @@ describe("AldiSudCatalogueFetcher — pagination", () => {
   });
 
   test("Returns empty array when page 1 immediately returns 404", async () => {
-    globalThis.fetch = async (_url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (_url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect("//prospekt.aldi-sued.de/kw27-26-op-mp/");
       }
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new AldiSudCatalogueFetcher();
     const result = await fetcher.fetchCurrentWeek();
@@ -357,14 +357,14 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
       nestedProduct({ id: "p1", price: "2.00", discountedPrice: "1.00" }),
       nestedProduct({ id: "p2", price: "2.00", discountedPrice: "1.00" }),
     ])];
-    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
       const urlStr = String(url);
       if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const spy = new SpyLogger();
     const fetcher = new AldiSudCatalogueFetcher(spy);
@@ -386,14 +386,14 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
       nestedProduct({ id: "b", discountedPrice: undefined }),
       nestedProduct({ id: "c", discountedPrice: undefined }),
     ])];
-    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
       const urlStr = String(url);
       if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const spy = new SpyLogger();
     const fetcher = new AldiSudCatalogueFetcher(spy);
@@ -413,14 +413,14 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
       nestedProduct({ id: "p1", price: "2.00", discountedPrice: "1.00" }),
       nestedProduct({ id: "p2", discountedPrice: undefined }),
     ])];
-    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
       }
       const urlStr = String(url);
       if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
       return makeResponse(404, null);
-    };
+    }) as unknown as typeof fetch;
 
     const spy = new SpyLogger();
     const fetcher = new AldiSudCatalogueFetcher(spy);
@@ -434,12 +434,12 @@ describe("AldiSudCatalogueFetcher — stage logging", () => {
 
 describe("AldiSudCatalogueFetcher — network error", () => {
   test("Rejects with structured error when HEAD request throws", async () => {
-    globalThis.fetch = async (_url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+    globalThis.fetch = (async (_url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
       if (opts?.method === "HEAD") {
         throw new Error("network error");
       }
       return makeResponse(200, []);
-    };
+    }) as unknown as typeof fetch;
 
     const fetcher = new AldiSudCatalogueFetcher();
     await expect(fetcher.fetchCurrentWeek()).rejects.toThrow();
