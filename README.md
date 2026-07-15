@@ -92,6 +92,13 @@ Acceptance tests boot the real HTTP server on an OS-assigned ephemeral port and 
 hit the network (a fake recipe source is injected). The live Chefkoch adapter is
 validated by spike probes, not the suite.
 
+## Git hooks
+
+Version-controlled hooks live in `.githooks/` and are auto-wired by `bun install`
+(via the `prepare` script), or manually with `bun run hooks:install`. The `pre-push`
+hook runs `bun run hook:push` before every push (see that script in `package.json` for
+the exact checks); `pre-commit` checks that your git `user.name` / `user.email` are set.
+
 ## Project layout
 
 ```

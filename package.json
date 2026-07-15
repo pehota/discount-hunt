@@ -9,7 +9,11 @@
     "test:acceptance": "bun test tests/acceptance",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "lint:arch": "depcruise src --config .dependency-cruiser.cjs"
+    "lint:arch": "depcruise src --config .dependency-cruiser.cjs",
+    "build": "bun build ./src/server.ts ./src/scraping/scraper-runner.ts --target=bun --outdir dist",
+    "hook:push": "bun run build && bun test",
+    "hooks:install": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

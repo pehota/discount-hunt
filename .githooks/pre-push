@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Delegates to the single source of truth for push checks: package.json → "hook:push".
+# Do not restate what that script does here — change it in one place, package.json.
+set -euo pipefail
+exec bun run hook:push

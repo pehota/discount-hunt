@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Version-controlled pre-commit hook (moved from .git/hooks so it survives core.hooksPath).
+if [[ -z "$(git config user.name)" ]]; then
+  echo "Please set your git user.name:  git config user.name 'Your Name'" >&2
+  exit 1
+fi
+if [[ -z "$(git config user.email)" ]]; then
+  echo "Please set your git user.email:  git config user.email 'you@example.com'" >&2
+  exit 1
+fi
