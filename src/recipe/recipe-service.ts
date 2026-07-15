@@ -1,38 +1,66 @@
 /**
- * RecipeService — domain service for the Recipe Matching bounded context.
+ * RecipeService — domain service for the Recipe Matching bounded context (design §6).
  *
- * S01: stub — returns a hardcoded recipe URL for plan generation (OQ-1 deferred to S05).
- * S05: real Brave Search + Chefkoch JSON-LD integration.
+ * Cache-first with a 7-day TTL keyed on cached_at. The refresh-on-expiry path is the
+ * ONLY place the source is re-validated (design §6):
+ *   - fresh cache  → returned as-is, NO network, trust the stored source_url_valid
+ *   - miss/expired → RecipeSource.find (network in PROD, deterministic in TESTS):
+ *       - found        → cache with source_url_valid=true, cached_at=now; return fresh
+ *       - null + stale → markSourceDead, return the stale copy w/ sourceUrlValid=false
+ *       - null + empty → return null
  *
- * Use cases:
- *   GetRecipe(ingredientName): cache-first lookup (7-day TTL); triggers CacheRecipe on miss
- *   CacheRecipe(ingredientName, ...): fetch via Brave → Chefkoch → insert with cached_content
- *   RefreshRecipe(recipeId): re-fetch after TTL expiry
- *   MarkSourceDead(recipeId): set source_url_valid=false; cached_content remains
+ * Contract shape: bounded-change — mutates at most one recipes row for queryKey(mealName).
  */
 
-export const __SCAFFOLD__ = true as const;
+import { randomUUID } from "node:crypto";
+import type { SQLiteRecipeRepository, CachedRecipe } from "./adapters/sqlite-recipe-repository.ts";
+import type { RecipeSource } from "./ports/recipe-source.ts";
+
+const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Recipe resolved for the view — same surface as a cached row. */
+export type ResolvedRecipe = CachedRecipe;
 
 export class RecipeService {
   constructor(
-    private readonly recipeRepository: unknown,
-    private readonly recipeSearchClient: unknown,
-    private readonly recipeFetcher: unknown,
+    private readonly recipeRepository: SQLiteRecipeRepository,
+    private readonly recipeSource: RecipeSource,
   ) {}
 
-  async getRecipe(ingredientName: string): Promise<unknown | null> {
-    throw new Error("Not yet implemented — RED scaffold");
+  async getRecipeForMeal(mealName: string): Promise<ResolvedRecipe | null> {
+    const queryKey = mealName.toLowerCase().trim();
+    const cached = this.recipeRepository.getByQuery(queryKey);
+
+    if (cached && this.isFresh(cached)) {
+      return cached;
+    }
+
+    const fetched = await this.recipeSource.find(queryKey);
+
+    if (fetched) {
+      const refreshed: CachedRecipe = {
+        id: cached?.id ?? randomUUID(),
+        queryKey,
+        name: fetched.name,
+        ingredients: fetched.ingredients,
+        steps: fetched.steps,
+        sourceUrl: fetched.sourceUrl,
+        sourceUrlValid: true,
+        cachedAt: Date.now(),
+      };
+      this.recipeRepository.cache(refreshed);
+      return refreshed;
+    }
+
+    if (cached) {
+      this.recipeRepository.markSourceDead(cached.id);
+      return { ...cached, sourceUrlValid: false };
+    }
+
+    return null;
   }
 
-  async cacheRecipe(ingredientName: string): Promise<unknown> {
-    throw new Error("Not yet implemented — RED scaffold");
-  }
-
-  async refreshRecipe(recipeId: string): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
-  }
-
-  async markSourceDead(recipeId: string): Promise<void> {
-    throw new Error("Not yet implemented — RED scaffold");
+  private isFresh(recipe: CachedRecipe): boolean {
+    return Date.now() - recipe.cachedAt < TTL_MS;
   }
 }

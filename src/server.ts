@@ -35,6 +35,10 @@ import { SavingsHandler } from "./savings/http/savings-handler.ts";
 import { SQLiteUserPreferencesRepository } from "./preferences/adapters/sqlite-user-preferences-repository.ts";
 import { PreferencesService } from "./preferences/preferences-service.ts";
 import { SettingsHandler } from "./preferences/http/settings-handler.ts";
+import { SQLiteRecipeRepository } from "./recipe/adapters/sqlite-recipe-repository.ts";
+import { ChefkochRecipeSource } from "./recipe/adapters/chefkoch-recipe-source.ts";
+import { RecipeService } from "./recipe/recipe-service.ts";
+import type { RecipeSource } from "./recipe/ports/recipe-source.ts";
 
 export type { ServerConfig, ServerHandle };
 
@@ -50,7 +54,9 @@ export type { ServerConfig, ServerHandle };
  *   5. Register routes with Bun.serve
  *   6. Return { stop }
  */
-export async function createServer(config: ServerConfig): Promise<ServerHandle> {
+export async function createServer(
+  config: ServerConfig & { recipeSource?: RecipeSource },
+): Promise<ServerHandle> {
   // 1. Database
   const db = createDb(config.dbPath);
 
@@ -60,12 +66,17 @@ export async function createServer(config: ServerConfig): Promise<ServerHandle> 
   const savingsRepo = new SQLiteSavingsRepository(db);
   const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
   const preferencesRepo = new SQLiteUserPreferencesRepository(db);
+  const recipeRepo = new SQLiteRecipeRepository(db);
 
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
   const savingsService = new SavingsService(savingsRepo);
   const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo);
   const preferencesService = new PreferencesService(preferencesRepo);
+  // Recipe lookup: prod default hits Chefkoch; tests inject a FakeRecipeSource.
+  // Wired now; the GET /plan/{meal_id} handler + route arrive in 08-03.
+  const recipeService = new RecipeService(recipeRepo, config.recipeSource ?? new ChefkochRecipeSource());
+  void recipeService;
 
   // 4. Handlers
   const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo);
