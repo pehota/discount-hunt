@@ -22,13 +22,78 @@
  */
 
 import type { PlanService } from "../../meal-planning/plan-service.ts";
+import type { DiscountService } from "../../discount/discount-service.ts";
+import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
 import type { Meal } from "../../shared/types.ts";
 import type { RecipeService } from "../recipe-service.ts";
 import type { ResolvedRecipe } from "../recipe-service.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
 
 const BACK_LINK = `<a href="/plan">Back to meal plan</a>`;
+
+/** Minimum ingredient-token length considered significant (design §9, length-≥4 rule). */
+const MIN_TOKEN_LENGTH = 4;
+
+/** German quantity/unit stop-list stripped before matching (design §9). */
+const UNIT_STOP_LIST = new Set([
+  "g", "kg", "ml", "l", "el", "tl", "stk", "prise", "stück", "dose", "packung",
+]);
+
+function formatEuros(cents: number): string {
+  return `€${(cents / 100).toFixed(2)}`;
+}
+
+/** An ingredient annotated with the first matching this-week discount item, if any. */
+type AnnotatedIngredient = {
+  text: string;
+  match: { store: string; salePrice: number } | null;
+};
+
+/**
+ * Normalizes a string for matching: lowercase, split on whitespace/punctuation,
+ * drop leading quantity tokens and unit stop-words, keep tokens of length ≥ 4.
+ */
+function significantTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^a-zäöüß0-9]+/i)
+    .filter((token) => token.length > 0 && !UNIT_STOP_LIST.has(token) && !/^\d+$/.test(token))
+    .filter((token) => token.length >= MIN_TOKEN_LENGTH);
+}
+
+/** True when any significant token of a matches/contains a significant token of b (either direction). */
+function tokensOverlap(a: string, b: string): boolean {
+  const tokensA = significantTokens(a);
+  const tokensB = significantTokens(b);
+  for (const ta of tokensA) {
+    for (const tb of tokensB) {
+      if (ta === tb || ta.includes(tb) || tb.includes(ta)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Pure ingredient↔discount matcher (design §9). For each ingredient, the first
+ * this-week discount item whose name token-overlaps it wins; else no match.
+ * Display-only heuristic — a miss is cosmetic, never affects savings math.
+ */
+export function annotate(
+  ingredients: string[],
+  weekItems: StoredDiscountItem[],
+): AnnotatedIngredient[] {
+  return ingredients.map((text) => {
+    const match = weekItems.find((item) => tokensOverlap(text, item.name)) ?? null;
+    return {
+      text,
+      match: match ? { store: match.store, salePrice: match.salePrice } : null,
+    };
+  });
+}
 
 function htmlResponse(html: string, status: number): Response {
   return new Response(html, {
@@ -44,9 +109,17 @@ function renderNotFound(): string {
   return renderPage({ title: "Recipe not found", activeNav: "plan", body });
 }
 
-function renderIngredients(ingredients: string[]): string {
-  const rows = ingredients
-    .map((ingredient) => `<li>${escapeHtml(ingredient)}</li>`)
+function renderIngredients(ingredients: string[], weekItems: StoredDiscountItem[]): string {
+  const rows = annotate(ingredients, weekItems)
+    .map((ingredient) => {
+      if (ingredient.match === null) {
+        return `<li>${escapeHtml(ingredient.text)}</li>`;
+      }
+      const badge =
+        ` <span class="on-sale-badge" data-on-sale>` +
+        `${escapeHtml(ingredient.match.store)} ${formatEuros(ingredient.match.salePrice)}</span>`;
+      return `<li>${escapeHtml(ingredient.text)}${badge}</li>`;
+    })
     .join("");
   return `<ul class="recipe-ingredients">${rows}</ul>`;
 }
@@ -56,10 +129,10 @@ function renderSteps(steps: string[]): string {
   return `<ol class="recipe-steps">${rows}</ol>`;
 }
 
-function renderRecipeDetail(recipe: ResolvedRecipe): string {
+function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountItem[]): string {
   const body = `<h1>${escapeHtml(recipe.name)}</h1>
   <h2>Ingredients</h2>
-  ${renderIngredients(recipe.ingredients)}
+  ${renderIngredients(recipe.ingredients, weekItems)}
   <h2>Preparation</h2>
   ${renderSteps(recipe.steps)}
   <p><a href="${escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener">Open original recipe</a></p>
@@ -71,6 +144,7 @@ export class RecipeHandler {
   constructor(
     private readonly planService: PlanService,
     private readonly recipeService: RecipeService,
+    private readonly discountService: DiscountService,
   ) {}
 
   async handleGet(_request: Request, mealId: string): Promise<Response> {
@@ -80,7 +154,9 @@ export class RecipeHandler {
     }
 
     const recipe = await this.recipeService.getRecipeForMeal(meal.name);
-    return htmlResponse(renderRecipeDetail(recipe!), 200);
+    // Live this-week feed for ingredient↔discount highlighting (design §7, restriction "none").
+    const weekItems = await this.discountService.getWeeklyItems(currentWeekMonday(), "none");
+    return htmlResponse(renderRecipeDetail(recipe!, weekItems), 200);
   }
 
   /** Locate the meal for meal_id in the current-week plan, or null if absent. */

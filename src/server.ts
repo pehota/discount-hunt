@@ -82,7 +82,7 @@ export async function createServer(
   const planHandler = new PlanHandler(planService);
   const savingsHandler = new SavingsHandler(savingsService);
   const settingsHandler = new SettingsHandler(preferencesService);
-  const recipeHandler = new RecipeHandler(planService, recipeService);
+  const recipeHandler = new RecipeHandler(planService, recipeService, discountService);
 
   // 5. Routes
   const server = Bun.serve({
