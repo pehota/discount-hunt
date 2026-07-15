@@ -10,17 +10,28 @@
  *   FAKE_VMARKT_FIXTURE    — path to V-Markt JSON fixture (optional; enables V-Markt scrape)
  *   ANTHROPIC_API_KEY      — required when CATALOGUE_SOURCE=live
  *
+ * Resilience contract (step 09-01):
+ *   - Each store's scrape is isolated in a try/catch. One store failing is
+ *     recorded (console.error "health.scrape.store_failed") and skipped; the run
+ *     continues with the remaining stores. ScrapingService.run already fails the
+ *     job in scrape_jobs and rethrows; the runner swallows that rethrow to keep
+ *     going.
+ *   - ANTHROPIC_API_KEY absent no longer aborts the run. Aldi Süd always
+ *     attempts; the V-Markt leg is skipped with a recorded reason and the
+ *     Haiku-backed fetcher is NOT constructed.
+ *   - Both runners return a per-store summary: Array<{store, ok, error?}>.
+ *   - main() maps the summary to an exit code via exitCodeFor: exit 0 if any
+ *     store is ok, exit 1 if none. A catastrophic pre-store failure (DB/infra
+ *     build throws) is caught in the entry point and still exits 1.
+ *
  * Wire order (fake mode):
  *   1. Build shared infrastructure: db, normalizer, repos, discountService
  *   2. Run Aldi Süd scrape (FAKE_CATALOGUE_FIXTURE required)
  *   3. Run V-Markt scrape if FAKE_VMARKT_FIXTURE is set (optional — backward-compatible)
- *   4. process.exit(0) on success, process.exit(1) on error
  *
  * Wire order (live mode):
- *   1. Check ANTHROPIC_API_KEY — throw health.scrape.refused if absent
- *   2. Instantiate AldiSudCatalogueFetcher and VMarktCatalogueFetcher(HaikuCatalogueExtractor)
- *   3. Run both via ScrapingService.run("Aldi Süd") and ScrapingService.run("V-Markt")
- *   4. process.exit(0) on success, process.exit(1) on error
+ *   1. Attempt Aldi Süd (needs no API key)
+ *   2. Attempt V-Markt only when ANTHROPIC_API_KEY is present
  */
 
 import { createDb } from "../shared/db.ts";
@@ -45,12 +56,22 @@ interface CatalogueFetcher {
   fetchCurrentWeek(): Promise<unknown[]>;
 }
 
+/** Per-store outcome collected across the run. */
+export interface StoreResult {
+  store: string;
+  ok: boolean;
+  error?: string;
+}
+
 /** Dependency seam for runLiveScrape — enables wiring tests without DB or HTTP. */
 export interface LiveScrapeDeps {
   makeAldiFetcher?: () => CatalogueFetcher;
   makeVMarktFetcher?: () => CatalogueFetcher;
   runScrape?: (fetcher: CatalogueFetcher, store: string) => Promise<void>;
 }
+
+const ALDI_STORE = "Aldi Süd";
+const VMARKT_STORE = "V-Markt";
 
 // ── Testable factory ──────────────────────────────────────────────────────────
 
@@ -60,17 +81,46 @@ export interface LiveScrapeDeps {
  * Exported for unit testing. Inject LiveScrapeDeps to stub DB + HTTP + Anthropic.
  * Production callers pass no deps (defaults build real collaborators).
  */
-export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<void> {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error("health.scrape.refused: ANTHROPIC_API_KEY is required for live catalogue source");
-  }
-
+export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreResult[]> {
   const runScrape = deps.runScrape ?? makeProdRunScrape();
   const makeAldiFetcher = deps.makeAldiFetcher ?? (() => new AldiSudCatalogueFetcher());
   const makeVMarktFetcher = deps.makeVMarktFetcher ?? (() => new VMarktCatalogueFetcher(new HaikuCatalogueExtractor()));
 
-  await runScrape(makeAldiFetcher(), "Aldi Süd");
-  await runScrape(makeVMarktFetcher(), "V-Markt");
+  const summary: StoreResult[] = [];
+
+  // Aldi Süd needs no API key — always attempts.
+  summary.push(await isolatedScrape(runScrape, makeAldiFetcher(), ALDI_STORE));
+
+  // V-Markt requires Anthropic (Haiku extraction). Skip with a recorded reason
+  // when the key is absent — do NOT construct the Haiku-backed fetcher.
+  if (process.env.ANTHROPIC_API_KEY) {
+    summary.push(await isolatedScrape(runScrape, makeVMarktFetcher(), VMARKT_STORE));
+  } else {
+    console.error("health.scrape.store_failed", VMARKT_STORE, "ANTHROPIC_API_KEY missing");
+    summary.push({ store: VMARKT_STORE, ok: false, error: "ANTHROPIC_API_KEY missing" });
+  }
+
+  return summary;
+}
+
+/** Runs one store's scrape, converting any throw into a recorded failure. */
+async function isolatedScrape(
+  runScrape: (fetcher: CatalogueFetcher, store: string) => Promise<void>,
+  fetcher: CatalogueFetcher,
+  store: string,
+): Promise<StoreResult> {
+  try {
+    await runScrape(fetcher, store);
+    return { store, ok: true };
+  } catch (error) {
+    console.error("health.scrape.store_failed", store, error);
+    return { store, ok: false, error: String(error) };
+  }
+}
+
+/** Maps a per-store summary to a process exit code: 0 if any ok, else 1. */
+export function exitCodeFor(summary: StoreResult[]): number {
+  return summary.some((result) => result.ok) ? 0 : 1;
 }
 
 /** Builds DB, normalizer, repos and services from the current env. */
@@ -99,7 +149,7 @@ function makeProdRunScrape(): (fetcher: CatalogueFetcher, store: string) => Prom
 
 // ── Fake mode runner ──────────────────────────────────────────────────────────
 
-async function runFakeScrape(): Promise<void> {
+async function runFakeScrape(): Promise<StoreResult[]> {
   const aldiFixturePath = process.env.FAKE_CATALOGUE_FIXTURE;
   if (!aldiFixturePath) {
     throw new Error("FAKE_CATALOGUE_FIXTURE env var is required when CATALOGUE_SOURCE=fake");
@@ -107,29 +157,31 @@ async function runFakeScrape(): Promise<void> {
 
   const { normalizer, scrapeJobRepo, discountService } = buildInfrastructure();
 
-  // Aldi Süd scrape (always required in fake mode)
-  await new ScrapingService(
-    FakeAldiCatalogueAdapter.fromFixtureFile(aldiFixturePath),
-    normalizer,
-    scrapeJobRepo,
-    discountService,
-  ).run("Aldi Süd");
+  const runScrape = async (fetcher: CatalogueFetcher, store: string) => {
+    await new ScrapingService(fetcher, normalizer, scrapeJobRepo, discountService).run(store);
+  };
 
-  // V-Markt scrape (optional — enabled only when FAKE_VMARKT_FIXTURE is set)
+  const summary: StoreResult[] = [];
+
+  // Aldi Süd scrape (always required in fake mode).
+  summary.push(
+    await isolatedScrape(runScrape, FakeAldiCatalogueAdapter.fromFixtureFile(aldiFixturePath), ALDI_STORE),
+  );
+
+  // V-Markt scrape (optional — enabled only when FAKE_VMARKT_FIXTURE is set).
   const vMarktFixturePath = process.env.FAKE_VMARKT_FIXTURE;
   if (vMarktFixturePath) {
-    await new ScrapingService(
-      FakeVMarktCatalogueAdapter.fromFixtureFile(vMarktFixturePath),
-      normalizer,
-      scrapeJobRepo,
-      discountService,
-    ).run("V-Markt");
+    summary.push(
+      await isolatedScrape(runScrape, FakeVMarktCatalogueAdapter.fromFixtureFile(vMarktFixturePath), VMARKT_STORE),
+    );
   }
+
+  return summary;
 }
 
 // ── CLI entry point ───────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+async function main(): Promise<StoreResult[]> {
   const source = process.env.CATALOGUE_SOURCE ?? "live";
 
   if (source === CATALOGUE_SOURCE_FAKE) {
@@ -141,8 +193,14 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main()
-    .then(() => process.exit(0))
+    .then((summary) => {
+      for (const result of summary) {
+        console.error("health.scrape.summary", result.store, result.ok ? "ok" : `failed: ${result.error}`);
+      }
+      process.exit(exitCodeFor(summary));
+    })
     .catch((err) => {
+      // Catastrophic pre-store failure (DB / infra build threw) — no store ran.
       console.error("health.scrape.refused", err);
       process.exit(1);
     });

@@ -1,26 +1,28 @@
 /**
- * scraper-runner unit tests — wiring tests for runLiveScrape factory.
+ * scraper-runner unit tests — wiring + resilience tests for runLiveScrape factory.
  *
- * Properties / behaviours tested:
- *   AC1 — live mode wires AldiSudCatalogueFetcher and VMarktCatalogueFetcher
- *           with HaikuCatalogueExtractor and calls runScrape for both stores.
- *   AC2 — live mode resolves (exit 0 proxy) when all runScrape calls succeed.
- *   AC3 — live mode rejects (exit 1 proxy) when a fetcher throws.
- *   AC4 — fake mode is unaffected: acceptance tests cover this via subprocess.
+ * Properties / behaviours tested (step 09-01 contract):
+ *   AC1 — per-store isolation: one store failing is recorded + skipped; the run
+ *           continues with the others and does NOT reject. Summary records the
+ *           per-store outcome as {store, ok, error?}.
+ *   AC2 — key decoupling: ANTHROPIC_API_KEY absent no longer aborts the run.
+ *           Aldi Süd still attempts; the V-Markt leg is skipped with a recorded
+ *           reason and makeVMarktFetcher/Haiku is NOT constructed.
+ *   AC3 — exit semantics: exit 0 if >=1 store ok, exit 1 only if ALL failed
+ *           (verified through the exported pure mapper `exitCodeFor`).
  *
  * Approach:
  *   - Inject stub runScrape and stub fetcher factories to keep tests in-process,
  *     free of DB/HTTP/Anthropic dependencies.
- *   - Set a dummy ANTHROPIC_API_KEY in env (save/restore pattern) to pass the
- *     key-check gate without a real key.
- *   - `test.skipIf(!process.env.ANTHROPIC_API_KEY)` is NOT used here because
- *     the stubs bypass Haiku construction entirely.
+ *   - Manage ANTHROPIC_API_KEY per-test (explicit set/delete) with afterEach
+ *     restore so no state leaks to other test files.
  *
- * bypass: wiring tests verify composition, not invariants — example-based is correct here.
+ * bypass: wiring tests verify composition/summary shape, not invariants —
+ * example-based is correct here.
  */
 
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { runLiveScrape } from "./scraper-runner.ts";
+import { describe, test, expect, afterEach } from "bun:test";
+import { runLiveScrape, exitCodeFor } from "./scraper-runner.ts";
 
 // ── Env save/restore ──────────────────────────────────────────────────────────
 
@@ -37,29 +39,33 @@ afterEach(() => {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Minimal stub for CatalogueFetcher port. */
-function stubFetcher(name: string, reject = false) {
+function stubFetcher(name: string) {
   return {
     name,
-    fetchCurrentWeek: reject
-      ? async () => { throw new Error(`${name} failed`); }
-      : async () => [],
+    fetchCurrentWeek: async () => [],
   };
 }
 
-// ── AC1 + AC2: live mode wires both stores and resolves on success ─────────────
+/** Finds a per-store summary entry by store name. */
+function entryFor(summary: Array<{ store: string; ok: boolean; error?: string }>, store: string) {
+  const entry = summary.find((s) => s.store === store);
+  if (!entry) throw new Error(`no summary entry for store ${store}`);
+  return entry;
+}
 
-describe("runLiveScrape — live wiring", () => {
-  // bypass: wiring test verifies composition, not invariants.
+// ── AC1: per-store isolation + wiring ──────────────────────────────────────────
 
-  test("calls runScrape for both Aldi Süd and V-Markt when ANTHROPIC_API_KEY is set", async () => {
+describe("runLiveScrape — per-store isolation", () => {
+  // bypass: wiring test verifies composition + summary shape, not invariants.
+
+  test("attempts both stores and returns an ok summary when both succeed", async () => {
     process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
 
     const scraped: Array<{ fetcherName: string; store: string }> = [];
-
     const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
     const vMarktStub = stubFetcher("VMarktCatalogueFetcher");
 
-    await runLiveScrape({
+    const summary = await runLiveScrape({
       makeAldiFetcher: () => aldiStub,
       makeVMarktFetcher: () => vMarktStub,
       runScrape: async (fetcher, store) => {
@@ -67,99 +73,117 @@ describe("runLiveScrape — live wiring", () => {
       },
     });
 
-    const stores = scraped.map((s) => s.store);
-    expect(stores).toContain("Aldi Süd");
-    expect(stores).toContain("V-Markt");
+    expect(scraped.map((s) => s.store)).toContain("Aldi Süd");
+    expect(scraped.map((s) => s.store)).toContain("V-Markt");
     expect(scraped).toHaveLength(2);
+
+    expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
+    expect(entryFor(summary, "V-Markt").ok).toBe(true);
   });
 
-  test("passes the Aldi fetcher to the Aldi Süd scrape call", async () => {
+  test("passes the correct fetcher to each store's scrape call", async () => {
     process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
 
     const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
     const vMarktStub = stubFetcher("VMarktCatalogueFetcher");
     let aldiRunWith: unknown = null;
-
-    await runLiveScrape({
-      makeAldiFetcher: () => aldiStub,
-      makeVMarktFetcher: () => vMarktStub,
-      runScrape: async (fetcher, store) => {
-        if (store === "Aldi Süd") aldiRunWith = fetcher;
-      },
-    });
-
-    expect(aldiRunWith).toBe(aldiStub);
-  });
-
-  test("passes the V-Markt fetcher to the V-Markt scrape call", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
-
-    const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
-    const vMarktStub = stubFetcher("VMarktCatalogueFetcher");
     let vMarktRunWith: unknown = null;
 
     await runLiveScrape({
       makeAldiFetcher: () => aldiStub,
       makeVMarktFetcher: () => vMarktStub,
       runScrape: async (fetcher, store) => {
+        if (store === "Aldi Süd") aldiRunWith = fetcher;
         if (store === "V-Markt") vMarktRunWith = fetcher;
       },
     });
 
+    expect(aldiRunWith).toBe(aldiStub);
     expect(vMarktRunWith).toBe(vMarktStub);
   });
 
-  test("resolves (exit 0 proxy) when both scrape calls succeed", async () => {
+  test("V-Markt failure does not abort the run; Aldi still scrapes and both are recorded", async () => {
     process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
 
-    await expect(
-      runLiveScrape({
-        makeAldiFetcher: () => stubFetcher("Aldi"),
-        makeVMarktFetcher: () => stubFetcher("VMarkt"),
-        runScrape: async () => {},
-      })
-    ).resolves.toBeUndefined();
+    const attempted: string[] = [];
+
+    const summary = await runLiveScrape({
+      makeAldiFetcher: () => stubFetcher("Aldi"),
+      makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      runScrape: async (_fetcher, store) => {
+        attempted.push(store);
+        if (store === "V-Markt") throw new Error("VMarktCatalogueFetcher failed");
+      },
+    });
+
+    expect(attempted).toContain("Aldi Süd");
+    expect(attempted).toContain("V-Markt");
+
+    expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
+    const vMarkt = entryFor(summary, "V-Markt");
+    expect(vMarkt.ok).toBe(false);
+    expect(vMarkt.error).toContain("VMarktCatalogueFetcher failed");
+  });
+
+  test("Aldi failure does not abort the run; V-Markt still scrapes and both are recorded", async () => {
+    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
+
+    const attempted: string[] = [];
+
+    const summary = await runLiveScrape({
+      makeAldiFetcher: () => stubFetcher("Aldi"),
+      makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      runScrape: async (_fetcher, store) => {
+        attempted.push(store);
+        if (store === "Aldi Süd") throw new Error("AldiSudCatalogueFetcher failed");
+      },
+    });
+
+    expect(attempted).toContain("Aldi Süd");
+    expect(attempted).toContain("V-Markt");
+
+    const aldi = entryFor(summary, "Aldi Süd");
+    expect(aldi.ok).toBe(false);
+    expect(aldi.error).toContain("AldiSudCatalogueFetcher failed");
+    expect(entryFor(summary, "V-Markt").ok).toBe(true);
   });
 });
 
-// ── AC3: live mode rejects when a fetcher throws ──────────────────────────────
+// ── AC2: ANTHROPIC_API_KEY decoupling ──────────────────────────────────────────
 
-describe("runLiveScrape — error propagation", () => {
-  // bypass: wiring test verifies composition, not invariants.
+describe("runLiveScrape — ANTHROPIC_API_KEY decoupling", () => {
+  // bypass: wiring test verifies composition + summary shape, not invariants.
 
-  test("rejects (exit 1 proxy) when Aldi runScrape rejects", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
+  test("with key absent: Aldi still scrapes, V-Markt is skipped with a recorded reason, and makeVMarktFetcher is NOT called", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
 
-    await expect(
-      runLiveScrape({
-        makeAldiFetcher: () => stubFetcher("Aldi"),
-        makeVMarktFetcher: () => stubFetcher("VMarkt"),
-        runScrape: async (_fetcher, store) => {
-          if (store === "Aldi Süd") throw new Error("AldiSudCatalogueFetcher failed");
-        },
-      })
-    ).rejects.toThrow("AldiSudCatalogueFetcher failed");
+    const attempted: string[] = [];
+    let vMarktFetcherConstructions = 0;
+
+    const summary = await runLiveScrape({
+      makeAldiFetcher: () => stubFetcher("Aldi"),
+      makeVMarktFetcher: () => {
+        vMarktFetcherConstructions += 1;
+        return stubFetcher("VMarkt");
+      },
+      runScrape: async (_fetcher, store) => {
+        attempted.push(store);
+      },
+    });
+
+    // Aldi is attempted; V-Markt is not run (fetcher never constructed).
+    expect(attempted).toContain("Aldi Süd");
+    expect(attempted).not.toContain("V-Markt");
+    expect(vMarktFetcherConstructions).toBe(0);
+
+    // Summary records Aldi success and V-Markt skip-with-reason.
+    expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
+    const vMarkt = entryFor(summary, "V-Markt");
+    expect(vMarkt.ok).toBe(false);
+    expect(vMarkt.error).toBe("ANTHROPIC_API_KEY missing");
   });
 
-  test("rejects (exit 1 proxy) when V-Markt runScrape rejects", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
-
-    await expect(
-      runLiveScrape({
-        makeAldiFetcher: () => stubFetcher("Aldi"),
-        makeVMarktFetcher: () => stubFetcher("VMarkt"),
-        runScrape: async (_fetcher, store) => {
-          if (store === "V-Markt") throw new Error("VMarktCatalogueFetcher failed");
-        },
-      })
-    ).rejects.toThrow("VMarktCatalogueFetcher failed");
-  });
-});
-
-// ── Missing ANTHROPIC_API_KEY: guard check ─────────────────────────────────────
-
-describe("runLiveScrape — ANTHROPIC_API_KEY guard", () => {
-  test("throws when ANTHROPIC_API_KEY is absent", async () => {
+  test("with key absent: the run does not reject even if it is the only successful store", async () => {
     delete process.env.ANTHROPIC_API_KEY;
 
     await expect(
@@ -168,6 +192,43 @@ describe("runLiveScrape — ANTHROPIC_API_KEY guard", () => {
         makeVMarktFetcher: () => stubFetcher("VMarkt"),
         runScrape: async () => {},
       })
-    ).rejects.toThrow();
+    ).resolves.toBeDefined();
+  });
+});
+
+// ── AC3: exit-code mapping (pure helper) ───────────────────────────────────────
+
+describe("exitCodeFor — summary to exit code mapping", () => {
+  // bypass: pure-function mapping test — single output, no side effects.
+
+  test("returns 0 when at least one store is ok", () => {
+    expect(
+      exitCodeFor([
+        { store: "Aldi Süd", ok: true },
+        { store: "V-Markt", ok: false, error: "boom" },
+      ])
+    ).toBe(0);
+  });
+
+  test("returns 0 when all stores are ok", () => {
+    expect(
+      exitCodeFor([
+        { store: "Aldi Süd", ok: true },
+        { store: "V-Markt", ok: true },
+      ])
+    ).toBe(0);
+  });
+
+  test("returns 1 when all stores failed", () => {
+    expect(
+      exitCodeFor([
+        { store: "Aldi Süd", ok: false, error: "boom" },
+        { store: "V-Markt", ok: false, error: "ANTHROPIC_API_KEY missing" },
+      ])
+    ).toBe(1);
+  });
+
+  test("returns 1 when the summary is empty (no store attempted)", () => {
+    expect(exitCodeFor([])).toBe(1);
   });
 });
