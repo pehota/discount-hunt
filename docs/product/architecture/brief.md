@@ -451,13 +451,13 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (CLI) | `src/scraping/scraper-runner.ts` | Entry point for `bun run scrape.ts`; parses CLI args (store flag); delegates to `ScrapingService` |
-| Domain service | `src/scraping/scraping-service.ts` | Orchestrates `ScrapeJob` lifecycle: `StartScrape` → fetch → normalize → `CompleteScrape`/`FailScrape` |
-| ACL: Aldi Süd | `src/scraping/adapters/aldi-sud-catalogue-fetcher.ts` | HEAD→302 slug discovery; paginated `hotspots_data.json` fetch; returns raw catalogue JSON |
+| Primary adapter (CLI) | `src/scraping/scraper-runner.ts` | Entry point for `bun run scrape.ts`; parses CLI args (store flag); delegates to `ScrapingService`. **Per-store isolation (phase 09)**: loops stores, records a failing store via `failJob` and **continues** (one store failing no longer aborts the run); exit code from the pure `exitCodeFor(summary)` mapper — 0 if ≥1 store succeeded, 1 if all fail (or empty). Emits `scrape.summary` + `scrape.run.done` structured logs |
+| Domain service | `src/scraping/scraping-service.ts` | Orchestrates `ScrapeJob` lifecycle: `StartScrape` → fetch → normalize → `CompleteScrape`/`FailScrape`; instrumented via `src/shared/logger.ts` (start/fetch/normalize/register/completed\|failed with counts; `zero_kept` drift WARN). `ANTHROPIC_API_KEY` is scoped to the V-Markt/Haiku leg only — Aldi runs key-free (phase 09) |
+| ACL: Aldi Süd | `src/scraping/adapters/aldi-sud-catalogue-fetcher.ts` | HEAD→302 slug discovery; paginated `hotspots_data.json` fetch; reads nested `entry.products[]`, keeps genuine discounts (nested `discountedPrice < price`), derives an ISO end-of-week `validUntil` (feed gives only a German `"d.m."` start date), de-overlaps paginated ranges (phase 11); runs key-free (no `ANTHROPIC_API_KEY`) |
 | ACL: Edeka | (not yet implemented) | FUTURE — planned in SLICE-02 but deferred; no file exists |
 | ACL: V-Markt | `src/scraping/adapters/v-markt-catalogue-fetcher.ts` | Delivered S02 — PDF catalogue URL discovery via HEAD redirect; content extraction delegated to HaikuCatalogueExtractor |
 | AI extractor | `src/scraping/adapters/haiku-catalogue-extractor.ts` | Claude Haiku vision call; extracts items from V-Markt PDF catalogue pages; returns NormalizedItem[] |
-| ACL normalizer | `src/scraping/adapters/catalogue-normalizer.ts` | Translates store-specific JSON to `NormalizedItem`; applies `dietary_tags[]` classifier; enforces both-price filter (drops items missing `price` or `discountedPrice`) |
+| ACL normalizer | `src/scraping/adapters/catalogue-normalizer.ts` | Translates store-specific JSON to `NormalizedItem`; applies `dietary_tags[]` classifier; enforces both-price filter (drops items missing `price` or `discountedPrice`); defaults a missing `category` to `"unknown"` (phase 11 — a prior undefined `category` bind let Drizzle emit malformed SQL and silently drop rows; the SQLite repo now fails loudly on any undefined bind value) |
 | Driven port (DB) | `src/scraping/ports/scrape-job-repository.ts` | Port interface: `startJob`, `completeJob`, `failJob` |
 | Secondary adapter | `src/scraping/adapters/sqlite-scrape-job-repository.ts` | Drizzle ORM implementation of `ScrapeJobRepository`; writes `scrape_jobs` table |
 | Substrate probe | `src/scraping/probes/catalogue-probe.ts` | Per-run: validates 302 slug pattern; validates first parsed item has `title` + `price`; logs `health.scrape.refused` on failure |
@@ -484,8 +484,9 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (HTTP) | `src/recipe/http/recipe-handler.ts` | `GET /plan/{meal_id}` — recipe detail view (name, ingredients, steps, "Open original recipe ↗", "Back to meal plan"); read-only plan lookup (no spurious generation); ingredient↔discount highlighting via `data-on-sale`; fallbacks (no-match → ingredient + Chefkoch search link; dead source → cached + "unavailable" notice); escapes all interpolated text via `escapeHtml` |
-| Domain service | `src/recipe/recipe-service.ts` | `getRecipeForMeal(...)`: cache-first with 7-day TTL, refresh-on-expiry, mark-source-dead; `CacheRecipe`, `RefreshRecipe`, `MarkSourceDead` use-case implementations; depends on the `RecipeSource` port, never on Chefkoch directly |
+| Primary adapter (HTTP) | `src/recipe/http/recipe-handler.ts` | `GET /plan/{meal_id}` — recipe detail view (name, ingredients, steps, "Open original recipe ↗", "Back to meal plan"); read-only plan lookup (no spurious generation); ingredient↔discount highlighting via `data-on-sale`; fallbacks (no-match → ingredient + Chefkoch search link; dead source → cached + "unavailable" notice); escapes all interpolated text via `escapeHtml`. Phase 12: passes the meal `slot` + recipe-search `prefs` into `getRecipeForMeal`; recipe links on `/plan` are scoped to the configured `meal_types` |
+| Domain service | `src/recipe/recipe-service.ts` | `getRecipeForMeal(mealName, mealType?, prefs?)`: cache-first with 7-day TTL, refresh-on-expiry, mark-source-dead; `CacheRecipe`, `RefreshRecipe`, `MarkSourceDead` use-case implementations; depends on the `RecipeSource` port, never on Chefkoch directly. Phase 12: composes the meal-aware query via `buildRecipeQuery` **only when both `mealType` and `prefs` are supplied**, else keys on the bare meal name (backward-compat bridge); caches by the composed query key |
+| Pure query composer | `src/recipe/recipe-query.ts` | `buildRecipeQuery(mealName, mealType, prefs)` (phase 12) — pure; composes the German query in a stable order: `[ mealName, mealTypeTerm (Mittagessen\|Abendessen), dietaryTerm?, "kinderfreundlich"?, "für N Personen"?, "schnell"?, "Rezept" ]`, dropping falsy terms. The meal-type term is the "no Soft Ice for dinner" mitigation (dinner biased to `Abendessen`) |
 | Driven port (source) | `src/recipe/ports/recipe-source.ts` | `RecipeSource` port — `find(query): Promise<FetchedRecipe \| null>`. The single testability seam: prod wires `ChefkochRecipeSource`, tests wire `FakeRecipeSource` (no network). Read-only (no write method); returns null on no-hit or shape change, never throws into the domain |
 | ACL adapter (live) | `src/recipe/adapters/chefkoch-recipe-source.ts` | `ChefkochRecipeSource` — Chefkoch site-search (`suche.php`) → first `/rezepte/…` link → recipe-page `schema.org/Recipe` JSON-LD extraction (`url ?? mainEntityOfPage` fallback); no API key |
 | ACL adapter (tests) | (inline in test files; injected via `config.recipeSource`) | `FakeRecipeSource` — deterministic in-memory `RecipeSource`; the test suite never hits the network. Prod default in `server.ts` is `new ChefkochRecipeSource()` |
@@ -511,7 +512,9 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | Driven port (DB) | `src/preferences/ports/preferences-repository.ts` | `UserPreferencesRepository` — `get(): UserPreferences` (returns honest defaults `{ dietaryRestriction: 'none', budgetCapCents: null }` when unset, never null), `upsert(prefs): void` |
 | Secondary adapter | `src/preferences/adapters/sqlite-user-preferences-repository.ts` | Drizzle ORM; `user_settings` table; single-row singleton, fixed-PK upsert-on-conflict on `user_id = 'dimitar'` |
 
-**Schema (`user_settings`):** `user_id` (fixed-PK singleton), `dietary_restriction` (`none`\|`vegetarian`\|`vegan`, S03), `budget_cap_cents` (nullable, increment 1.5), `updated_at`. Budget column added via the guarded ALTER idiom when the warn-effect shipped (columns-arrive-with-effects rule).
+**Schema (`user_settings`):** `user_id` (fixed-PK singleton), `dietary_restriction` (`none`\|`vegetarian`\|`vegan`, S03), `budget_cap_cents` (nullable, increment 1.5), plus the **recipe-search params (phase 12)** `kid_friendly` (SQLite 0/1 boolean, default 0), `household_size` (integer, default 2), `cooking_time` (`any`\|`quick`, default `any`), `meal_types` (JSON array of `MealSlot`, default `["lunch","dinner"]`), and `updated_at`. Budget + the phase-12 recipe-search columns were each added via the guarded ALTER idiom when their effect shipped (columns-arrive-with-effects rule).
+
+**Distinction (important):** `dietary_restriction` + `budget_cap_cents` filter the **discount feed / plan** (which items qualify). The phase-12 columns (`kid_friendly`, `household_size`, `cooking_time`, `meal_types`) are **RECIPE-SEARCH params** — they shape the composed recipe query (`src/recipe/recipe-query.ts`) and scope which meal slots get recipe links, not which discount items appear.
 
 #### Shared Kernel — `src/shared/`
 
@@ -524,6 +527,7 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `src/shared/layout.ts` | `renderPage({ title, activeNav, body })` — page shell (inline CSS, top nav Feed/Plan/Savings/Settings, responsive card-grid); wraps caller-supplied body verbatim, escapes only the title. All four HTTP handlers route through it | pure-function / return-only |
 | `src/shared/week.ts` | `currentWeekMonday(): WeekStart` — single source of truth for the current ISO-week Monday ("YYYY-MM-DD"); consumed by the discount dashboard and `GeneratePlan` so feed and plan agree on the week | pure-function / return-only |
 | `src/shared/html.ts` | `escapeHtml(value)` — escapes `& < > " '` for safe interpolation of untrusted scraped strings (item/meal/store names) into server-rendered HTML | pure-function / return-only |
+| `src/shared/logger.ts` | Structured logging (phase 10): `Logger` interface, pure `formatLine(level, event, fields)` (greppable `key=value`), `ConsoleLogger` (info→stdout, warn/error→stderr). Instruments the scrape lifecycle across ScrapingService + Aldi/V-Markt fetchers + runner | pure-function core (`formatLine`) + thin effectful shell (`ConsoleLogger`) |
 
 **Shared Kernel rationale:** `src/shared/dietary.ts` is the sole sanctioned cross-context import, declared as Shared Kernel per DDD context mapping. All other cross-context communication goes through port interfaces and the SQLite DB. This is the explicit exception to D26 ("no cross-context type imports") — a deliberate Shared Kernel boundary, not a leak.
 
@@ -665,7 +669,7 @@ flowchart TB
 
 ### Slice → Component Map
 
-*Last updated: 2026-07-15 — S01 + S02 + S03 + inc-1.5 + S04 + UI + bugfix(07) + S05 DELIVERED*
+*Last updated: 2026-07-15 — S01 + S02 + S03 + inc-1.5 + S04 + UI + bugfix(07) + S05 + phases 09–12 (scraper resilience, logging, Aldi fix, recipe-search params) DELIVERED*
 
 | Component | First slice | Status | Incremental additions |
 |---|---|---|---|
@@ -694,6 +698,8 @@ flowchart TB
 | `src/recipe/ports/recipe-source.ts` | S05 | IMPLEMENTED | S05: single `RecipeSource` port (testability seam); replaces the two planned Brave/fetcher ports |
 | `src/recipe/adapters/chefkoch-recipe-source.ts` | S05 | IMPLEMENTED | S05: live Chefkoch site-search + JSON-LD; no API key (Brave dropped at SPIKE-02) |
 | `src/recipe/ingredient-match.ts` | S05 | IMPLEMENTED | S05: pure display-only ingredient↔discount match heuristic (extracted step 08-08) |
+| `src/recipe/recipe-query.ts` | phase 12 | IMPLEMENTED | phase 12: pure `buildRecipeQuery` — meal-aware German query composer |
+| `src/shared/logger.ts` | phase 10 | IMPLEMENTED | phase 10: shared-kernel structured logger (pure `formatLine` + `ConsoleLogger`) |
 | `src/recipe/adapters/sqlite-recipe-repository.ts` | S05 | IMPLEMENTED | S05: `recipes` table, TTL refresh + `markDead` |
 | `src/shared/dietary.ts` | S01 | IMPLEMENTED | S03: full restriction enum; S05: tags cross-checked against recipe ingredients |
 | `src/shared/schema.ts` | S01 | IMPLEMENTED | Each slice adds table definitions as new tables are introduced |
@@ -744,4 +750,24 @@ flowchart TB
 
 ### Data model at close
 
-`recipes` table is live (`src/recipe/adapters/sqlite-recipe-repository.ts`, `cached_content IS NOT NULL`, `cached_at` + 7-day TTL). Full table set: `discount_items`, `meal_plans` (carries snapshotted `dietary_filter` + `budget_cap_cents`), `recipes`, `savings_log`, `scrape_jobs`, `user_settings`.
+`recipes` table is live (`src/recipe/adapters/sqlite-recipe-repository.ts`, `cached_content IS NOT NULL`, `cached_at` + 7-day TTL). Full table set: `discount_items`, `meal_plans` (carries snapshotted `dietary_filter` + `budget_cap_cents`), `recipes`, `savings_log`, `scrape_jobs`, `user_settings` (now also carries the phase-12 recipe-search params `kid_friendly`, `household_size`, `cooking_time`, `meal_types`).
+
+---
+
+### Phases 09–12 reconciliation (2026-07-15)
+
+*See `docs/evolution/2026-07-15-discount-hunt-phases-09-12.md` for the full increment write-up.*
+
+- **Phase 09 — Scraper resilience.** Per-store adapter isolation: one store failing is recorded via `failJob` and the run **continues** (no longer aborts). `ANTHROPIC_API_KEY` decoupled — only the V-Markt/Haiku leg requires it; Aldi runs key-free. Exit code derived from the pure `exitCodeFor(summary)` mapper (0 if ≥1 store ok, 1 if all fail).
+- **Phase 10 — Structured logging.** New shared-kernel `src/shared/logger.ts` (pure `formatLine` + `ConsoleLogger`, greppable `key=value`, info→stdout / warn+error→stderr). Instruments the full scrape lifecycle plus a `zero_kept` drift WARN.
+- **Phase 11 — Aldi extraction fix (the real "scraper doesn't work").** The Publitas feed nests items under `entry.products[]`; discount = nested `discountedPrice < price`; `validUntil` derived as ISO end-of-current-week (feed gives only a German `"d.m."` start date); paginated ranges de-overlapped. Normalizer defaults missing `category` to `"unknown"`; the SQLite repo now **fails loudly on undefined binds** (the prior silent-drop caused only 8/31 items to persist). Live run now persists all 31. Feed-schema finding recorded in `spike/findings-03-store-scraping.md` (addendum).
+- **Phase 12 — Recipe-search params + meal-aware query.** `user_settings` gains `kid_friendly`, `household_size`, `cooking_time`, `meal_types` (recipe-search params, NOT feed filters). Pure `src/recipe/recipe-query.ts` composes the meal-aware German query; `getRecipeForMeal(name, slot?, prefs?)` composes only when slot+prefs both present (bare-name bridge). `/plan` recipe links scoped to `meal_types`. The meal-type term is the "no Soft Ice for dinner" mitigation.
+
+### Known deferrals at close (phases 09–12)
+
+| Item | Why deferred |
+|------|--------------|
+| Breakfast slot | Needs a plan-reshape (plan is currently lunch/dinner only) |
+| German `productType` → dietary tags | Vegan users currently miss some Aldi items whose German product type isn't mapped to a dietary tag |
+| V-Markt extraction quality | Haiku extraction quality not yet hardened |
+| Budget mid-week regenerate | Needs a savings-row-count guard before allowing mid-week regeneration |

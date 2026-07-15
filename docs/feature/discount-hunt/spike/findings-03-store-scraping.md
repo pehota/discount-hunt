@@ -183,3 +183,18 @@ Validity date pattern: `Gultig von [A-Za-z.]+\s+DD.MM. bis [A-Za-z.]+\s+DD.MM.YY
 `/tmp/spike_discount_hunt_03/probe.ts` — Bun-compatible TypeScript (Edeka Akamai check + V-Markt slug discovery + catalogue fetch + item count)
 
 Do not delete until promotion gate decision.
+
+---
+
+## Addendum — Aldi `hotspots_data.json` real schema (discovered 2026-07-15, DELIVER phase 11)
+
+The SPIKE-01 addendum treated the Aldi Süd Publitas feed as a flat list of `type: "product"` hotspots with top-level `price` / `discountedPrice`. The live extraction fix in DELIVER phase 11 revealed the schema is one level deeper and encodes discounts differently:
+
+1. **Products are nested.** Each `type: "product"` hotspot entry nests its actual items under a `products: []` array. The parser must read `entry.products[]`, not the entry itself. (The prior flat read is why only a fraction of items were seen.)
+2. **Discount = nested price comparison.** A genuine discount is `nested.discountedPrice < nested.price`. Entries where this does not hold are regular-price items, not discounts, and must be dropped at the ACL boundary (consistent with the both-price invariant).
+3. **`validUntil` must be derived — the feed gives no end date.** `customLabel1` is a German `"d.m."` **start** date only (e.g. `"14.7."`) — no year, no end date. The normalizer sets `validUntil` to an ISO end-of-current-week date (the Aldi promotional week), since the feed does not publish a validity range.
+4. **Pagination ranges overlap.** Successive catalogue pages return overlapping product ranges; the fetcher must de-overlap (dedupe) across pages or the same discount is registered multiple times.
+
+**Downstream repo-guard finding (phase 11-02):** the normalizer must default a missing `category` to `"unknown"`. A prior undefined `category` binding caused Drizzle to **silently drop** the undefined interpolation → malformed SQL → only a subset of items persisted (8 of 31 in the live run). The SQLite repository now fails loudly on any undefined bind value rather than silently emitting bad SQL.
+
+**Net effect:** the live Aldi scrape now persists all genuine discounts (31/31 in the 2026-07-15 live run), where the pre-fix path persisted only 8.

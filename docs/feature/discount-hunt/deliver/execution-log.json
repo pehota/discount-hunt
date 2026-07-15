@@ -841,6 +841,209 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-07-15T06:38:52Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:33:06Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:34:21Z"
+    },
+    {
+      "sid": "09-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:35:12Z"
+    },
+    {
+      "sid": "10-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:44:50Z"
+    },
+    {
+      "sid": "10-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:45:21Z"
+    },
+    {
+      "sid": "10-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:45:55Z"
+    },
+    {
+      "sid": "10-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:47:28Z"
+    },
+    {
+      "sid": "10-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:52:09Z"
+    },
+    {
+      "sid": "10-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T07:52:23Z"
+    },
+    {
+      "sid": "11-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T08:16:32Z"
+    },
+    {
+      "sid": "11-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T08:17:49Z"
+    },
+    {
+      "sid": "11-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T08:18:36Z"
+    },
+    {
+      "sid": "11-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T08:28:11Z"
+    },
+    {
+      "sid": "11-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T08:28:11Z"
+    },
+    {
+      "sid": "11-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T08:28:47Z"
+    },
+    {
+      "sid": "12-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:20:10Z"
+    },
+    {
+      "sid": "12-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:24:47Z"
+    },
+    {
+      "sid": "12-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:24:47Z"
+    },
+    {
+      "sid": "12-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:25:56Z"
+    },
+    {
+      "sid": "12-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:27:35Z"
+    },
+    {
+      "sid": "12-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:27:35Z"
+    },
+    {
+      "sid": "12-03",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:33:39Z"
+    },
+    {
+      "sid": "12-03",
+      "p": "GREEN",
+      "s": "SKIPPED",
+      "d": "BLOCKED_BY_DEPENDENCY: recipe-detail.test.ts bare-keyed FakeRecipeSource + stale-row incompatible with composed-query contract; recipe-detail.test.ts out of 12-03 files_to_modify scope",
+      "t": "2026-07-15T09:38:29Z"
+    },
+    {
+      "sid": "12-03",
+      "p": "COMMIT",
+      "s": "SKIPPED",
+      "d": "BLOCKED_BY_DEPENDENCY: cannot commit \u2014 full bun test red (11 recipe-detail AT failures from bare-keyed FakeRecipeSource incompatible with composed-query contract); recipe-detail.test.ts out of 12-03 scope, needs acceptance-designer re-key",
+      "t": "2026-07-15T09:39:04Z"
+    },
+    {
+      "sid": "12-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:51:44Z"
+    },
+    {
+      "sid": "12-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:51:44Z"
+    },
+    {
+      "sid": "12-04",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T09:59:26Z"
+    },
+    {
+      "sid": "12-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T10:04:39Z"
+    },
+    {
+      "sid": "12-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T10:05:25Z"
     }
   ]
 }

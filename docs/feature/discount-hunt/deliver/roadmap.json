@@ -2,7 +2,7 @@
   "roadmap": {
     "project_id": "discount-hunt",
     "created_at": "2026-07-13T20:49:27Z",
-    "total_steps": 38
+    "total_steps": 47
   },
   "phases": [
     {
@@ -813,6 +813,218 @@
             "08-07"
           ],
           "implementation_notes": "Review WARNING (design B13): the pure annotate/tokensOverlap heuristic in recipe-handler.ts (~lines 62-96) has documented failure modes (§9: plurals, compounds, short-token over-match) but zero unit tests. Extract the pure matching logic into src/recipe/ingredient-match.ts: export a pure function e.g. matchIngredient(ingredient: string, weekItems: {store,name,salePrice,...}[]): {store,salePrice}|null (and/or the tokensOverlap predicate), preserving CURRENT behavior exactly (length>=4 token guard, case-insensitive, first-match-wins). Re-import it in recipe-handler.ts annotate (behavior identical - the recipe-detail highlighting ATs must stay green). Add src/recipe/ingredient-match.test.ts: table-driven/PBT unit tests documenting actual behavior for: exact ('Rote Linsen' matches item 'Rote Linsen'), compound/substring ('Rote Linsen' ingredient vs discount item named 'Linsen' -> matches by containment), the length>=4 guard prevents short-token false positives ('Ei' does not match 'Eis'; 'Reis' vs 'Preiselbeeren' -> assert the ACTUAL documented outcome, honestly - if the heuristic over-matches, the test documents that as known behavior with a comment, do NOT silently 'fix' the heuristic beyond what design specifies), and no-match returns null. This is a pure refactor + characterization tests; do NOT change highlighting behavior. Full bun test stays green."
+        }
+      ]
+    },
+    {
+      "id": "09",
+      "name": "Scraper resilience: per-store adapter isolation + API-key decoupling",
+      "steps": [
+        {
+          "id": "09-01",
+          "name": "One store adapter failing must not abort the run; V-Markt key decoupled",
+          "criteria": [
+            "Given a scrape that throws for one store, when the runner runs, then the other store still scrapes and the error does not propagate (run continues); a per-store summary records one failure + one success",
+            "ANTHROPIC_API_KEY absent no longer aborts the whole run — Aldi Süd still scrapes; the V-Markt leg is skipped/failed with a clear recorded reason",
+            "Process exits 0 if >=1 store succeeded, exits 1 only if ALL stores failed"
+          ],
+          "test_file": "src/scraping/scraper-runner.test.ts",
+          "scenario_name": "unit — per-store isolation + key decoupling + exit semantics",
+          "files_to_modify": [
+            "src/scraping/scraper-runner.ts",
+            "src/scraping/scraper-runner.test.ts"
+          ],
+          "deps": [
+            "08-08"
+          ],
+          "implementation_notes": "Current runLiveScrape throws globally if !ANTHROPIC_API_KEY (before Aldi) and runs stores with bare `await runScrape(aldi); await runScrape(vmarkt)` so any throw aborts the rest. Change: (1) Per-store isolation — wrap EACH store's scrape in try/catch; on error, log (console.error 'health.scrape.store_failed', store, err) and continue; collect results as {store, ok:boolean, error?:string}. ScrapingService.run already does failJob+rethrow, so the failed store is recorded in scrape_jobs AND the runner catch swallows the rethrow to continue. (2) Key decoupling — REMOVE the top-level ANTHROPIC_API_KEY throw. Gate ONLY the V-Markt leg: if !ANTHROPIC_API_KEY, skip V-Markt with a recorded reason (treat as a store failure/skip in the summary, e.g. {store:'V-Markt', ok:false, error:'ANTHROPIC_API_KEY missing'}) — do NOT construct HaikuCatalogueExtractor. Aldi always attempts. (3) Return a summary array from runLiveScrape (and runFakeScrape) instead of void. (4) main() maps summary -> exit code: exit 0 if any ok, exit 1 if none ok (or if buildInfrastructure/db setup threw — a catastrophic pre-store failure still exits 1). Apply the SAME per-store try/catch isolation to runFakeScrape (Aldi + optional V-Markt) for consistency. Keep the LiveScrapeDeps seam; extend scraper-runner.test.ts: inject runScrape that rejects for 'V-Markt' and resolves for 'Aldi Süd' -> assert BOTH attempted, runLiveScrape does NOT reject, summary = [{Aldi ok:true},{V-Markt ok:false}]; test with ANTHROPIC_API_KEY unset -> Aldi attempted, V-Markt skipped with reason, and makeVMarktFetcher/Haiku NOT constructed; test exit-code mapping (>=1 ok ->0, all fail ->1) via the returned summary or an exported pure mapper. Preserve existing runner tests (adjust for the new return type if they asserted void)."
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "name": "Scraper observability: structured rich logging",
+      "steps": [
+        {
+          "id": "10-01",
+          "name": "Structured logger + ScrapingService lifecycle logging",
+          "criteria": [
+            "A shared structured logger emits leveled (info/warn/error) events as greppable key=value lines; info->stdout, warn/error->stderr; format is pure-tested",
+            "ScrapingService logs the per-store lifecycle with COUNTS: start, fetched(raw), normalized(+dropped), registered, completed(itemCount,durationMs) or failed(error)",
+            "Logger is injectable (default ConsoleLogger) so tests assert emitted events via a spy without console noise"
+          ],
+          "test_file": "src/scraping/scraping-service.test.ts",
+          "scenario_name": "unit — scrape lifecycle logging with stage counts",
+          "files_to_modify": [
+            "src/shared/logger.ts",
+            "src/shared/logger.test.ts",
+            "src/scraping/scraping-service.ts",
+            "src/scraping/scraping-service.test.ts"
+          ],
+          "deps": [
+            "09-01"
+          ],
+          "implementation_notes": "Create src/shared/logger.ts: type LogLevel='info'|'warn'|'error'; interface Logger { log(level:LogLevel, event:string, fields?:Record<string,unknown>):void }; pure exported formatLine(level,event,fields):string -> e.g. `[INFO] scrape.store.start store=\"Aldi Süd\" rawCount=99` (quote string values, stable key order = insertion order); class ConsoleLogger implements Logger (info->console.log, warn/error->console.error). Unit-test formatLine (levels, quoting, number vs string, empty fields). Wire into ScrapingService: add optional constructor param `logger: Logger = new ConsoleLogger()` (LAST param, keep existing wiring working). In run(): emit scrape.store.start {store}; after fetch -> scrape.fetch {store, rawCount}; after normalize -> scrape.normalize {store, normalizedCount, dropped: rawCount-normalizedCount}; after the register loop -> scrape.register {store, registered}; on success -> scrape.store.completed {store, itemCount, durationMs} (Date.now() delta); on catch -> scrape.store.failed {store, error} BEFORE failJob/rethrow. Extend scraping-service.test.ts with a spy Logger asserting the event sequence + the dropped/count fields (use real sqlite + a stub fetcher returning N raw of which M survive normalize). Keep existing ScrapingService tests green (default logger must not break them)."
+        },
+        {
+          "id": "10-02",
+          "name": "Fetcher stage logging + zero-kept drift warning",
+          "criteria": [
+            "AldiSudCatalogueFetcher logs slug, per-page counts, raw total, and kept-after-filter; emits a WARN 'possible schema drift' when raw>0 but kept==0",
+            "VMarktCatalogueFetcher logs slug, paragraph count, extracted count, kept count; WARN when extracted>0 but kept==0",
+            "The runner prints a structured per-store + overall summary via the logger"
+          ],
+          "test_file": "src/scraping/adapters/aldi-sud-catalogue-fetcher.test.ts",
+          "scenario_name": "unit — fetcher stage logs + zero-kept drift warning",
+          "files_to_modify": [
+            "src/scraping/adapters/aldi-sud-catalogue-fetcher.ts",
+            "src/scraping/adapters/aldi-sud-catalogue-fetcher.test.ts",
+            "src/scraping/adapters/v-markt-catalogue-fetcher.ts",
+            "src/scraping/adapters/v-markt-catalogue-fetcher.test.ts",
+            "src/scraping/scraper-runner.ts"
+          ],
+          "deps": [
+            "10-01"
+          ],
+          "implementation_notes": "Give both fetchers an optional logger (constructor param, default ConsoleLogger; keep existing injectable fetchFn seams). Aldi: log scrape.aldi.slug {slug}; per page scrape.aldi.page {page, count}; after loop scrape.aldi.fetched {rawTotal, kept}; if rawTotal>0 && kept===0 -> logger.log('warn','scrape.aldi.zero_kept',{rawTotal, hint:'possible schema drift - check product entry shape'}). V-Markt: scrape.vmarkt.slug {slug}; scrape.vmarkt.paragraphs {count}; scrape.vmarkt.extracted {extracted, kept}; warn scrape.vmarkt.zero_kept when extracted>0 && kept===0. Runner: replace the console.error('health.scrape.summary'...) lines with structured logger events (scrape.summary per store {store, ok, error?} + scrape.run.done {okCount, failedCount}); wire the shared logger through. Extend the two fetcher tests (they already stub fetch) with a spy logger asserting the stage events + the zero_kept WARN fires on a raw>0/kept==0 fixture. Keep all existing tests green. NO network in tests."
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "name": "Fix Aldi extraction: nested products[], real discounts, ISO validUntil, de-overlapped pages",
+      "steps": [
+        {
+          "id": "11-01",
+          "name": "AldiSudCatalogueFetcher reads nested products[] and returns genuine discounts with ISO validUntil",
+          "criteria": [
+            "Given a hotspots_data.json page where type:'product' entries contain a nested products[] array, the fetcher returns the NESTED products (not the top-level entry) whose discountedPrice is present AND < price",
+            "Products without discountedPrice (catalogue listings) are excluded; the returned items carry an ISO 'YYYY-MM-DD' validUntil (end of the current week), not the raw German 'd.m.' customLabel1",
+            "Pagination does not double-count: pages are fetched non-overlapping (1-2,3-4,5-6,…); products deduped by id",
+            "End-to-end: after this fix a live/fixture scrape yields a non-zero kept count and items pass getByWeek(currentWeekMonday())"
+          ],
+          "test_file": "src/scraping/adapters/aldi-sud-catalogue-fetcher.test.ts",
+          "scenario_name": "unit — nested products extraction + discount filter + ISO validUntil + de-overlap",
+          "files_to_modify": [
+            "src/scraping/adapters/aldi-sud-catalogue-fetcher.ts",
+            "src/scraping/adapters/aldi-sud-catalogue-fetcher.test.ts"
+          ],
+          "deps": [
+            "10-02"
+          ],
+          "implementation_notes": "SPIKE (2026-07-15) confirmed the real Aldi schema: a hotspots_data.json entry with type:'product' has a NESTED `products: []` array; each nested product = {id, title, description, price:'1.19', discountedPrice?:'0.59', productType:'Gemüse - Tomaten', customLabel1:'13.7.', ...}. A genuine deal has nested discountedPrice present AND parseFloat(discountedPrice) < parseFloat(price). Most products have only price (no deal) and must be excluded. The current fetcher wrongly reads price/discountedPrice/title FLAT off the hotspot entry (absent there; title is literally '{first_product_title}') so isDiscountedProduct filters everything -> 0. FIX in aldi-sud-catalogue-fetcher.ts: (1) In the page loop, for each entry with type==='product', flatten entry.products[] (each nested product is a candidate item); dedupe by product.id across pages. (2) Keep only nested products where discountedPrice is a non-empty string AND parseFloat(discountedPrice) < parseFloat(price). (3) De-overlap pagination: step pages by 2 (p=1,3,5,...) fetching /page/${p}-${p+1}/hotspots_data.json until 404 (current code steps by 1 -> overlapping ranges double-count). (4) Map each kept nested product to the CatalogueNormalizer's RawAldiItem shape: {id, title, brand:'Aldi Süd', price, discountedPrice, customLabel1: <ISO validUntil>, productType, photoUrls:[]}. (5) validUntil derivation (feed has no per-item end date; customLabel1 is a German 'd.m.' start date): set customLabel1 to the ISO end-of-current-week = currentWeekMonday() (import from ../../shared/week.ts) + 6 days as 'YYYY-MM-DD'. This makes the downstream normalizer (validUntil = customLabel1) emit a proper ISO date that passes getByWeek(weekMonday). Keep the existing parseSlug/AldiSudFetchError exports and the 10-02 logger events (rawTotal now = count of nested products scanned; kept = discounted count). Update aldi-sud-catalogue-fetcher.test.ts: replace/extend fixtures to the REAL nested shape — a page with (a) a product entry whose products[] has one discounted {price:'0.65',discountedPrice:'0.59'} + one non-discounted {price:'1.19'}, (b) assert only the discounted one is returned, (c) assert its validUntil matches ISO end-of-week (compute expected via currentWeekMonday()+6), (d) assert de-overlapped page stepping (stub fetch records requested page ranges -> no overlap), (e) dedupe. Do NOT change CatalogueNormalizer in this step (it already filters hasDiscount + maps validUntil=customLabel1). NOTE (defer, do not fix here): real productType strings are German ('Gemüse - Tomaten') so the dietary classifier tags nothing -> vegan users lose Aldi items; separate follow-up. Keep all other tests green; no network in tests."
+        },
+        {
+          "id": "11-02",
+          "name": "Normalizer must never emit undefined fields (Aldi products missing productType crash the insert)",
+          "criteria": [
+            "Given a raw catalogue item with no productType, when normalized, then category is a defined string (defaulted), never undefined",
+            "Registering such a normalized item persists a row without a DrizzleError (no malformed SQL from a dropped undefined binding)",
+            "A live/fixture Aldi scrape where some discounted products lack productType persists ALL of them (kept count == rows inserted), and the store completes ok"
+          ],
+          "test_file": "src/scraping/adapters/catalogue-normalizer.test.ts",
+          "scenario_name": "unit — normalizer defaults category; complete NormalizedItem never has undefined bindings",
+          "files_to_modify": [
+            "src/scraping/adapters/catalogue-normalizer.ts",
+            "src/scraping/adapters/catalogue-normalizer.test.ts",
+            "src/discount/adapters/sqlite-discount-item-repository.ts",
+            "src/discount/adapters/sqlite-discount-item-repository.test.ts"
+          ],
+          "deps": [
+            "11-01"
+          ],
+          "implementation_notes": "Live-scrape bug (surfaced by rich logging): registering Aldi items throws DrizzleError with malformed SQL 'VALUES (?, ?, ?, ,' — the 4th column (category) has NO placeholder because CatalogueNormalizer.toNormalizedItem sets `category: item.productType` and SOME real Aldi nested products have no productType -> undefined -> Drizzle's sql template DROPS the undefined interpolation -> malformed query -> crash after the first such item (only 8 of 31 persisted). ROOT-CAUSE FIX (ACL): in catalogue-normalizer.ts toNormalizedItem, default category when productType is missing: `const category = item.productType ?? 'unknown'` and use it for BOTH `category` and `classifyDietaryTags(category)` (classifier default-case already yields []). Audit the other interpolated NormalizedItem fields for the Aldi path (externalId/id, name/title, regularPrice, salePrice, validUntil) — the fetcher only keeps products with discountedPrice<price so price/title/id are present; category is the only optional one, but guard defensively. DEFENSE-IN-DEPTH (repo): in sqlite-discount-item-repository.ts register(), the raw `sql` INSERT is vulnerable to any undefined field silently producing malformed SQL — coerce/validate before insert (e.g. throw a clear error if a required field is undefined, OR coerce category to String(item.category ?? '')). Prefer a guard that fails LOUDLY with the offending field name rather than silently, so future schema drift is diagnosable — but the normalizer default is the primary fix so the happy path persists all items. TDD: (a) normalizer test — raw item WITHOUT productType -> normalized.category === 'unknown' (defined string), dietaryTags === []; existing normalizer tests stay green; (b) repo test (real sqlite) — register an item and assert the row persists; add a case proving a complete item inserts without error; (c) if you add a loud repo guard, test it rejects an undefined required field with a named error. Keep CatalogueNormalizer's existing hasDiscount filter + cents mapping intact. No network in tests."
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "name": "Recipe-search params in Settings + meal-aware composed query",
+      "steps": [
+        {
+          "id": "12-01",
+          "name": "user_settings: kid_friendly, household_size, cooking_time, meal_types + migration + repo",
+          "criteria": [
+            "user_settings gains kid_friendly(INT 0/1 default 0), household_size(INT default 2), cooking_time(TEXT default 'any'), meal_types(TEXT default '[\"lunch\",\"dinner\"]' JSON array); guarded ALTERs don't crash existing DB",
+            "UserPreferences type gains kidFriendly:boolean, householdSize:number, cookingTime:'any'|'quick', mealTypes:MealSlot[]; repo get()/upsert() round-trip all with sane defaults",
+            "get() on an empty DB returns the documented defaults (kidFriendly false, householdSize 2, cookingTime 'any', mealTypes ['lunch','dinner'])"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-params.test.ts",
+          "scenario_name": "@driving_port — settings persist all recipe params (schema/repo prerequisite)",
+          "files_to_modify": [
+            "src/shared/schema.ts",
+            "src/shared/db.ts",
+            "src/shared/types.ts",
+            "src/preferences/ports/preferences-repository.ts",
+            "src/preferences/adapters/sqlite-user-preferences-repository.ts",
+            "src/preferences/adapters/sqlite-user-preferences-repository.test.ts"
+          ],
+          "deps": [
+            "11-02"
+          ],
+          "implementation_notes": "Add four columns to user_settings (schema.ts + CREATE_USER_SETTINGS in db.ts) AND a guarded try/catch ALTER for EACH (four blocks) following the dietary_filter/budget_cap_cents idiom. Extend UserPreferences (src/shared/types.ts) with kidFriendly:boolean, householdSize:number, cookingTime:'any'|'quick', mealTypes:MealSlot[] (MealSlot='lunch'|'dinner'). Update SQLiteUserPreferencesRepository get()/upsert() to round-trip: kid_friendly as 0/1<->bool, household_size int, cooking_time text, meal_types JSON.stringify/parse; defaults when row absent (false/2/'any'/['lunch','dinner']). Extend the repo PBT/unit test for the new fields + defaults. Keep existing dietary+budget round-trip green."
+        },
+        {
+          "id": "12-02",
+          "name": "Settings page: kid-friendly, household size, cooking time, meal-types fields + validation",
+          "criteria": [
+            "GET /settings renders: a kid-friendly checkbox, a household-size number input, a cooking-time select (any/quick), and meal-type checkboxes for lunch & dinner; all pre-filled with current values",
+            "POST /settings persists all four; invalid household_size (non-numeric/<1/>12) -> clamped/defaulted to 2; unknown cooking_time -> 'any'; meal_types keeps only valid slots (lunch/dinner), empty selection -> defaults to both",
+            "Existing dietary + budget fields still work"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-params.test.ts",
+          "scenario_name": "@driving_port — settings page exposes + validates all recipe params",
+          "files_to_modify": [
+            "src/preferences/http/settings-handler.ts"
+          ],
+          "deps": [
+            "12-01"
+          ],
+          "implementation_notes": "Extend the settings form + handlePost. Fields: <input type=checkbox name=kidFriendly>; <input type=number name=householdSize min=1 max=12>; <select name=cookingTime> any/quick; two <input type=checkbox name=mealTypes value=lunch/dinner> (checkbox group). Pre-fill from preferences (checked/selected/value). handlePost: parse+validate reusing the dietary/budget validation discipline (whitelist cookingTime to {any,quick}; householdSize via Number, clamp 1..12 else 2; mealTypes = submitted values intersected with ['lunch','dinner'], empty -> ['lunch','dinner']; kidFriendly = presence of the checkbox). Save via preferencesService.updatePreferences merging all params. Keep 'Settings saved' + dietary + budget intact. NOTE: offer only lunch/dinner (existing plan slots); breakfast deferred (plan-reshape)."
+        },
+        {
+          "id": "12-03",
+          "name": "Pure meal-aware recipe query builder + RecipeService composition + cache-by-query",
+          "criteria": [
+            "A pure buildRecipeQuery(mealName, mealType, prefs) composes: mealName + meal-type term (lunch->'Mittagessen', dinner->'Abendessen') + dietary term (vegetarisch/vegan, none omitted) + 'kinderfreundlich' iff kidFriendly + 'für N Personen' iff householdSize>1 + 'schnell' iff cookingTime=='quick' + 'Rezept'",
+            "RecipeService.getRecipeForMeal(mealName, mealType, prefs) uses the composed query for BOTH the RecipeSource.find call AND the cache key (different params cache separately)",
+            "Unit tests pin the composed query for representative combos incl. the meal-aware term that biases dinner away from dessert results"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-params.test.ts",
+          "scenario_name": "@driving_port — composed meal-aware query with all params (unit)",
+          "files_to_modify": [
+            "src/recipe/recipe-query.ts",
+            "src/recipe/recipe-query.test.ts",
+            "src/recipe/recipe-service.ts",
+            "src/recipe/recipe-service.test.ts"
+          ],
+          "deps": [
+            "12-01"
+          ],
+          "implementation_notes": "Create src/recipe/recipe-query.ts exporting pure buildRecipeQuery(mealName:string, mealType:MealSlot, prefs:{dietaryRestriction,kidFriendly,householdSize,cookingTime}):string. Compose German terms in a stable order: [mealName, mealTypeTerm, dietaryTerm?, 'kinderfreundlich'?, 'für '+N+' Personen'?, 'schnell'?, 'Rezept'] filtering falsy, join ' '. mealTypeTerm: lunch->'Mittagessen', dinner->'Abendessen'. dietaryTerm: vegetarian->'vegetarisch', vegan->'vegan', none->omit. Unit-test combos (none/veg/vegan × kid × household 1 vs 4 × any/quick × lunch/dinner) pinning exact strings; explicitly assert a dinner query contains 'Abendessen' (meal-aware). Change RecipeService.getRecipeForMeal signature to (mealName, mealType, prefs); queryKey = normalized composed query (toLowerCase().trim()); use query for RecipeSource.find AND cache lookup/store. Update recipe-service.test.ts callers to the new signature (FakeRecipeSource already records lastQuery -> assert composed query flows through). Keep cache-first/TTL/markSourceDead behavior."
+        },
+        {
+          "id": "12-04",
+          "name": "Recipe handler + plan links honor meal-type scope and params",
+          "criteria": [
+            "GET /plan renders a recipe link ONLY for meals whose slot is in prefs.mealTypes; a meal whose type is not selected renders its name without a recipe link",
+            "GET /plan/{day}-{slot} builds the recipe via getRecipeForMeal(name, slot, prefs) — the FakeRecipeSource-captured query contains the meal-type term + the enabled params (e.g. 'Abendessen', 'vegetarisch', 'kinderfreundlich', 'für 4 Personen', 'schnell')",
+            "Out-of-scope behavior is graceful (no crash); existing recipe detail + fallbacks + highlighting still work"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-params.test.ts",
+          "scenario_name": "@driving_port — plan link scope + composed query end-to-end",
+          "files_to_modify": [
+            "src/recipe/http/recipe-handler.ts",
+            "src/meal-planning/http/plan-handler.ts",
+            "src/server.ts",
+            "tests/acceptance/discount-hunt/recipe-params.test.ts",
+            "tests/acceptance/discount-hunt/recipe-detail.test.ts"
+          ],
+          "deps": [
+            "12-02",
+            "12-03"
+          ],
+          "implementation_notes": "recipe-handler.handleGet: read preferences (inject UserPreferencesRepository into RecipeHandler via createServer wiring), determine the meal's slot (mealType), call RecipeService.getRecipeForMeal(meal.name, meal.slot, prefs). plan-handler: it must render the recipe link only when meal.slot is in prefs.mealTypes -> inject the preferences repo (or pass mealTypes) into PlanHandler; for out-of-scope slots render escapeHtml(meal.name) WITHOUT the <a>. Wire the new deps in server.ts. Author tests/acceptance/discount-hunt/recipe-params.test.ts (the shared test_file for phase 12): use an injected FakeRecipeSource that records the query; seed items+plan; POST /settings with dietary=vegetarian, kidFriendly on, householdSize=4, cookingTime=quick, mealTypes=dinner; GET /plan -> assert dinner meals are linked, lunch meals are NOT linked; GET a dinner /plan/{id} -> assert FakeRecipeSource query contains 'Abendessen','vegetarisch','kinderfreundlich','für 4 Personen','schnell'. Keep existing recipe-detail ATs green (they call getRecipeForMeal with default prefs -> ensure defaults produce a sensible query; may need the recipe-detail test's createServer to still work with default prefs where mealTypes includes the tested slot). \n\nRE-KEY recipe-detail.test.ts (now IN scope): once recipe-handler passes the 3-arg (name, slot, prefs) form, getRecipeForMeal composes the query, so recipe-detail's bare-name FakeRecipeSource + cache seeds break. Fix them to the composed contract: (a) make the in-test FakeRecipeSource.find match by SUBSTRING (the composed query always CONTAINS the meal name) instead of exact-equality; (b) for cache-seed tests (seedStaleRecipeRow / cache-hit), import buildRecipeQuery from src/recipe/recipe-query.ts and compute query_key = buildRecipeQuery(mealName, <slot from the meal_id under test, e.g. 'lunch'>, DEFAULT_PREFS).toLowerCase().trim() where DEFAULT_PREFS = {dietaryRestriction:'none', kidFriendly:false, householdSize:2, cookingTime:'any'} (the values a fresh test DB yields). Do NOT weaken the behavioral assertions (recipe name/ingredients/steps/links/fallbacks/xss) — only the query/cache KEYING changes to track the new contract. Keep all recipe-detail scenarios green."
         }
       ]
     }
