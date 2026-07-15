@@ -8,7 +8,13 @@
  *   CATALOGUE_SOURCE       — "fake" | "live" (default: "live")
  *   FAKE_CATALOGUE_FIXTURE — path to Aldi JSON fixture (required when CATALOGUE_SOURCE=fake)
  *   FAKE_VMARKT_FIXTURE    — path to V-Markt JSON fixture (optional; enables V-Markt scrape)
- *   ANTHROPIC_API_KEY      — required when CATALOGUE_SOURCE=live
+ *
+ *   Catalogue-LLM config (used only when CATALOGUE_SOURCE=live; see
+ *   catalogue-llm-config.ts for defaults and resolution rules):
+ *     CATALOGUE_LLM_PROVIDER — "anthropic" (default) | "openai-compatible"
+ *     CATALOGUE_LLM_MODEL    — model id (default: claude-haiku-4-5-20251001)
+ *     CATALOGUE_LLM_BASE_URL — required for openai-compatible
+ *     CATALOGUE_LLM_API_KEY  — the key; for anthropic falls back to ANTHROPIC_API_KEY
  *
  * Resilience contract (step 09-01):
  *   - Each store's scrape is isolated in a try/catch. One store failing is
@@ -16,9 +22,9 @@
  *     continues with the remaining stores. ScrapingService.run already fails the
  *     job in scrape_jobs and rethrows; the runner swallows that rethrow to keep
  *     going.
- *   - ANTHROPIC_API_KEY absent no longer aborts the run. Aldi Süd always
- *     attempts; the V-Markt leg is skipped with a recorded reason and the
- *     Haiku-backed fetcher is NOT constructed.
+ *   - A missing/unconfigured catalogue LLM no longer aborts the run. Aldi Süd
+ *     always attempts; the V-Markt leg is skipped with a recorded reason and the
+ *     LLM-backed fetcher is NOT constructed.
  *   - Both runners return a per-store summary: Array<{store, ok, error?}>.
  *   - main() maps the summary to an exit code via exitCodeFor: exit 0 if any
  *     store is ok, exit 1 if none. A catastrophic pre-store failure (DB/infra
@@ -31,7 +37,7 @@
  *
  * Wire order (live mode):
  *   1. Attempt Aldi Süd (needs no API key)
- *   2. Attempt V-Markt only when ANTHROPIC_API_KEY is present
+ *   2. Attempt V-Markt only when a catalogue LLM is configured (resolveCatalogueLlm)
  */
 
 import { createDb } from "../shared/db.ts";
@@ -44,7 +50,8 @@ import { DiscountService } from "../discount/discount-service.ts";
 import { ScrapingService } from "./scraping-service.ts";
 import { AldiSudCatalogueFetcher } from "./adapters/aldi-sud-catalogue-fetcher.ts";
 import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts";
-import { HaikuCatalogueExtractor } from "./adapters/haiku-catalogue-extractor.ts";
+import { AiSdkCatalogueExtractor } from "./adapters/ai-sdk-catalogue-extractor.ts";
+import { resolveCatalogueLlm } from "./adapters/catalogue-llm-config.ts";
 import { ConsoleLogger, type Logger } from "../shared/logger.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -87,28 +94,34 @@ export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreRes
   const runScrape = deps.runScrape ?? makeProdRunScrape();
   const logger = deps.logger ?? new ConsoleLogger();
   const makeAldiFetcher = deps.makeAldiFetcher ?? (() => new AldiSudCatalogueFetcher());
-  const makeVMarktFetcher = deps.makeVMarktFetcher ?? (() => new VMarktCatalogueFetcher(new HaikuCatalogueExtractor()));
 
   const summary: StoreResult[] = [];
 
   // Aldi Süd needs no API key — always attempts.
   summary.push(await isolatedScrape(runScrape, makeAldiFetcher(), ALDI_STORE, logger));
 
-  // V-Markt requires Anthropic (Haiku extraction). Skip with a recorded reason
-  // when the key is absent — do NOT construct the Haiku-backed fetcher.
-  if (process.env.ANTHROPIC_API_KEY) {
+  // V-Markt requires a configured catalogue LLM. Resolve once; when non-null,
+  // scrape (const-narrowing keeps `model` non-null inside the default factory).
+  // When null, skip with a recorded reason — do NOT construct the LLM-backed fetcher.
+  const model = resolveCatalogueLlm();
+  if (model) {
+    const makeVMarktFetcher =
+      deps.makeVMarktFetcher ?? (() => new VMarktCatalogueFetcher(new AiSdkCatalogueExtractor(model)));
     summary.push(await isolatedScrape(runScrape, makeVMarktFetcher(), VMARKT_STORE, logger));
   } else {
     logger.log("warn", "scrape.summary", {
       store: VMARKT_STORE,
       ok: false,
-      error: "ANTHROPIC_API_KEY missing",
+      error: LLM_NOT_CONFIGURED,
     });
-    summary.push({ store: VMARKT_STORE, ok: false, error: "ANTHROPIC_API_KEY missing" });
+    summary.push({ store: VMARKT_STORE, ok: false, error: LLM_NOT_CONFIGURED });
   }
 
   return summary;
 }
+
+/** Recorded reason when the V-Markt leg is skipped due to no usable LLM config. */
+export const LLM_NOT_CONFIGURED = "catalogue LLM not configured";
 
 /** Runs one store's scrape, converting any throw into a recorded failure. */
 async function isolatedScrape(

@@ -5,24 +5,25 @@
  *   AC1 — per-store isolation: one store failing is recorded + skipped; the run
  *           continues with the others and does NOT reject. Summary records the
  *           per-store outcome as {store, ok, error?}.
- *   AC2 — key decoupling: ANTHROPIC_API_KEY absent no longer aborts the run.
+ *   AC2 — LLM decoupling: an unconfigured catalogue LLM no longer aborts the run.
  *           Aldi Süd still attempts; the V-Markt leg is skipped with a recorded
- *           reason and makeVMarktFetcher/Haiku is NOT constructed.
+ *           reason and makeVMarktFetcher is NOT constructed.
  *   AC3 — exit semantics: exit 0 if >=1 store ok, exit 1 only if ALL failed
  *           (verified through the exported pure mapper `exitCodeFor`).
  *
  * Approach:
  *   - Inject stub runScrape and stub fetcher factories to keep tests in-process,
  *     free of DB/HTTP/Anthropic dependencies.
- *   - Manage ANTHROPIC_API_KEY per-test (explicit set/delete) with afterEach
- *     restore so no state leaks to other test files.
+ *   - Manage the catalogue-LLM env (ANTHROPIC_API_KEY + CATALOGUE_LLM_*) per-test
+ *     (explicit set/delete) with afterEach restore so no state leaks. The default
+ *     anthropic provider resolves a model when a key is present, else null.
  *
  * bypass: wiring tests verify composition/summary shape, not invariants —
  * example-based is correct here.
  */
 
 import { describe, test, expect, afterEach } from "bun:test";
-import { runLiveScrape, exitCodeFor } from "./scraper-runner.ts";
+import { runLiveScrape, exitCodeFor, LLM_NOT_CONFIGURED } from "./scraper-runner.ts";
 import type { LogLevel, Logger } from "../shared/logger.ts";
 
 // ── Spy logger for structured-event assertions ────────────────────────────────
@@ -45,13 +46,28 @@ class SpyLogger implements Logger {
 
 // ── Env save/restore ──────────────────────────────────────────────────────────
 
-const ORIGINAL_API_KEY = process.env.ANTHROPIC_API_KEY;
+// Catalogue-LLM env vars that steer resolveCatalogueLlm — saved once, restored
+// after each test so provider config never leaks between tests or files.
+const LLM_ENV_KEYS = [
+  "ANTHROPIC_API_KEY",
+  "CATALOGUE_LLM_PROVIDER",
+  "CATALOGUE_LLM_MODEL",
+  "CATALOGUE_LLM_BASE_URL",
+  "CATALOGUE_LLM_API_KEY",
+] as const;
+
+const ORIGINAL_LLM_ENV: Record<string, string | undefined> = Object.fromEntries(
+  LLM_ENV_KEYS.map((k) => [k, process.env[k]])
+);
 
 afterEach(() => {
-  if (ORIGINAL_API_KEY === undefined) {
-    delete process.env.ANTHROPIC_API_KEY;
-  } else {
-    process.env.ANTHROPIC_API_KEY = ORIGINAL_API_KEY;
+  for (const k of LLM_ENV_KEYS) {
+    const original = ORIGINAL_LLM_ENV[k];
+    if (original === undefined) {
+      delete process.env[k];
+    } else {
+      process.env[k] = original;
+    }
   }
 });
 
@@ -70,6 +86,11 @@ function entryFor(summary: Array<{ store: string; ok: boolean; error?: string }>
   const entry = summary.find((s) => s.store === store);
   if (!entry) throw new Error(`no summary entry for store ${store}`);
   return entry;
+}
+
+/** Clears every catalogue-LLM env var so resolveCatalogueLlm returns null. */
+function clearLlmEnv(): void {
+  for (const k of LLM_ENV_KEYS) delete process.env[k];
 }
 
 // ── AC1: per-store isolation + wiring ──────────────────────────────────────────
@@ -168,13 +189,13 @@ describe("runLiveScrape — per-store isolation", () => {
   });
 });
 
-// ── AC2: ANTHROPIC_API_KEY decoupling ──────────────────────────────────────────
+// ── AC2: catalogue-LLM decoupling ──────────────────────────────────────────────
 
-describe("runLiveScrape — ANTHROPIC_API_KEY decoupling", () => {
+describe("runLiveScrape — catalogue-LLM decoupling", () => {
   // bypass: wiring test verifies composition + summary shape, not invariants.
 
-  test("with key absent: Aldi still scrapes, V-Markt is skipped with a recorded reason, and makeVMarktFetcher is NOT called", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+  test("with no LLM configured: Aldi still scrapes, V-Markt is skipped with a recorded reason, and makeVMarktFetcher is NOT called", async () => {
+    clearLlmEnv();
 
     const attempted: string[] = [];
     let vMarktFetcherConstructions = 0;
@@ -199,11 +220,11 @@ describe("runLiveScrape — ANTHROPIC_API_KEY decoupling", () => {
     expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
     const vMarkt = entryFor(summary, "V-Markt");
     expect(vMarkt.ok).toBe(false);
-    expect(vMarkt.error).toBe("ANTHROPIC_API_KEY missing");
+    expect(vMarkt.error).toBe(LLM_NOT_CONFIGURED);
   });
 
-  test("with key absent: the run does not reject even if it is the only successful store", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+  test("with no LLM configured: the run does not reject even if it is the only successful store", async () => {
+    clearLlmEnv();
 
     await expect(
       runLiveScrape({
@@ -220,8 +241,8 @@ describe("runLiveScrape — ANTHROPIC_API_KEY decoupling", () => {
 describe("runLiveScrape — structured logging", () => {
   // bypass: interaction test over a spy logger — verifies emitted event, not an invariant.
 
-  test("with key absent: emits a structured summary event for the skipped V-Markt leg", async () => {
-    delete process.env.ANTHROPIC_API_KEY;
+  test("with no LLM configured: emits a structured summary event for the skipped V-Markt leg", async () => {
+    clearLlmEnv();
     const spy = new SpyLogger();
 
     await runLiveScrape({

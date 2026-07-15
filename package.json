@@ -17,7 +17,9 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.111.0",
+    "@ai-sdk/anthropic": "^4.0.15",
+    "@ai-sdk/openai-compatible": "^3.0.11",
+    "ai": "^7.0.29",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.44.2",
     "htmx.org": "^2.0.4"
