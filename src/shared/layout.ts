@@ -171,7 +171,8 @@ const STYLE = `
       margin: 0 0 var(--sp-4);
       padding: var(--sp-2) 0;
     }
-    .filter-pills {
+    .filter-pills,
+    .category-filter-pills {
       display: flex;
       flex-wrap: nowrap;
       gap: var(--sp-2);
@@ -180,7 +181,11 @@ const STYLE = `
       scrollbar-width: none;               /* hide scrollbar chrome (Firefox) */
       padding-bottom: var(--sp-1);         /* room for momentum-scroll shadow */
     }
-    .filter-pills::-webkit-scrollbar { display: none; }
+    .filter-pills::-webkit-scrollbar,
+    .category-filter-pills::-webkit-scrollbar { display: none; }
+    /* Second pill row (categories) sits under the store row; same internal-scroll
+       contract so neither group can push page h-overflow at 375px. */
+    .category-filter-pills { margin-top: var(--sp-2); }
     .filter-pill {
       flex: 0 0 auto;                      /* never shrink → bar scrolls, page doesn't */
       display: inline-flex;

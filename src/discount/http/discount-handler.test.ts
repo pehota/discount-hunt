@@ -20,6 +20,9 @@ import { DiscountHandler } from "./discount-handler.ts";
 import { SQLiteShoppingListRepository } from "../../shopping-list/adapters/sqlite-shopping-list-repository.ts";
 import { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
+import { TAXONOMY_CATEGORIES } from "../../shared/types.ts";
+import type { TaxonomyCategory } from "../../shared/types.ts";
+import { escapeHtml } from "../../shared/html.ts";
 
 /** A validUntil comfortably inside the current week so getByWeek (validUntil >= Monday) keeps it. */
 function thisWeekValidUntil(): string {
@@ -461,5 +464,154 @@ describe("DiscountHandler feed action-hub", () => {
     // as a string literal (create-on-add path), so a page-wide substring check is invalid.
     const listAnchor = html.match(/<a[^>]*href="\/list"[\s\S]*?<\/a>/)?.[0] ?? "";
     expect(listAnchor).not.toContain("nav-badge");
+  });
+});
+
+/**
+ * Category filter (3rd additive dimension) + price-ascending sort — server-rendered
+ * contract. The client-side additive filtering behavior (store × name × category) is
+ * browser-verified by the orchestrator; here we assert ONLY the markup the JS binds to:
+ * the category pill group (canonical order + counts + distinct data-category attr), the
+ * per-card data-category attribute, and the price-asc DOM order within a store group.
+ *
+ * Category counts are GLOBAL (over the whole feed), not per-store. NULL taxonomy → "Other".
+ * TAXONOMY_CATEGORIES is the SSOT for order + membership — never re-list the literals here.
+ */
+describe("DiscountHandler category filter + price-asc sort", () => {
+  const VU = thisWeekValidUntil();
+
+  /**
+   * Seed one item and persist its taxonomy_category via the repo's single-writer port
+   * (setTaxonomyCategory). id is derived as `${store}:${externalId}`. category=null seeds
+   * an uncategorised (pending) row → renders under the "Other" bucket.
+   */
+  async function seedItem(
+    service: DiscountService,
+    repo: SQLiteDiscountItemRepository,
+    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string },
+  ): Promise<void> {
+    await service.registerDiscountItem(
+      {
+        externalId: opts.externalId,
+        store: opts.store,
+        name: opts.name,
+        category: "vegetable",
+        regularPrice: opts.salePrice + 100,
+        salePrice: opts.salePrice,
+        validUntil: VU,
+        dietaryTags: ["vegan"],
+      },
+      opts.jobId,
+    );
+    if (opts.category !== null) {
+      repo.setTaxonomyCategory(`${opts.store}:${opts.externalId}`, opts.category);
+    }
+  }
+
+  test("category pills render in TAXONOMY_CATEGORIES order, only for present categories, with global counts", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    // Present categories span two stores → counts must be GLOBAL, not per-store.
+    // "Meat & Fish" ×2 (across stores), "Produce" ×1, and one NULL → "Other" ×1.
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Steak", salePrice: 500, category: "Meat & Fish", jobId: "j" });
+    await seedItem(service, repo, { store: "Edeka", externalId: "e1", name: "Salmon", salePrice: 400, category: "Meat & Fish", jobId: "j" });
+    await seedItem(service, repo, { store: "Aldi", externalId: "a2", name: "Apple", salePrice: 100, category: "Produce", jobId: "j" });
+    await seedItem(service, repo, { store: "Edeka", externalId: "e2", name: "Mystery", salePrice: 200, category: null, jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Distinct category pill group with its own aria-label + container class.
+    expect(html).toMatch(/<div[^>]*class="category-filter-pills"[^>]*aria-label="Filter deals by category"|<div[^>]*aria-label="Filter deals by category"[^>]*class="category-filter-pills"/);
+    // "All" pill uses the SAME sentinel but the category dimension attribute (data-category).
+    expect(html).toContain(`data-category="__all__"`);
+    // Global counts: category names escaped ("&" → "&amp;").
+    expect(html).toMatch(new RegExp(`data-category="${escapeHtml("Meat & Fish")}"[^>]*>${escapeHtml("Meat & Fish")}\\s*<span class="pill-count">2</span>`));
+    expect(html).toMatch(/data-category="Produce"[^>]*>Produce\s*<span class="pill-count">1<\/span>/);
+    // NULL taxonomy tallied under the "Other" pill.
+    expect(html).toMatch(/data-category="Other"[^>]*>Other\s*<span class="pill-count">1<\/span>/);
+
+    // Absent categories emit NO pill.
+    expect(html).not.toContain(`data-category="Bakery"`);
+    expect(html).not.toContain(`data-category="Frozen"`);
+
+    // Canonical order: only assert the ORDER of the pills that are present. Scope to the
+    // category pill GROUP (cards also carry data-category), extract the pill values
+    // (skipping the __all__ sentinel) and compare to the SSOT-filtered order.
+    const pillGroup = html.match(/<div[^>]*class="category-filter-pills"[\s\S]*?<\/div>/)?.[0] ?? "";
+    const rendered = Array.from(pillGroup.matchAll(/data-category="([^"]+)"/g))
+      .map((m) => m[1])
+      .filter((c): c is string => c !== undefined && c !== "__all__");
+    const presentInCanonicalOrder = TAXONOMY_CATEGORIES
+      .filter((c) => rendered.includes(escapeHtml(c)))
+      .map((c) => escapeHtml(c));
+    expect(rendered).toEqual(presentInCanonicalOrder);
+  });
+
+  test("each card carries data-category; NULL taxonomy → Other", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Apple", salePrice: 100, category: "Produce", jobId: "j" });
+    await seedItem(service, repo, { store: "Aldi", externalId: "a2", name: "Mystery", salePrice: 200, category: null, jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // The categorised card carries its bucket; the NULL card falls back to "Other".
+    const appleCard = html.match(/<div class="card"[^>]*>[\s\S]*?Apple/)?.[0] ?? "";
+    expect(appleCard).toContain(`data-category="Produce"`);
+    const mysteryCard = html.match(/<div class="card"[^>]*>[\s\S]*?Mystery/)?.[0] ?? "";
+    expect(mysteryCard).toContain(`data-category="Other"`);
+  });
+
+  test("card data-category escapes ampersand categories", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Steak", salePrice: 500, category: "Meat & Fish", jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Both the card attr and the pill use the escaped form → they match under getAttribute() in-browser.
+    expect(html).toContain(`data-category="${escapeHtml("Meat & Fish")}"`);
+    expect(html).not.toMatch(/data-category="Meat & Fish"/); // raw ampersand must NOT appear
+  });
+
+  test("within a store group, cards render in ascending salePrice order (default order)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    // Seed DESCENDING so a broken/no-op sort would fail: cheapest ("Cheap", 100) must
+    // end up first in the DOM despite being registered last.
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Expensive", salePrice: 900, category: "Produce", jobId: "j" });
+    await seedItem(service, repo, { store: "Aldi", externalId: "a2", name: "Medium", salePrice: 500, category: "Produce", jobId: "j" });
+    await seedItem(service, repo, { store: "Aldi", externalId: "a3", name: "Cheap", salePrice: 100, category: "Produce", jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const cheapIdx = html.indexOf("Cheap");
+    const mediumIdx = html.indexOf("Medium");
+    const expensiveIdx = html.indexOf("Expensive");
+    expect(cheapIdx).toBeGreaterThan(-1);
+    expect(cheapIdx).toBeLessThan(mediumIdx);
+    expect(mediumIdx).toBeLessThan(expensiveIdx);
+  });
+
+  test("price-asc sort does NOT corrupt store pill counts (copy sorted, not the shared group)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Expensive", salePrice: 900, category: "Produce", jobId: "j" });
+    await seedItem(service, repo, { store: "Aldi", externalId: "a2", name: "Cheap", salePrice: 100, category: "Produce", jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Aldi store pill still counts both items.
+    expect(html).toMatch(/data-filter="Aldi"[^>]*>Aldi\s*<span class="pill-count">2<\/span>/);
   });
 });

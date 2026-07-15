@@ -22,12 +22,13 @@ import type { ShoppingListService } from "../../shopping-list/shopping-list-serv
 import { currentWeekMonday } from "../../shared/week.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
+import { TAXONOMY_CATEGORIES } from "../../shared/types.ts";
 
 /**
  * Inline client-side feed controller (zero deps; htmx is not loaded on this page).
  *
- * ONE controller = the single source of truth for card visibility (store pill AND
- * text search compose in applyFilters) plus a SEPARATE selection/overview controller
+ * ONE controller = the single source of truth for card visibility (store pill,
+ * category pill, AND text search compose in applyFilters) plus a SEPARATE selection/overview controller
  * (highlight + cross-store overview + deselect). Progressive enhancement: without JS
  * nothing runs, so all cards/sections stay visible (only .no-match-state and the empty
  * overview list are server-rendered hidden/empty). Bound at DOMContentLoaded because
@@ -40,7 +41,6 @@ const FILTER_SCRIPT = `
 document.addEventListener('DOMContentLoaded', function () {
   var bar = document.querySelector('.filter-bar');
   if (!bar) return;
-  var pills = bar.querySelectorAll('.filter-pill');
   var status = bar.querySelector('.filter-status');
   var searchInput = document.getElementById('feed-search-input');
   var noMatch = document.querySelector('.no-match-state');
@@ -55,6 +55,7 @@ document.addEventListener('DOMContentLoaded', function () {
   var nativeAdd = document.querySelector('#meal-plan-action button[formaction="/list/add"]');
 
   var activeStore = '__all__';
+  var activeCategory = '__all__';
   var query = '';
   var checkedCount = 0;
   var toastTimer = null;
@@ -80,14 +81,15 @@ document.addEventListener('DOMContentLoaded', function () {
         var nameNode = card.querySelector('.item-name');
         var cardName = nameNode ? nameNode.textContent.toLowerCase() : '';
         var nameMatch = query === '' || cardName.indexOf(query) !== -1;
-        var show = storeMatch && nameMatch;
+        var categoryMatch = activeCategory === '__all__' || card.getAttribute('data-category') === activeCategory;
+        var show = storeMatch && nameMatch && categoryMatch;
         card.hidden = !show;
         if (show) { visibleInSection++; anyVisible = true; }
       }
       section.hidden = visibleInSection === 0;
     }
     // Show "No products match" ONLY when the feed HAS product cards but the active
-    // store+search filter hid them all. A genuinely empty feed (0 cards) shows the
+    // store + category + search filter hid them all. A genuinely empty feed (0 cards) shows the
     // server-rendered empty-state instead — never both.
     if (noMatch) { noMatch.hidden = totalCards === 0 || anyVisible; }
   }
@@ -170,21 +172,32 @@ document.addEventListener('DOMContentLoaded', function () {
   bar.addEventListener('click', function (e) {
     var pill = e.target.closest('.filter-pill');
     if (!pill) return;
-    var filter = pill.getAttribute('data-filter');
-    for (var i = 0; i < pills.length; i++) {
-      var active = pills[i] === pill;
-      pills[i].classList.toggle('active', active);
-      pills[i].setAttribute('aria-pressed', active ? 'true' : 'false');
-      if (active) { pills[i].setAttribute('aria-current', 'true'); }
-      else { pills[i].removeAttribute('aria-current'); }
+    // Toggle active state ONLY within the clicked pill's own group so the two
+    // dimensions (store / category) stay independent — clicking a category pill
+    // must not deselect the store pills, and vice-versa.
+    var group = pill.closest('.filter-pills, .category-filter-pills');
+    var groupPills = group ? group.querySelectorAll('.filter-pill') : [pill];
+    for (var i = 0; i < groupPills.length; i++) {
+      var active = groupPills[i] === pill;
+      groupPills[i].classList.toggle('active', active);
+      groupPills[i].setAttribute('aria-pressed', active ? 'true' : 'false');
+      if (active) { groupPills[i].setAttribute('aria-current', 'true'); }
+      else { groupPills[i].removeAttribute('aria-current'); }
     }
-    activeStore = filter;
+    // Route the selection to the RIGHT dimension: data-filter → store, data-category → category.
+    var storeFilter = pill.getAttribute('data-filter');
+    var categoryFilter = pill.getAttribute('data-category');
+    if (storeFilter !== null) {
+      activeStore = storeFilter;
+      // Pill counts are per-store TOTALS (static) — never recomputed on search/filter.
+      var label = storeFilter === '__all__' ? 'All' : storeFilter;
+      var count = pill.querySelector('.pill-count');
+      var n = count ? count.textContent : '';
+      if (status) { status.textContent = 'Showing: ' + label + ' (' + n + ')'; }
+    } else if (categoryFilter !== null) {
+      activeCategory = categoryFilter;
+    }
     applyFilters();
-    // Pill counts are per-store TOTALS (static) — never recomputed on search/filter.
-    var label = filter === '__all__' ? 'All' : filter;
-    var count = pill.querySelector('.pill-count');
-    var n = count ? count.textContent : '';
-    if (status) { status.textContent = 'Showing: ' + label + ' (' + n + ')'; }
   });
 
   if (searchInput) {
@@ -294,7 +307,7 @@ export class DiscountHandler {
       ? this.renderFallback(items)
       : this.renderWithStoreContext(items, knownStores, storeItems);
 
-    const filterBar = this.renderFilterBar(items.length, storeItems);
+    const filterBar = this.renderFilterBar(items, storeItems);
 
     const body = `<header>
     <h1>Weekly Discount Feed</h1>
@@ -340,9 +353,10 @@ export class DiscountHandler {
    * inline script below is the only thing that hides sections).
    */
   private renderFilterBar(
-    total: number,
+    items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>,
     storeItems: Map<string, Awaited<ReturnType<DiscountService["getWeeklyItems"]>>>,
   ): string {
+    const total = items.length;
     const allPill =
       `<button type="button" class="filter-pill active" data-filter="__all__" aria-pressed="true" aria-current="true">All <span class="pill-count">${total}</span></button>`;
     const storePills = Array.from(storeItems.entries())
@@ -353,7 +367,9 @@ export class DiscountHandler {
       })
       .join("\n      ");
 
-    return `<nav class="filter-bar" aria-label="Filter deals by store">
+    const categoryPills = this.renderCategoryPills(items, total);
+
+    return `<nav class="filter-bar" aria-label="Filter deals by store and category">
     <div class="filter-bar-row">
       <div class="filter-pills" role="group">
         ${allPill}
@@ -370,6 +386,9 @@ export class DiscountHandler {
         </div>
       </section>
     </div>
+    <div class="category-filter-pills" role="group" aria-label="Filter deals by category">
+      ${categoryPills}
+    </div>
     <p class="filter-status" aria-live="polite">Showing: All (${total})</p>
     <div class="feed-search">
       <label for="feed-search-input" class="feed-search-label">Search products</label>
@@ -377,6 +396,35 @@ export class DiscountHandler {
     </div>
   </nav>
   <script>${FILTER_SCRIPT}</script>`;
+  }
+
+  /**
+   * Category pill group (3rd additive filter dimension). "All" pill (sentinel __all__,
+   * total count) + one pill per category PRESENT in the feed, in TAXONOMY_CATEGORIES
+   * canonical order (the SSOT — never re-list the literals). NULL/pending taxonomy is
+   * tallied under "Other". Only categories with ≥1 item emit a pill. Category pills use
+   * data-category (store pills use data-filter) so the client keys the right dimension.
+   */
+  private renderCategoryPills(
+    items: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>,
+    total: number,
+  ): string {
+    const counts = new Map<string, number>();
+    for (const item of items) {
+      const cat = item.taxonomyCategory ?? "Other";
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    const allPill =
+      `<button type="button" class="filter-pill active" data-category="__all__" aria-pressed="true" aria-current="true">All <span class="pill-count">${total}</span></button>`;
+    const catPills = TAXONOMY_CATEGORIES
+      .filter((cat) => (counts.get(cat) ?? 0) > 0)
+      .map((cat) => {
+        const safeCat = escapeHtml(cat);
+        return `<button type="button" class="filter-pill" data-category="${safeCat}" aria-pressed="false">${safeCat} <span class="pill-count">${counts.get(cat)}</span></button>`;
+      })
+      .join("\n      ");
+    return `${allPill}
+      ${catPills}`;
   }
 
   private renderWithStoreContext(
@@ -462,7 +510,10 @@ export class DiscountHandler {
     storeName: string,
     storeItems: Awaited<ReturnType<DiscountService["getWeeklyItems"]>>,
   ): string {
-    const storeItemsHtml = storeItems
+    // DEFAULT ORDER: cheapest first. Stable sort on a COPY — the passed array is the
+    // same grouping used for pill counts, so it must not be mutated in place.
+    const sorted = [...storeItems].sort((a, b) => a.salePrice - b.salePrice);
+    const storeItemsHtml = sorted
       .map((item) => {
         const pct = discountPercent(item.regularPrice, item.salePrice);
         const badge = pct > 0
@@ -478,8 +529,11 @@ export class DiscountHandler {
           <input type="checkbox" id="${inputId}" name="itemIds" value="${escapeHtml(item.id)}">
           <span class="card-select-text">Include</span>
         </label>`;
+        // NULL/pending taxonomy → the "Other" bucket. Escaped: 3 canonical categories
+        // contain "&" (e.g. "Meat & Fish") → data-category="Meat &amp; Fish".
+        const category = escapeHtml(item.taxonomyCategory ?? "Other");
         return `
-      <div class="card" data-item-card>
+      <div class="card" data-item-card data-category="${category}">
         ${badge}
         ${selection}
         <article class="discount-item">
