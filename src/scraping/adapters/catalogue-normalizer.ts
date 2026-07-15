@@ -20,7 +20,7 @@ interface RawAldiItem {
   price: string;
   discountedPrice?: string;
   customLabel1: string;
-  productType: string;
+  productType?: string;
   photoUrls: string[];
 }
 
@@ -37,15 +37,19 @@ export class CatalogueNormalizer {
   }
 
   private toNormalizedItem(item: RawAldiItem, store: string): NormalizedItem {
+    // Some real Aldi nested products have no productType. Default it to a
+    // defined string so category is never undefined (a dropped SQL binding
+    // downstream would otherwise emit malformed SQL and crash the insert).
+    const category = item.productType ?? "unknown";
     return {
       externalId: item.id,
       store,
       name: item.title,
-      category: item.productType,
+      category,
       regularPrice: Math.round(parseFloat(item.price) * CENTS_PER_EURO),
       salePrice: Math.round(parseFloat(item.discountedPrice!) * CENTS_PER_EURO),
       validUntil: item.customLabel1,
-      dietaryTags: this.classifyDietaryTags(item.productType),
+      dietaryTags: this.classifyDietaryTags(category),
     };
   }
 

@@ -23,7 +23,7 @@ function rawItem(overrides: Partial<{
   price: string;
   discountedPrice: string | undefined;
   customLabel1: string;
-  productType: string;
+  productType: string | undefined;
   photoUrls: string[];
 }> = {}) {
   return {
@@ -104,6 +104,21 @@ describe("CatalogueNormalizer", () => {
         }
       )
     );
+  });
+
+  // ── Regression: Aldi products missing productType (11-02) ─────────────────
+
+  test("defaults category to 'unknown' and emits [] tags when productType is missing", () => {
+    // Real Aldi nested products sometimes have no productType. Before the fix,
+    // category was set to `undefined`, which later dropped the SQL binding and
+    // crashed the insert with a malformed-SQL DrizzleError.
+    // bypass: single-example characterises the missing-field edge; the tag
+    // classification is already property-covered above.
+    const [result] = normalizer.normalize([rawItem({ productType: undefined })]);
+
+    expect(result.category).toBe("unknown");
+    expect(result.category).toBeString();
+    expect(result.dietaryTags).toEqual([]);
   });
 
   // ── Property 3: dietary tags per productType ──────────────────────────────

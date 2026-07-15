@@ -36,6 +36,11 @@ export class SQLiteDiscountItemRepository {
   constructor(private readonly db: DbClient) {}
 
   async register(item: NormalizedItem, scrapeJobId: string): Promise<void> {
+    // Defense-in-depth: an undefined interpolation makes Drizzle's `sql`
+    // template silently drop the binding, emitting malformed SQL. Fail loudly
+    // with the offending field name so future schema drift is diagnosable.
+    this.assertNoUndefinedField(item, scrapeJobId);
+
     const id = `${item.store}:${item.externalId}`;
     // INSERT OR IGNORE — D22 write-once: regular_price not overwritten on conflict
     this.db.run(sql`
@@ -46,6 +51,25 @@ export class SQLiteDiscountItemRepository {
          ${item.regularPrice}, ${item.salePrice}, ${item.validUntil},
          ${JSON.stringify(item.dietaryTags)}, ${scrapeJobId}, ${Date.now()})
     `);
+  }
+
+  private assertNoUndefinedField(item: NormalizedItem, scrapeJobId: string): void {
+    const bindings: Record<string, unknown> = {
+      externalId: item.externalId,
+      store: item.store,
+      name: item.name,
+      category: item.category,
+      regularPrice: item.regularPrice,
+      salePrice: item.salePrice,
+      validUntil: item.validUntil,
+      dietaryTags: item.dietaryTags,
+      scrapeJobId,
+    };
+    for (const [field, value] of Object.entries(bindings)) {
+      if (value === undefined) {
+        throw new Error(`register: field '${field}' is undefined`);
+      }
+    }
   }
 
   async getByWeek(weekStart: WeekStart, restriction: DietaryRestriction): Promise<StoredDiscountItem[]> {

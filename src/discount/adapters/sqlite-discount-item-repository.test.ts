@@ -13,6 +13,7 @@ import { describe, test, expect } from "bun:test";
 import fc from "fast-check";
 import { createDb } from "../../shared/db.ts";
 import { SQLiteDiscountItemRepository } from "./sqlite-discount-item-repository.ts";
+import type { NormalizedItem } from "../../shared/types.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -106,6 +107,36 @@ describe("SQLiteDiscountItemRepository.getByWeek", () => {
         }
       ),
       { numRuns: 50 }
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// register() — persistence + loud guard (11-02)
+// ---------------------------------------------------------------------------
+
+describe("SQLiteDiscountItemRepository.register", () => {
+  test("persists a complete NormalizedItem as a row", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("complete", "2026-07-20"), "job-1");
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    expect(results.map((r) => r.id)).toContain("test-store:complete");
+  });
+
+  test("rejects an item with an undefined required field with a named error", async () => {
+    // Root cause of the live crash: an undefined interpolation makes Drizzle's
+    // `sql` template silently drop the binding, emitting malformed SQL. The
+    // guard must fail LOUDLY naming the offending field instead.
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    const badItem = { ...makeItem("bad", "2026-07-20"), category: undefined } as unknown as NormalizedItem;
+
+    await expect(repo.register(badItem, "job-1")).rejects.toThrow(
+      "register: field 'category' is undefined"
     );
   });
 });
