@@ -117,13 +117,14 @@ export class PlanService {
     const budgetCapCents = preferences?.budgetCapCents ?? null;
     const items = await this.discountService.getWeeklyItems(weekStart, restriction);
     const plan = this.generatePlan(weekStart, items, restriction, budgetCapCents);
-    // Do NOT persist a no-data empty plan (default 'none' restriction + zero compatible items):
-    // persisting it makes get-or-create return it forever, so discounts arriving later stay
-    // hidden and a bogus 0-savings row is written (bug 07-01). Leaving it unsaved makes it
-    // non-sticky — the next read re-queries. A restriction-filtered empty plan
-    // (dietaryFilter !== "none") IS still persisted so its frozen snapshot survives a later
-    // settings change (03-08 D2 snapshot immutability). Non-empty plans are unchanged.
-    if (items.length > 0 || plan.dietaryFilter !== "none") {
+    // Do NOT persist ANY empty plan, regardless of restriction. An empty plan is a transient
+    // "couldn't build one" signal, never a durable weekly commitment. Persisting it makes
+    // get-or-create return it forever, so compatible discounts arriving later stay hidden and a
+    // bogus 0-savings row is written (bug 07-01 / 07-02). Leaving it unsaved makes it non-sticky —
+    // the next read re-queries with the current restriction and surfaces newly-arrived items.
+    // Non-empty plans ARE persisted: they are durable weekly commitments, frozen until next week
+    // (03-08 D2 snapshot immutability). Split is exactly items.length === 0.
+    if (items.length > 0) {
       await this.savePlan(plan);
     }
     return plan;

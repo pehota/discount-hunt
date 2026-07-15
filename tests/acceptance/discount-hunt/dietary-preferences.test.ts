@@ -630,30 +630,48 @@ describe("@driving_port — Invalid dietary input is rejected and defaults to no
   });
 });
 
-// ─── Scenario 9 (D2): Empty-state discriminator reads the snapshot, not live ──
-// Step 03-08 — snapshot-behavior AT. Meat/fish-only DB, vegetarian saved, empty plan
-// generated (dietaryFilter="vegetarian" frozen). Switch the live setting to none.
-// GET /plan must STILL show the restriction-filtered warning ("No compatible meals
-// found") — driven by the frozen plan.dietaryFilter — NOT the no-data message.
-// A mutant that reads the LIVE restriction (now "none") would flip to "No discounts
-// available"; this test kills it.
+// ─── Scenario 9 (D2): An EMPTY plan is transient — it refreshes under the current restriction ──
+// Step 07-02 — BEHAVIOR CORRECTION driven by a reproduced user bug ("after generating a plan it
+// says 'no discounts' while discounts are listed"). Reproduced twice. The OLD D2 asserted that a
+// frozen EMPTY vegetarian plan STAYS "No compatible meals found" after switching to none — that
+// assertion CONTRADICTS the bug report and is therefore re-scoped here.
+//
+// GUIDING PRINCIPLE: an empty plan is a transient "couldn't build one" state — nothing to freeze;
+// it must reflect the CURRENT restriction and pick up newly-usable items. A NON-EMPTY plan is a
+// durable weekly commitment — frozen until next week. The split is exactly items.length === 0.
+//
+// CORRECTED behavior: meat/fish-only DB + vegetarian saved → the plan is empty ("No compatible
+// meals found"). Switch the restriction to none → GET /plan now SHOWS the meat item, because the
+// empty plan was never frozen and re-queries under the new restriction.
+//
+// Coverage note: the old "discriminator reads live vs snapshot" mutant is eliminated BY
+// CONSTRUCTION — empty plans no longer persist, so a fresh empty plan's snapshot always equals the
+// live setting. There is no live-vs-snapshot divergence left to test for an empty plan; coverage is
+// not dropped, the whole bug class is gone. Snapshot immutability for NON-EMPTY plans stays covered
+// by Scenario 5 (untouched).
+//
+// RED reason against CURRENT code: the guard `items.length > 0 || plan.dietaryFilter !== "none"`
+// still persists the empty vegetarian plan (dietaryFilter "vegetarian" !== "none"), so the frozen
+// empty plan is returned after switching to none and the meat item never surfaces.
 
-describe("@driving_port — Empty-plan discriminator reads the frozen snapshot, not the live setting", () => {
+describe("@driving_port — An empty plan is transient and refreshes under the current restriction", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
   let server: { stop(): void } | null = null;
 
   beforeAll(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-snapshot-discriminator-"));
-    dbPath = join(tmpDir, "snapshot-discriminator.db");
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-empty-plan-refresh-"));
+    dbPath = join(tmpDir, "empty-plan-refresh.db");
     seedMeatFishOnlyItems(dbPath); // 0 vegetarian survivors → empty plan under vegetarian
 
     const { createServer } = await import("../../../src/server.ts");
     serverPort = 5100 + Math.floor(Math.random() * 99);
     server = await createServer({ port: serverPort, dbPath });
 
-    // Freeze a vegetarian plan (empty), then switch the live setting to none.
+    // Precondition chain (Pillar 2): save vegetarian → generate an EMPTY plan (0 compatible items)
+    // → switch the restriction to none. Because the plan is empty, it must NOT be frozen; the next
+    // GET /plan re-queries under "none" and the meat item becomes visible.
     await saveDietaryRestriction(serverPort, "vegetarian");
     await fetch(`http://localhost:${serverPort}/plan/generate`, {
       method: "POST",
@@ -667,19 +685,20 @@ describe("@driving_port — Empty-plan discriminator reads the frozen snapshot, 
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("GET /plan STILL shows 'No compatible meals found' (snapshot drives the message)", async () => {
+  test("GET /plan now SHOWS the meat item (the empty plan refreshed under the new restriction)", async () => {
     const response = await fetch(`http://localhost:${serverPort}/plan`);
     expect(response.ok).toBe(true);
     const html = await response.text();
-    expect(html).toContain("No compatible meals found");
+    // The empty vegetarian plan was transient; under "none" the meat item is now compatible.
+    expect(html).toContain(MEAT_ITEM);
   });
 
-  test("GET /plan does NOT show the no-data 'No discounts available' message", async () => {
+  test("GET /plan no longer shows 'No compatible meals found' (the empty plan did not stick)", async () => {
     const response = await fetch(`http://localhost:${serverPort}/plan`);
     expect(response.ok).toBe(true);
     const html = await response.text();
-    // A live-reading discriminator (setting is now "none") would render this — the mutant.
-    expect(html).not.toContain("No discounts available");
+    // A frozen empty vegetarian plan (the bug) would keep rendering this after switching to none.
+    expect(html).not.toContain("No compatible meals found");
   });
 });
 

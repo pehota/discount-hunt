@@ -50,7 +50,13 @@ function savingsRowCountForCurrentWeek(db: DbClient): number {
 }
 
 /** Insert a discount item valid for the current week under a completed scrape job. */
-function seedDiscountItem(db: DbClient, jobId: string, id: string, name: string): void {
+function seedDiscountItem(
+  db: DbClient,
+  jobId: string,
+  id: string,
+  name: string,
+  tags: string[] = [],
+): void {
   const now = Date.now();
   db.insert(discountItems).values({
     id,
@@ -60,10 +66,20 @@ function seedDiscountItem(db: DbClient, jobId: string, id: string, name: string)
     regularPrice: 149,
     salePrice: 79,
     validUntil: currentWeekValidUntil(),
-    dietaryTags: "[]",
+    dietaryTags: JSON.stringify(tags),
     scrapeJobId: jobId,
     createdAt: now,
   }).run();
+}
+
+/** POST /settings with a dietary restriction — the driving port that sets the preference. */
+async function saveDietaryRestriction(port: number, restriction: string): Promise<Response> {
+  return fetch(`http://localhost:${port}/settings`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ dietary: restriction }).toString(),
+    redirect: "manual",
+  });
 }
 
 function seedCompletedJob(db: DbClient): string {
@@ -130,6 +146,75 @@ describe("@driving_port — a plan generated before discounts arrive does not ca
     expect(response.ok).toBe(true);
     const html = await response.text();
     expect(html).not.toContain("No discounts available");
+  });
+});
+
+// ─── Test (a2): the VEGETARIAN empty-plan data-arrival case — the path still broken ────
+// Step 07-02 — BEHAVIOR CORRECTION driven by the reproduced user bug ("after generating a plan it
+// says 'no discounts' while discounts are listed"). Test (a) above only proved the `none` restriction
+// path. The restriction-filtered empty plan is the path STILL broken under the current guard:
+// `items.length > 0 || plan.dietaryFilter !== "none"` persists a vegetarian empty plan (dietaryFilter
+// "vegetarian" !== "none"), freezing it forever. When a compatible vegetarian item arrives later,
+// GET /plan keeps returning the frozen empty plan and never surfaces the new item.
+//
+// GUIDING PRINCIPLE: an empty plan is a transient "couldn't build one" state regardless of the
+// restriction that produced it — it must pick up newly-arrived compatible items. The freeze applies
+// only to NON-EMPTY plans. The split is exactly items.length === 0.
+//
+// RED reason against CURRENT code: the vegetarian empty plan is persisted, so GET /plan returns the
+// frozen empty plan — the newly-seeded vegetarian item is absent and "No compatible meals found"
+// still shows.
+
+const VEG_SEEDED_ITEM = "Spinatsuppe"; // ["vegetarian"] — compatible under a vegetarian restriction
+
+describe("@driving_port — a vegetarian empty plan does not cache-stale when a compatible item arrives", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "discount-hunt-plan-freshness-veg-"));
+    dbPath = join(tmpDir, "freshness-veg.db");
+
+    // Given: an empty discount DB (no compatible vegetarian items yet).
+    const db = createDb(dbPath);
+
+    const { createServer } = await import("../../../src/server.ts");
+    serverPort = 6900 + Math.floor(Math.random() * 90); // port range 6900–6989
+    server = await createServer({ port: serverPort, dbPath });
+
+    // And: the user has a vegetarian restriction saved (driving port).
+    await saveDietaryRestriction(serverPort, "vegetarian");
+
+    // When: a plan is generated while there are no compatible items → an EMPTY vegetarian plan.
+    await fetch(`http://localhost:${serverPort}/plan/generate`, {
+      method: "POST",
+      redirect: "manual",
+    });
+
+    // And: a compatible vegetarian discount arrives afterwards (valid for the current week).
+    const jobId = seedCompletedJob(db);
+    seedDiscountItem(db, jobId, "veg-arrival-001", VEG_SEEDED_ITEM, ["vegetarian"]);
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("GET /plan surfaces the newly-arrived vegetarian item", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/plan`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).toContain(VEG_SEEDED_ITEM);
+  });
+
+  test("GET /plan no longer shows 'No compatible meals found' once a compatible item exists", async () => {
+    const response = await fetch(`http://localhost:${serverPort}/plan`);
+    expect(response.ok).toBe(true);
+    const html = await response.text();
+    expect(html).not.toContain("No compatible meals found");
   });
 });
 
