@@ -79,10 +79,10 @@ export async function createServer(
 
   // 4. Handlers
   const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo);
-  const planHandler = new PlanHandler(planService);
+  const planHandler = new PlanHandler(planService, preferencesRepo);
   const savingsHandler = new SavingsHandler(savingsService);
   const settingsHandler = new SettingsHandler(preferencesService);
-  const recipeHandler = new RecipeHandler(planService, recipeService, discountService);
+  const recipeHandler = new RecipeHandler(planService, recipeService, discountService, preferencesRepo);
 
   // 5. Routes
   const server = Bun.serve({

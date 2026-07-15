@@ -25,8 +25,10 @@ import type { PlanService } from "../../meal-planning/plan-service.ts";
 import type { DiscountService } from "../../discount/discount-service.ts";
 import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
 import type { Meal } from "../../shared/types.ts";
+import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
 import type { RecipeService } from "../recipe-service.ts";
 import type { ResolvedRecipe } from "../recipe-service.ts";
+import type { RecipeQueryPreferences } from "../recipe-query.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
@@ -134,6 +136,7 @@ export class RecipeHandler {
     private readonly planService: PlanService,
     private readonly recipeService: RecipeService,
     private readonly discountService: DiscountService,
+    private readonly preferencesRepository: UserPreferencesRepository,
   ) {}
 
   async handleGet(_request: Request, mealId: string): Promise<Response> {
@@ -142,7 +145,10 @@ export class RecipeHandler {
       return htmlResponse(renderNotFound(), 404);
     }
 
-    const recipe = await this.recipeService.getRecipeForMeal(meal.name);
+    // Compose a meal-aware query from the meal's slot + the user's recipe-search prefs
+    // (12-04). The 3-arg form makes RecipeService compose (name + slot + params).
+    const searchPrefs = this.recipeSearchPreferences();
+    const recipe = await this.recipeService.getRecipeForMeal(meal.name, meal.slot, searchPrefs);
     // Fallback (b): no recipe found and nothing cached → 200 no-match view (never crash).
     if (recipe === null) {
       return htmlResponse(renderNoMatch(meal.name), 200);
@@ -151,6 +157,17 @@ export class RecipeHandler {
     // Live this-week feed for ingredient↔discount highlighting (design §7, restriction "none").
     const weekItems = await this.discountService.getWeeklyItems(currentWeekMonday(), "none");
     return htmlResponse(renderRecipeDetail(recipe, weekItems), 200);
+  }
+
+  /** Read the recipe-search preferences live from the repo (repo returns defaults if unset). */
+  private recipeSearchPreferences(): RecipeQueryPreferences {
+    const prefs = this.preferencesRepository.get();
+    return {
+      dietaryRestriction: prefs.dietaryRestriction,
+      kidFriendly: prefs.kidFriendly ?? false,
+      householdSize: prefs.householdSize ?? 2,
+      cookingTime: prefs.cookingTime ?? "any",
+    };
   }
 
   /** Locate the meal for meal_id in the current-week plan, or null if absent. */

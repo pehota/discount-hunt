@@ -53,11 +53,29 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createDb } from "../../../src/shared/db.ts";
 import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { buildRecipeQuery, type RecipeQueryPreferences } from "../../../src/recipe/recipe-query.ts";
+import type { MealSlot } from "../../../src/shared/types.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { Database } from "bun:sqlite";
+
+// ─── Composed-contract keying (12-04) ─────────────────────────────────────────
+// Once the RecipeHandler passes the 3-arg (name, slot, prefs) form, RecipeService
+// composes the query via buildRecipeQuery. A fresh test DB yields these prefs, so
+// the composed query_key MUST be computed from them (not the bare meal name).
+const DEFAULT_PREFS: RecipeQueryPreferences = {
+  dietaryRestriction: "none",
+  kidFriendly: false,
+  householdSize: 2,
+  cookingTime: "any",
+};
+
+/** The composed cache/source key the service produces for a meal name + slot under default prefs. */
+function composedQueryKey(mealName: string, slot: MealSlot): string {
+  return buildRecipeQuery(mealName, slot, DEFAULT_PREFS).toLowerCase().trim();
+}
 
 // ─── Structural port shape (declared in-test; no import of a not-yet-existent file) ──
 
@@ -80,8 +98,16 @@ class FakeRecipeSource {
   constructor(private readonly canned: Map<string, FetchedRecipe | null>) {}
   async find(query: string): Promise<FetchedRecipe | null> {
     this.calls.push(query);
-    const key = query.toLowerCase().trim();
-    return this.canned.has(key) ? this.canned.get(key)! : null;
+    // 12-04: the service now composes a query (meal name + slot + params), so the
+    // incoming query CONTAINS the canned meal-name key rather than equalling it.
+    // Match by substring — the composed query always contains the bare meal name.
+    const normalized = query.toLowerCase().trim();
+    for (const [cannedKey, recipe] of this.canned) {
+      if (normalized.includes(cannedKey)) {
+        return recipe;
+      }
+    }
+    return null;
   }
 }
 
@@ -161,7 +187,7 @@ function seedDiscountItems(dbPath: string, items: Array<{ id: string; name: stri
  */
 function seedStaleRecipeRow(
   dbPath: string,
-  args: { queryName: string; recipeName: string; ingredients: string[]; steps: string[]; sourceUrl: string },
+  args: { queryName: string; slot: MealSlot; recipeName: string; ingredients: string[]; steps: string[]; sourceUrl: string },
 ): void {
   // createDb first so all base tables + PRAGMAs exist, then add recipes if absent.
   createDb(dbPath);
@@ -184,7 +210,10 @@ function seedStaleRecipeRow(
      VALUES (?, ?, ?, ?, ?, 1, ?)`,
   ).run(
     randomUUID(),
-    args.queryName.toLowerCase().trim(),
+    // 12-04: the service keys the cache on the COMPOSED query, so the stale row must
+    // be keyed identically (bare meal name + slot term + default params), else the
+    // cache lookup misses and the dead-source path never fires.
+    composedQueryKey(args.queryName, args.slot),
     args.recipeName,
     JSON.stringify({ ingredients: args.ingredients, steps: args.steps }),
     args.sourceUrl,
@@ -440,9 +469,10 @@ describe("@driving_port — Dead source on re-validate shows cached content + 'u
       { id: "dd-item-002", name: OTHER_ITEM, sale: 99 },
     ]);
 
-    // Stale cached row keyed by the meal name (1-lunch = MEAL_ITEM).
+    // Stale cached row keyed by the composed query for 1-lunch (= MEAL_ITEM, slot "lunch").
     seedStaleRecipeRow(dbPath, {
       queryName: MEAL_ITEM,
+      slot: "lunch",
       recipeName: CACHED_RECIPE_NAME,
       ingredients: [CACHED_INGREDIENT],
       steps: [CACHED_STEP],

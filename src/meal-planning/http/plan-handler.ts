@@ -14,6 +14,8 @@
 
 import type { PlanService } from "../plan-service.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
+import type { MealSlot } from "../../shared/types.ts";
+import type { UserPreferencesRepository } from "../../preferences/ports/preferences-repository.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 
@@ -72,7 +74,20 @@ function renderNoDataHtml(plan: MealPlan): string {
   return renderPage({ title: "Meal Plan", activeNav: "plan", body });
 }
 
-function renderPlanHtml(plan: MealPlan): string {
+/**
+ * Meal-name cell (12-04): a recipe LINK only when the meal's slot is in scope
+ * (slot ∈ prefs.mealTypes); otherwise the plain escaped name without an <a>.
+ * data-meal-slot + every other marker are unchanged.
+ */
+function renderMealNameCell(meal: MealPlan["meals"][number], scopedSlots: MealSlot[]): string {
+  const escapedName = escapeHtml(meal.name);
+  if (!scopedSlots.includes(meal.slot)) {
+    return `<td>${escapedName}</td>`;
+  }
+  return `<td><a href="/plan/${meal.day}-${meal.slot}">${escapedName}</a></td>`;
+}
+
+function renderPlanHtml(plan: MealPlan, scopedSlots: MealSlot[]): string {
   if (hasNoCompatibleItems(plan)) {
     // Discriminate no-data (dietaryFilter "none") from restriction-filtered.
     return plan.dietaryFilter === "none"
@@ -84,7 +99,7 @@ function renderPlanHtml(plan: MealPlan): string {
       `<tr data-meal-slot="${meal.slot}">` +
       `<td>Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
       `<td>${capitalizeFirst(meal.slot)}</td>` +
-      `<td><a href="/plan/${meal.day}-${meal.slot}">${escapeHtml(meal.name)}</a></td>` +
+      renderMealNameCell(meal, scopedSlots) +
       `</tr>`
     )
     .join("");
@@ -104,12 +119,22 @@ function renderPlanHtml(plan: MealPlan): string {
   return renderPage({ title: "Meal Plan", activeNav: "plan", body });
 }
 
+const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
+
 export class PlanHandler {
-  constructor(private readonly planService: PlanService) {}
+  constructor(
+    private readonly planService: PlanService,
+    // Optional to preserve the existing direct-construction contract (plan-handler.test.ts),
+    // mirroring the PlanService precedent. Production (server.ts) always injects it; when
+    // absent, scope defaults to both slots (prior all-meals-linked behavior).
+    private readonly preferencesRepository?: UserPreferencesRepository,
+  ) {}
 
   async handleGetPlan(request: Request): Promise<Response> {
     const plan = await this.planService.getOrGenerateCurrentWeekPlan();
-    const html = renderPlanHtml(plan);
+    // Read the in-scope meal types LIVE (render-time), never from the plan snapshot.
+    const scopedSlots = this.preferencesRepository?.get().mealTypes ?? DEFAULT_MEAL_TYPES;
+    const html = renderPlanHtml(plan, scopedSlots);
     return new Response(html, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
