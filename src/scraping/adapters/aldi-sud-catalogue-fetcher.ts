@@ -11,6 +11,8 @@
  * Substrate probe: catalogue-probe.ts validates slug pattern + item shape per run.
  */
 
+import { ConsoleLogger, type Logger } from "../../shared/logger.ts";
+
 const ALDI_SUD_ORIGIN = "https://prospekt.aldi-sued.de";
 const SLUG_PATTERN = /^\/\/prospekt\.aldi-sued\.de\/([^/]+)\//;
 const PRODUCT_TYPE = "product";
@@ -52,19 +54,32 @@ interface HotspotEntry {
 }
 
 export class AldiSudCatalogueFetcher {
+  constructor(private readonly logger: Logger = new ConsoleLogger()) {}
+
   async fetchCurrentWeek(): Promise<HotspotEntry[]> {
     const slug = await this.discoverSlug();
+    this.logger.log("info", "scrape.aldi.slug", { slug });
 
     const pages: HotspotEntry[] = [];
     let page = 1;
     while (true) {
       const items = await this.fetchPage(slug, page);
       if (items.length === 0) break;
+      this.logger.log("info", "scrape.aldi.page", { page, count: items.length });
       pages.push(...items);
       page++;
     }
 
-    return pages.filter((entry) => this.isDiscountedProduct(entry));
+    const kept = pages.filter((entry) => this.isDiscountedProduct(entry));
+    const rawTotal = pages.length;
+    this.logger.log("info", "scrape.aldi.fetched", { rawTotal, kept: kept.length });
+    if (rawTotal > 0 && kept.length === 0) {
+      this.logger.log("warn", "scrape.aldi.zero_kept", {
+        rawTotal,
+        hint: "possible schema drift — check product entry shape",
+      });
+    }
+    return kept;
   }
 
   private isDiscountedProduct(entry: HotspotEntry): boolean {

@@ -13,6 +13,7 @@
  */
 
 import type { CatalogueExtractor } from "./catalogue-extractor.ts";
+import { ConsoleLogger, type Logger } from "../../shared/logger.ts";
 
 const DISCOVERY_URL = "https://www.v-markt.de/angebote/muenchen";
 /** Source string for slug extraction — used to build a fresh regex per call (g-flag is stateful). */
@@ -33,14 +34,19 @@ interface CatalogueNormalizerItem {
 export class VMarktCatalogueFetcher {
   constructor(
     private extractor: CatalogueExtractor,
-    private fetchFn = globalThis.fetch
+    private fetchFn = globalThis.fetch,
+    private readonly logger: Logger = new ConsoleLogger()
   ) {}
 
   async fetchCurrentWeek(): Promise<CatalogueNormalizerItem[]> {
     const slug = await this.discoverSlug();
+    this.logger.log("info", "scrape.vmarkt.slug", { slug });
+
     const paragraphs = await this.fetchParagraphs(slug);
+    this.logger.log("info", "scrape.vmarkt.paragraphs", { count: paragraphs.length });
+
     const extracted = await this.extractor.extractProducts(paragraphs);
-    return extracted
+    const kept = extracted
       .filter(
         ({ regularPrice, salePrice }) =>
           parseFloat(salePrice) < parseFloat(regularPrice)
@@ -55,6 +61,18 @@ export class VMarktCatalogueFetcher {
         productType: "grocery",
         photoUrls: [],
       }));
+
+    this.logger.log("info", "scrape.vmarkt.extracted", {
+      extracted: extracted.length,
+      kept: kept.length,
+    });
+    if (extracted.length > 0 && kept.length === 0) {
+      this.logger.log("warn", "scrape.vmarkt.zero_kept", {
+        extracted: extracted.length,
+        hint: "possible schema drift — check product entry shape",
+      });
+    }
+    return kept;
   }
 
   private async discoverSlug(): Promise<string> {

@@ -14,6 +14,25 @@ import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import fc from "fast-check";
 import { VMarktCatalogueFetcher } from "./v-markt-catalogue-fetcher.ts";
 import { FakeCatalogueExtractor } from "../../../tests/acceptance/support/fake-catalogue-extractor.ts";
+import type { LogLevel, Logger } from "../../shared/logger.ts";
+
+// ── Spy logger for stage-event assertions ─────────────────────────────────────
+
+interface CapturedEvent {
+  level: LogLevel;
+  event: string;
+  fields: Record<string, unknown>;
+}
+
+class SpyLogger implements Logger {
+  readonly events: CapturedEvent[] = [];
+  log(level: LogLevel, event: string, fields?: Record<string, unknown>): void {
+    this.events.push({ level, event, fields: fields ?? {} });
+  }
+  find(event: string): CapturedEvent | undefined {
+    return this.events.find((e) => e.event === event);
+  }
+}
 
 // ── Response helpers ──────────────────────────────────────────────────────────
 
@@ -279,5 +298,88 @@ describe("VMarktCatalogueFetcher — output shape", () => {
     // Must not throw — no real API key needed, FakeCatalogueExtractor handles it.
     const result = await fetcher.fetchCurrentWeek();
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+// ── 10-02: stage logging + zero_kept drift warning ────────────────────────────
+
+describe("VMarktCatalogueFetcher — stage logging", () => {
+  // bypass: interaction test over a spy logger — verifies emitted stage events, not an invariant.
+
+  test("emits slug, paragraphs, and extracted events with counts", async () => {
+    const paragraphs = ["Zucchini 500g", "Tomaten 1kg"];
+    const discoveryHtml = makeDiscoveryHtml([
+      "https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/",
+    ]);
+    const catalogueHtml = makeCatalogueHtml(paragraphs);
+    const fixture = [
+      { name: "Zucchini", regularPrice: "1.99", salePrice: "0.99" },
+      { name: "Equal", regularPrice: "1.00", salePrice: "1.00" }, // excluded
+    ];
+    const extractor = new FakeCatalogueExtractor(fixture);
+
+    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+      const urlStr = String(url);
+      if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
+      return makeHtmlResponse(catalogueHtml);
+    };
+
+    const spy = new SpyLogger();
+    const fetcher = new VMarktCatalogueFetcher(extractor, undefined, spy);
+    await fetcher.fetchCurrentWeek();
+
+    expect(spy.find("scrape.vmarkt.slug")!.fields.slug).toBe("2408_VMMUC");
+    expect(spy.find("scrape.vmarkt.paragraphs")!.fields.count).toBe(2);
+    expect(spy.find("scrape.vmarkt.extracted")!.fields).toMatchObject({ extracted: 2, kept: 1 });
+  });
+
+  test("emits zero_kept WARN when extracted entries exist but none survive the filter", async () => {
+    const discoveryHtml = makeDiscoveryHtml([
+      "https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/",
+    ]);
+    const catalogueHtml = makeCatalogueHtml(["text"]);
+    // extracted>0 but all salePrice >= regularPrice → kept===0.
+    const fixture = [
+      { name: "A", regularPrice: "1.00", salePrice: "1.00" },
+      { name: "B", regularPrice: "1.00", salePrice: "2.00" },
+    ];
+    const extractor = new FakeCatalogueExtractor(fixture);
+
+    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+      const urlStr = String(url);
+      if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
+      return makeHtmlResponse(catalogueHtml);
+    };
+
+    const spy = new SpyLogger();
+    const fetcher = new VMarktCatalogueFetcher(extractor, undefined, spy);
+    const result = await fetcher.fetchCurrentWeek();
+
+    expect(result).toHaveLength(0);
+    const zeroKept = spy.find("scrape.vmarkt.zero_kept");
+    expect(zeroKept).toBeDefined();
+    expect(zeroKept!.level).toBe("warn");
+    expect(zeroKept!.fields.extracted).toBe(2);
+  });
+
+  test("does NOT emit zero_kept when at least one item is kept", async () => {
+    const discoveryHtml = makeDiscoveryHtml([
+      "https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/",
+    ]);
+    const catalogueHtml = makeCatalogueHtml(["text"]);
+    const fixture = [{ name: "A", regularPrice: "2.00", salePrice: "1.00" }];
+    const extractor = new FakeCatalogueExtractor(fixture);
+
+    globalThis.fetch = async (url: RequestInfo | URL): Promise<Response> => {
+      const urlStr = String(url);
+      if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
+      return makeHtmlResponse(catalogueHtml);
+    };
+
+    const spy = new SpyLogger();
+    const fetcher = new VMarktCatalogueFetcher(extractor, undefined, spy);
+    await fetcher.fetchCurrentWeek();
+
+    expect(spy.find("scrape.vmarkt.zero_kept")).toBeUndefined();
   });
 });

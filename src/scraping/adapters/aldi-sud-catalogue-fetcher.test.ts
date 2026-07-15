@@ -19,6 +19,28 @@ import {
   AldiSudCatalogueFetcher,
   parseSlug,
 } from "./aldi-sud-catalogue-fetcher.ts";
+import type { LogLevel, Logger } from "../../shared/logger.ts";
+
+// ── Spy logger for stage-event assertions ─────────────────────────────────────
+
+interface CapturedEvent {
+  level: LogLevel;
+  event: string;
+  fields: Record<string, unknown>;
+}
+
+class SpyLogger implements Logger {
+  readonly events: CapturedEvent[] = [];
+  log(level: LogLevel, event: string, fields?: Record<string, unknown>): void {
+    this.events.push({ level, event, fields: fields ?? {} });
+  }
+  eventNames(): string[] {
+    return this.events.map((e) => e.event);
+  }
+  find(event: string): CapturedEvent | undefined {
+    return this.events.find((e) => e.event === event);
+  }
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -233,6 +255,83 @@ describe("AldiSudCatalogueFetcher — pagination", () => {
     const fetcher = new AldiSudCatalogueFetcher();
     const result = await fetcher.fetchCurrentWeek();
     expect(result).toEqual([]);
+  });
+});
+
+// ── 10-02: stage logging + zero_kept drift warning ────────────────────────────
+
+describe("AldiSudCatalogueFetcher — stage logging", () => {
+  // bypass: interaction test over a spy logger — verifies emitted stage events, not an invariant.
+
+  test("emits slug, per-page, and fetched events with counts", async () => {
+    const slug = "kw27-26-op-mp";
+    const page1 = [hotspotProduct({ id: "p1" }), hotspotProduct({ id: "p2" })];
+    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+      if (opts?.method === "HEAD") {
+        return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
+      }
+      const urlStr = String(url);
+      if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
+      return makeResponse(404, null);
+    };
+
+    const spy = new SpyLogger();
+    const fetcher = new AldiSudCatalogueFetcher(spy);
+    await fetcher.fetchCurrentWeek();
+
+    expect(spy.find("scrape.aldi.slug")!.fields.slug).toBe(slug);
+    const page = spy.find("scrape.aldi.page")!;
+    expect(page.fields).toMatchObject({ page: 1, count: 2 });
+    const fetched = spy.find("scrape.aldi.fetched")!;
+    expect(fetched.fields).toMatchObject({ rawTotal: 2, kept: 2 });
+  });
+
+  test("emits zero_kept WARN when raw entries exist but none survive the filter", async () => {
+    const slug = "kw27-26-op-mp";
+    // 3 raw entries, all excluded (banners) → rawTotal>0, kept===0 → drift warning.
+    const page1 = [
+      hotspotProduct({ type: "banner" }),
+      hotspotProduct({ type: "banner" }),
+      hotspotProduct({ type: "banner" }),
+    ];
+    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+      if (opts?.method === "HEAD") {
+        return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
+      }
+      const urlStr = String(url);
+      if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
+      return makeResponse(404, null);
+    };
+
+    const spy = new SpyLogger();
+    const fetcher = new AldiSudCatalogueFetcher(spy);
+    const result = await fetcher.fetchCurrentWeek();
+
+    expect(result).toHaveLength(0);
+    const zeroKept = spy.find("scrape.aldi.zero_kept");
+    expect(zeroKept).toBeDefined();
+    expect(zeroKept!.level).toBe("warn");
+    expect(zeroKept!.fields.rawTotal).toBe(3);
+    expect(String(zeroKept!.fields.hint)).toContain("schema drift");
+  });
+
+  test("does NOT emit zero_kept when at least one item is kept", async () => {
+    const slug = "kw27-26-op-mp";
+    const page1 = [hotspotProduct({ id: "p1" }), hotspotProduct({ type: "banner" })];
+    globalThis.fetch = async (url: RequestInfo | URL, opts?: RequestInit): Promise<Response> => {
+      if (opts?.method === "HEAD") {
+        return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
+      }
+      const urlStr = String(url);
+      if (urlStr.includes("/page/1-2/")) return makeResponse(200, page1);
+      return makeResponse(404, null);
+    };
+
+    const spy = new SpyLogger();
+    const fetcher = new AldiSudCatalogueFetcher(spy);
+    await fetcher.fetchCurrentWeek();
+
+    expect(spy.find("scrape.aldi.zero_kept")).toBeUndefined();
   });
 });
 

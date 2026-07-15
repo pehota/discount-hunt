@@ -23,6 +23,25 @@
 
 import { describe, test, expect, afterEach } from "bun:test";
 import { runLiveScrape, exitCodeFor } from "./scraper-runner.ts";
+import type { LogLevel, Logger } from "../shared/logger.ts";
+
+// ── Spy logger for structured-event assertions ────────────────────────────────
+
+interface CapturedEvent {
+  level: LogLevel;
+  event: string;
+  fields: Record<string, unknown>;
+}
+
+class SpyLogger implements Logger {
+  readonly events: CapturedEvent[] = [];
+  log(level: LogLevel, event: string, fields?: Record<string, unknown>): void {
+    this.events.push({ level, event, fields: fields ?? {} });
+  }
+  find(event: string): CapturedEvent | undefined {
+    return this.events.find((e) => e.event === event);
+  }
+}
 
 // ── Env save/restore ──────────────────────────────────────────────────────────
 
@@ -193,6 +212,28 @@ describe("runLiveScrape — ANTHROPIC_API_KEY decoupling", () => {
         runScrape: async () => {},
       })
     ).resolves.toBeDefined();
+  });
+});
+
+// ── 10-02: structured logging for the skipped-store reason ─────────────────────
+
+describe("runLiveScrape — structured logging", () => {
+  // bypass: interaction test over a spy logger — verifies emitted event, not an invariant.
+
+  test("with key absent: emits a structured summary event for the skipped V-Markt leg", async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const spy = new SpyLogger();
+
+    await runLiveScrape({
+      makeAldiFetcher: () => stubFetcher("Aldi"),
+      makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      runScrape: async () => {},
+      logger: spy,
+    });
+
+    const vmarkt = spy.find("scrape.summary");
+    expect(vmarkt).toBeDefined();
+    expect(spy.events.some((e) => e.event === "scrape.summary" && e.fields.store === "V-Markt" && e.fields.ok === false)).toBe(true);
   });
 });
 

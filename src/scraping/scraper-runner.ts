@@ -45,6 +45,7 @@ import { ScrapingService } from "./scraping-service.ts";
 import { AldiSudCatalogueFetcher } from "./adapters/aldi-sud-catalogue-fetcher.ts";
 import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts";
 import { HaikuCatalogueExtractor } from "./adapters/haiku-catalogue-extractor.ts";
+import { ConsoleLogger, type Logger } from "../shared/logger.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,7 @@ export interface LiveScrapeDeps {
   makeAldiFetcher?: () => CatalogueFetcher;
   makeVMarktFetcher?: () => CatalogueFetcher;
   runScrape?: (fetcher: CatalogueFetcher, store: string) => Promise<void>;
+  logger?: Logger;
 }
 
 const ALDI_STORE = "Aldi Süd";
@@ -83,20 +85,25 @@ const VMARKT_STORE = "V-Markt";
  */
 export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreResult[]> {
   const runScrape = deps.runScrape ?? makeProdRunScrape();
+  const logger = deps.logger ?? new ConsoleLogger();
   const makeAldiFetcher = deps.makeAldiFetcher ?? (() => new AldiSudCatalogueFetcher());
   const makeVMarktFetcher = deps.makeVMarktFetcher ?? (() => new VMarktCatalogueFetcher(new HaikuCatalogueExtractor()));
 
   const summary: StoreResult[] = [];
 
   // Aldi Süd needs no API key — always attempts.
-  summary.push(await isolatedScrape(runScrape, makeAldiFetcher(), ALDI_STORE));
+  summary.push(await isolatedScrape(runScrape, makeAldiFetcher(), ALDI_STORE, logger));
 
   // V-Markt requires Anthropic (Haiku extraction). Skip with a recorded reason
   // when the key is absent — do NOT construct the Haiku-backed fetcher.
   if (process.env.ANTHROPIC_API_KEY) {
-    summary.push(await isolatedScrape(runScrape, makeVMarktFetcher(), VMARKT_STORE));
+    summary.push(await isolatedScrape(runScrape, makeVMarktFetcher(), VMARKT_STORE, logger));
   } else {
-    console.error("health.scrape.store_failed", VMARKT_STORE, "ANTHROPIC_API_KEY missing");
+    logger.log("warn", "scrape.summary", {
+      store: VMARKT_STORE,
+      ok: false,
+      error: "ANTHROPIC_API_KEY missing",
+    });
     summary.push({ store: VMARKT_STORE, ok: false, error: "ANTHROPIC_API_KEY missing" });
   }
 
@@ -108,12 +115,14 @@ async function isolatedScrape(
   runScrape: (fetcher: CatalogueFetcher, store: string) => Promise<void>,
   fetcher: CatalogueFetcher,
   store: string,
+  logger: Logger = new ConsoleLogger(),
 ): Promise<StoreResult> {
   try {
     await runScrape(fetcher, store);
+    logger.log("info", "scrape.summary", { store, ok: true });
     return { store, ok: true };
   } catch (error) {
-    console.error("health.scrape.store_failed", store, error);
+    logger.log("warn", "scrape.summary", { store, ok: false, error: String(error) });
     return { store, ok: false, error: String(error) };
   }
 }
@@ -192,16 +201,21 @@ async function main(): Promise<StoreResult[]> {
 }
 
 if (import.meta.main) {
+  const runnerLogger = new ConsoleLogger();
   main()
     .then((summary) => {
-      for (const result of summary) {
-        console.error("health.scrape.summary", result.store, result.ok ? "ok" : `failed: ${result.error}`);
-      }
+      // Per-store `scrape.summary` events are emitted at the store site
+      // (isolatedScrape / key-absent branch). Here we emit only the run tally.
+      const okCount = summary.filter((result) => result.ok).length;
+      runnerLogger.log("info", "scrape.run.done", {
+        okCount,
+        failedCount: summary.length - okCount,
+      });
       process.exit(exitCodeFor(summary));
     })
     .catch((err) => {
       // Catastrophic pre-store failure (DB / infra build threw) — no store ran.
-      console.error("health.scrape.refused", err);
+      runnerLogger.log("error", "health.scrape.refused", { error: String(err) });
       process.exit(1);
     });
 }
