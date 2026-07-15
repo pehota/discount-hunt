@@ -55,6 +55,7 @@ export class ShoppingListService {
         salePriceCents: item.salePrice,
         regularPriceCents: item.regularPrice,
         discountItemId: item.id,
+        taxonomyCategory: item.taxonomyCategory ?? "Other",
         addedAt: Date.now(),
       });
     }
@@ -71,6 +72,7 @@ export class ShoppingListService {
       salePriceCents: priceCents,
       regularPriceCents: null,
       discountItemId: null,
+      taxonomyCategory: "Other",
       addedAt: Date.now(),
     };
     this.repo.addItems([row]);

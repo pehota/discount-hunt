@@ -26,6 +26,7 @@ import { SQLiteShoppingListRepository } from "../adapters/sqlite-shopping-list-r
 import { ShoppingListService } from "../shopping-list-service.ts";
 import { ShoppingListHandler } from "./shopping-list-handler.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
+import { TAXONOMY_CATEGORIES } from "../../shared/types.ts";
 
 function thisWeekValidUntil(): string {
   const monday = new Date(`${currentWeekMonday()}T00:00:00.000Z`);
@@ -191,5 +192,55 @@ describe("ShoppingListHandler", () => {
     const addRes = await handler.handlePostAdd(postForm("/list/add", "itemIds=aldi:z1"));
     expect(addRes.status).toBe(303);
     expect(addRes.headers.get("Location")).toBe("/list");
+  });
+
+  // ── Category grouping ──────────────────────────────────────────────────────
+
+  test("B10: /list groups items under category headers in canonical order; manual → Other", async () => {
+    const db = createDb(":memory:");
+    const discountRepo = new SQLiteDiscountItemRepository(db);
+    const ds = new DiscountService(discountRepo);
+    const listRepo = new SQLiteShoppingListRepository(db);
+    const svc = new ShoppingListService(listRepo, ds);
+    const h = new ShoppingListHandler(svc);
+
+    // A "Bakery" discount item and a "Produce" discount item; then a manual item ("Other").
+    await ds.registerDiscountItem(
+      { externalId: "b1", store: "aldi", name: "Baguette", category: "bread",
+        regularPrice: 200, salePrice: 150, validUntil: thisWeekValidUntil(), dietaryTags: ["vegetarian"] },
+      "job-b",
+    );
+    await ds.registerDiscountItem(
+      { externalId: "p1", store: "aldi", name: "Apple", category: "fruit",
+        regularPrice: 120, salePrice: 90, validUntil: thisWeekValidUntil(), dietaryTags: ["vegan"] },
+      "job-b",
+    );
+    discountRepo.setTaxonomyCategory("aldi:b1", "Bakery");
+    discountRepo.setTaxonomyCategory("aldi:p1", "Produce");
+    await svc.addFromDiscountSelection(["aldi:b1", "aldi:p1"]);
+    svc.addManualItem("Notebook", null);
+
+    const html = await bodyText(await h.handleGet(new Request("http://localhost/list")));
+
+    // Each present category renders a header; absent categories do not.
+    expect(html).toContain(">Produce<");
+    expect(html).toContain(">Bakery<");
+    expect(html).toContain(">Other<");
+    expect(html).not.toContain(">Drinks<");
+
+    // Headers appear in TAXONOMY_CATEGORIES canonical order (Produce < Bakery < Other).
+    const present = TAXONOMY_CATEGORIES.filter((c) => html.includes(`>${c}<`));
+    const positions = present.map((c) => html.indexOf(`>${c}<`));
+    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    expect(present).toEqual(["Produce", "Bakery", "Other"]);
+
+    // Each item sits under its own category header (positional, not just present).
+    expect(html.indexOf("Apple")).toBeGreaterThan(html.indexOf(">Produce<"));
+    expect(html.indexOf("Baguette")).toBeGreaterThan(html.indexOf(">Bakery<"));
+    expect(html.indexOf("Notebook")).toBeGreaterThan(html.indexOf(">Other<"));
+
+    // Totals unchanged: sum sale = 150+90 = 240 = €2.40; savings = 50+30 = 80 = €0.80.
+    expect(html).toContain("Total €2.40");
+    expect(html).toContain("You save €0.80 vs regular");
   });
 });

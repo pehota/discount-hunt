@@ -374,9 +374,11 @@ const STYLE = `
       padding: var(--sp-4);
     }
 
-    /* ── Store section header ─────────────────────────────────────────────*/
-    .store-group { margin-bottom: var(--sp-5); }
-    .store-name {
+    /* ── Store / list-category section header (shared pill look) ───────────*/
+    .store-group,
+    .list-category-group { margin-bottom: var(--sp-5); }
+    .store-name,
+    .list-category-name {
       display: inline-block;
       margin: 0 0 var(--sp-3);
       padding: var(--sp-1) var(--sp-3);

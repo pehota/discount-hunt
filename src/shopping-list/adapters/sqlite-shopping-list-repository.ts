@@ -13,6 +13,7 @@
 import { eq, and } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { shoppingListItems } from "../../shared/schema.ts";
+import type { TaxonomyCategory } from "../../shared/types.ts";
 import type {
   ShoppingListItem,
   ShoppingListRepository,
@@ -64,6 +65,7 @@ export class SQLiteShoppingListRepository implements ShoppingListRepository {
         salePriceCents: row.salePriceCents,
         regularPriceCents: row.regularPriceCents,
         discountItemId: row.discountItemId,
+        taxonomyCategory: row.taxonomyCategory,
         addedAt: row.addedAt,
       })
       .run();
@@ -84,6 +86,8 @@ export class SQLiteShoppingListRepository implements ShoppingListRepository {
       salePriceCents: row.salePriceCents,
       regularPriceCents: row.regularPriceCents,
       discountItemId: row.discountItemId,
+      // Coalesce legacy NULL rows (written before this column existed) → "Other".
+      taxonomyCategory: (row.taxonomyCategory ?? "Other") as TaxonomyCategory,
       addedAt: row.addedAt,
     }));
   }

@@ -76,6 +76,7 @@ export const shoppingListItems = sqliteTable("shopping_list_items", {
   salePriceCents: integer("sale_price_cents"), // nullable — cents snapshot
   regularPriceCents: integer("regular_price_cents"), // nullable — cents snapshot
   discountItemId: text("discount_item_id"), // nullable — null for manual rows
+  taxonomyCategory: text("taxonomy_category"), // nullable in DB (legacy rows); coalesced → "Other" on read
   addedAt: integer("added_at").notNull(), // ms since epoch
 });
 

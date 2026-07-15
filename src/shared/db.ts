@@ -109,6 +109,7 @@ const CREATE_SHOPPING_LIST_ITEMS = `
     sale_price_cents INTEGER,
     regular_price_cents INTEGER,
     discount_item_id TEXT,
+    taxonomy_category TEXT,
     added_at INTEGER NOT NULL
   )
 `;
@@ -190,6 +191,13 @@ export function createDb(dbPath: string): DbClient {
   sqlite.exec(CREATE_SAVINGS_LOG);
   sqlite.exec(CREATE_RECIPES);
   sqlite.exec(CREATE_SHOPPING_LIST_ITEMS);
+
+  // Idempotent migration: add taxonomy_category (nullable) to shopping_list_items if the table pre-dates it
+  try {
+    sqlite.exec("ALTER TABLE shopping_list_items ADD COLUMN taxonomy_category TEXT");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
 
   // Write-read-delete probe on scrape_jobs to verify R/W access
   const insert = sqlite.prepare(

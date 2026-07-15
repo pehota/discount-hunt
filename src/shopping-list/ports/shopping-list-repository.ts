@@ -12,7 +12,9 @@
  * null and Drizzle's sql binding never drops a value silently (exactOptionalPropertyTypes).
  */
 
-/** A shopping-list row. Prices/store snapshotted at add time (write-once). */
+import type { TaxonomyCategory } from "../../shared/types.ts";
+
+/** A shopping-list row. Prices/store/category snapshotted at add time (write-once). */
 export interface ShoppingListItem {
   id: string;
   weekStart: string;
@@ -22,6 +24,8 @@ export interface ShoppingListItem {
   salePriceCents: number | null;
   regularPriceCents: number | null;
   discountItemId: string | null;
+  /** Snapshotted taxonomy bucket (write-once). Always concrete — legacy NULL rows read back as "Other". */
+  taxonomyCategory: TaxonomyCategory;
   addedAt: number;
 }
 

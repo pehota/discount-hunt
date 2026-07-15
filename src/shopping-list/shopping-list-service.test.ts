@@ -131,6 +131,37 @@ describe("ShoppingListService", () => {
     expect(service.count()).toBe(3);
   });
 
+  test("B7: addFromDiscountSelection snapshots the discount item's taxonomyCategory", async () => {
+    // Zucchini's discount item is categorised "Produce" below; the row copies it.
+    const db = createDb(":memory:");
+    const discountRepo = new SQLiteDiscountItemRepository(db);
+    const ds = new DiscountService(discountRepo);
+    const listRepo = new SQLiteShoppingListRepository(db);
+    const svc = new ShoppingListService(listRepo, ds);
+    await ds.registerDiscountItem(
+      {
+        externalId: "c1", store: "aldi", name: "Carrot", category: "vegetable",
+        regularPrice: 120, salePrice: 80, validUntil: thisWeekValidUntil(), dietaryTags: ["vegan"],
+      },
+      "job-c",
+    );
+    discountRepo.setTaxonomyCategory("aldi:c1", "Produce");
+
+    await svc.addFromDiscountSelection(["aldi:c1"]);
+    expect(svc.getCurrentList().items[0]!.taxonomyCategory).toBe("Produce");
+  });
+
+  test("B7b: a discount item with a null taxonomyCategory snapshots as 'Other'", async () => {
+    // The seeded aldi:z1 has no taxonomy_category assigned (null) → row gets "Other".
+    await service.addFromDiscountSelection(["aldi:z1"]);
+    expect(service.getCurrentList().items[0]!.taxonomyCategory).toBe("Other");
+  });
+
+  test("B7c: addManualItem snapshots taxonomyCategory 'Other'", () => {
+    service.addManualItem("Bread", 149);
+    expect(service.getCurrentList().items[0]!.taxonomyCategory).toBe("Other");
+  });
+
   test("B5: remove delegates to repo for the current week", async () => {
     await service.addFromDiscountSelection(["aldi:z1"]);
     const row = service.getCurrentList().items[0]!;

@@ -15,6 +15,7 @@
 
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
+import { TAXONOMY_CATEGORIES } from "../../shared/types.ts";
 import type { ShoppingListItem } from "../ports/shopping-list-repository.ts";
 import type {
   ShoppingListService,
@@ -82,14 +83,32 @@ function renderItem(item: ShoppingListItem): string {
       </li>`;
 }
 
+/** One category section: a pill header + the category's items. Item markup is unchanged. */
+function renderCategoryGroup(category: string, items: ShoppingListItem[]): string {
+  const rows = items.map(renderItem).join("\n");
+  return `<section class="list-category-group">
+      <h2 class="list-category-name">${escapeHtml(category)}</h2>
+      <ul class="shopping-list">
+      ${rows}
+    </ul>
+    </section>`;
+}
+
 function renderList(summary: ShoppingListSummary): string {
   if (summary.items.length === 0) {
     return `<p class="empty-state"><span class="state-illustration" aria-hidden="true">🧾</span>Your shopping list is empty</p>`;
   }
-  const rows = summary.items.map(renderItem).join("\n");
-  return `<ul class="shopping-list">
-      ${rows}
-    </ul>
+  // Group by taxonomyCategory in TAXONOMY_CATEGORIES canonical order; only non-empty
+  // categories render. Within a category, insertion order is preserved by the filter.
+  const groups = TAXONOMY_CATEGORIES
+    .map((category) => ({
+      category,
+      items: summary.items.filter((item) => item.taxonomyCategory === category),
+    }))
+    .filter((group) => group.items.length > 0)
+    .map((group) => renderCategoryGroup(group.category, group.items))
+    .join("\n");
+  return `${groups}
     <p class="list-total">Total €${centsToEuros(summary.totalCents)}</p>
     <p class="list-savings">You save €${centsToEuros(summary.savingsCents)} vs regular</p>`;
 }

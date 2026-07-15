@@ -32,6 +32,7 @@ function discountRow(overrides: Partial<ShoppingListItem> = {}): ShoppingListIte
     salePriceCents: 99,
     regularPriceCents: 199,
     discountItemId: "aldi:item-001",
+    taxonomyCategory: "Produce",
     addedAt: Date.now(),
     ...overrides,
   };
@@ -47,6 +48,7 @@ function manualRow(overrides: Partial<ShoppingListItem> = {}): ShoppingListItem 
     salePriceCents: 129,
     regularPriceCents: null,
     discountItemId: null,
+    taxonomyCategory: "Other",
     addedAt: Date.now(),
     ...overrides,
   };
@@ -136,5 +138,22 @@ describe("SQLiteShoppingListRepository", () => {
     repo.addItems([discountRow()]);
     repo.removeById("nope", WEEK);
     expect(repo.listByWeek(WEEK)).toHaveLength(1);
+  });
+
+  test("B6: taxonomy_category round-trips through addItems/listByWeek", () => {
+    repo.addItems([discountRow({ taxonomyCategory: "Bakery" })]);
+    expect(repo.listByWeek(WEEK)[0]!.taxonomyCategory).toBe("Bakery");
+  });
+
+  test("B6b: a legacy row with NULL taxonomy_category reads back as 'Other'", () => {
+    // Simulate a row written before the column existed: insert directly with a NULL
+    // taxonomy_category, bypassing the type-required field on addItems.
+    const db = createDb(":memory:");
+    const legacyRepo = new SQLiteShoppingListRepository(db);
+    (db as unknown as { $client: { exec(sql: string): void } }).$client.exec(
+      `INSERT INTO shopping_list_items (id, week_start, source, name, added_at, taxonomy_category)
+       VALUES ('legacy-1', '${WEEK}', 'manual', 'Old Item', ${Date.now()}, NULL)`,
+    );
+    expect(legacyRepo.listByWeek(WEEK)[0]!.taxonomyCategory).toBe("Other");
   });
 });
