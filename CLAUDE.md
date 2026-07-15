@@ -10,6 +10,10 @@
 
 - OOP — TypeScript classes for services and adapters.
 
+## Architecture
+
+- Hexagonal - ports and adapters
+
 ## Mutation Testing Strategy
 
 nightly-delta — CI runs mutation tests nightly on changed modules; per-feature gates are skipped.
@@ -27,3 +31,12 @@ Type-check with `bun run typecheck` (tsc --noEmit, strict: noUncheckedIndexedAcc
 - conventional commits
 - use /commit-commands:commit to do the commits
 - commit after any meaningful, self-contained, complete, and verified set of changes
+
+## Principles
+
+- KISS
+- DRY
+- SOLID
+- single responsibility
+- separation of concerns
+- single source of truth
