@@ -115,8 +115,9 @@ describe("@driving_port — a plan generated before discounts arrive does not ca
     const db = createDb(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 6200 + Math.floor(Math.random() * 400); // port range 6200–6599
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // When: a plan is generated while there are no discounts (default 'none' restriction).
     await fetch(`http://localhost:${serverPort}/plan/generate`, {
@@ -181,8 +182,9 @@ describe("@driving_port — a vegetarian empty plan does not cache-stale when a 
     const db = createDb(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 6900 + Math.floor(Math.random() * 90); // port range 6900–6989
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // And: the user has a vegetarian restriction saved (driving port).
     await saveDietaryRestriction(serverPort, "vegetarian");
@@ -239,8 +241,9 @@ describe("@driving_port — a non-empty plan is idempotent and writes exactly on
     seedDiscountItem(db, jobId, "present-item-001", SEEDED_ITEM);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 6600 + Math.floor(Math.random() * 300); // port range 6600–6899
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Separate handle to inspect savings_log after the reads.
     inspectDb = createDb(dbPath);

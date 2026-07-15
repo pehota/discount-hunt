@@ -197,8 +197,9 @@ describe("@driving_port — Settings page shows the current dietary restriction 
     seedMixedDietaryItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4300 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition: a restriction was previously saved (driving port, not DB seed).
     // No expect() here — a 404 from the unbuilt route must not break the describe.
@@ -248,8 +249,9 @@ describe("@driving_port — Saving a dietary restriction confirms and pre-fills 
     seedMixedDietaryItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4400 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -298,8 +300,9 @@ describe("@driving_port — Discount dashboard re-filters live when the restrict
     seedMixedDietaryItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4500 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -365,8 +368,9 @@ describe("@driving_port — Generated meal plan excludes meat/fish under a veget
     seedMixedDietaryItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4600 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition: vegetarian saved, then generate a plan (POST returns 303).
     await saveDietaryRestriction(serverPort, "vegetarian");
@@ -423,8 +427,9 @@ describe("@driving_port — An existing vegetarian plan stays meat-free after th
     seedMixedDietaryItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4700 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition chain (Pillar 2): save vegetarian → generate a plan (frozen at vegetarian)
     // → switch the setting to none. getOrGenerateCurrentWeekPlan is idempotent, so the same-week
@@ -485,8 +490,9 @@ describe("@driving_port — Plan view warns and links to settings when no compat
     seedMeatFishOnlyItems(dbPath); // only contains-meat / contains-fish items
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4800 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition: vegetarian saved → every seeded item is incompatible → 0 compatible.
     await saveDietaryRestriction(serverPort, "vegetarian");
@@ -545,8 +551,9 @@ describe("@driving_port — Empty plan distinguishes no-data from restriction-fi
     // NO seeding — empty discount DB (fresh install / failed scrape).
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4900 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Default restriction 'none' set explicitly, then generate a plan over an empty DB.
     await saveDietaryRestriction(serverPort, "none");
@@ -595,8 +602,9 @@ describe("@driving_port — Invalid dietary input is rejected and defaults to no
     seedMixedDietaryItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5000 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition: an invalid dietary value is POSTed through the driving port.
     await saveDietaryRestriction(serverPort, "banana");
@@ -666,8 +674,9 @@ describe("@driving_port — An empty plan is transient and refreshes under the c
     seedMeatFishOnlyItems(dbPath); // 0 vegetarian survivors → empty plan under vegetarian
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5100 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition chain (Pillar 2): save vegetarian → generate an EMPTY plan (0 compatible items)
     // → switch the restriction to none. Because the plan is empty, it must NOT be frozen; the next
@@ -720,8 +729,9 @@ describe("@driving_port — Item names with HTML special chars are escaped on re
     seedHtmlSpecialItem(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5200 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     await saveDietaryRestriction(serverPort, "none");
     await fetch(`http://localhost:${serverPort}/plan/generate`, {

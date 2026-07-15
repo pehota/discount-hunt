@@ -155,8 +155,9 @@ describe("@driving_port — Settings page exposes a weekly budget field that per
     seedTwoNinetyNineCentItems(dbPath);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5300 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition: a cap was previously saved through the driving port (no DB seed).
     // No expect() here — a handler that ignores the unknown "budget" field just re-renders.
@@ -203,8 +204,9 @@ describe("@driving_port — Plan shows an over-budget banner when the total exce
     seedTwoNinetyNineCentItems(dbPath); // totalSalePrice = 198c
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5400 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition (Pillar 2): set a low €1.00 cap, THEN generate so the cap is snapshotted.
     await saveBudgetCap(serverPort, 1); // €1.00 = 100c < 198c
@@ -250,8 +252,9 @@ describe("@driving_port — Plan shows no over-budget banner when the total is u
     seedTwoNinetyNineCentItems(dbPath); // totalSalePrice = 198c
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5500 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     await saveBudgetCap(serverPort, 9999); // €9999 » €1.98
     await generatePlan(serverPort);
@@ -297,8 +300,9 @@ describe("@driving_port — Plan shows no over-budget banner when no cap is set"
     seedTwoNinetyNineCentItems(dbPath); // totalSalePrice = 198c (would exceed a €1 cap — but none set)
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5600 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // No cap ever set (NULL). Generate directly — the plan's snapshotted cap must be NULL.
     await generatePlan(serverPort);
@@ -344,8 +348,9 @@ describe("@driving_port — An over-budget plan stays over-budget after the cap 
     seedTwoNinetyNineCentItems(dbPath); // totalSalePrice = 198c
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5700 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition chain (Pillar 2): set a LOW €1.00 cap → generate (frozen at €1.00, over budget)
     // → RAISE the cap to €9999. getOrGenerateCurrentWeekPlan is idempotent, so the same-week
@@ -401,8 +406,9 @@ describe.each([
     seedTwoNinetyNineCentItems(dbPath); // 198c — would exceed a €1 cap, but garbage must persist as NULL
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5800 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
 
     // Precondition: POST an invalid budget through the driving port, then generate.
     await saveBudgetCap(serverPort, raw);

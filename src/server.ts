@@ -57,7 +57,7 @@ export type { ServerConfig, ServerHandle };
  */
 export async function createServer(
   config: ServerConfig & { recipeSource?: RecipeSource },
-): Promise<ServerHandle> {
+): Promise<ServerHandle & { port: number }> {
   // 1. Database
   const db = createDb(config.dbPath);
 
@@ -121,7 +121,7 @@ export async function createServer(
   });
 
   // 6. Handle
-  return { stop: () => server.stop() };
+  return { stop: () => server.stop(), port: server.port };
 }
 
 // Direct invocation (cron / systemd)

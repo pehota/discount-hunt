@@ -131,11 +131,12 @@ describe("Walking Skeleton — Scenario 1: Shopper sees discounted items, genera
     // Start the real HTTP server (production composition root) pointing at the same DB
     // src/server.ts reads TEST_DB_PATH env var when present (test seam)
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 3100 + Math.floor(Math.random() * 900); // random port 3100–3999
-    server = await createServer({
-      port: serverPort,
+    const s = await createServer({
+      port: 0,
       dbPath,
     });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -250,11 +251,12 @@ describe.skip("Walking Skeleton — Scenario 2: Shopper sees empty discount feed
     expect(scraperResult.exitCode).toBe(0);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4100 + Math.floor(Math.random() * 900);
-    server = await createServer({
-      port: serverPort,
+    const s = await createServer({
+      port: 0,
       dbPath,
     });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {

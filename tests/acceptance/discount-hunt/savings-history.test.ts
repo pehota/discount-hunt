@@ -142,8 +142,9 @@ describe("@driving_port — Savings tab shows this week's breakdown of paid, wou
     ]);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5300 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -220,8 +221,9 @@ describe("@driving_port — Savings tab shows a month-to-date total over the cur
     ]);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5400 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -288,8 +290,9 @@ describe("@driving_port — A week with no captured regular price shows 'Savings
     ]);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5500 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -349,8 +352,9 @@ describe("@driving_port — the this-week breakdown shows 'Savings unavailable' 
     ]);
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5600 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -424,8 +428,9 @@ describe("@driving_port — store names in the discount feed are HTML-escaped (s
     }).run();
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5700 + Math.floor(Math.random() * 99);
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {

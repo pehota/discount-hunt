@@ -127,8 +127,9 @@ describe(
 
       // Start real HTTP server against the same DB
       const { createServer } = await import("../../../src/server.ts");
-      serverPort = 3200 + Math.floor(Math.random() * 700); // port range 3200–3899
-      server = await createServer({ port: serverPort, dbPath });
+      const s = await createServer({ port: 0, dbPath });
+      server = s;
+      serverPort = s.port;
     });
 
     afterAll(() => {
@@ -259,8 +260,9 @@ describe("staleness warning", () => {
     }).run();
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 3900 + Math.floor(Math.random() * 99); // port range 3900–3999
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -375,8 +377,9 @@ describe("prior-week filter — past items must not appear in GET /", () => {
     }).run();
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4000 + Math.floor(Math.random() * 99); // port range 4000–4099
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -449,8 +452,9 @@ describe("schema migration boot — re-opening an existing DB with meals column 
     // createDb internally runs ALTER TABLE meal_plans ADD COLUMN meals — which would throw
     // "duplicate column name: meals" without the try/catch guard.
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4100 + Math.floor(Math.random() * 99); // port range 4100–4199
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
@@ -517,8 +521,9 @@ describe("schema migration boot — opening a pre-meals DB adds the meals column
     // Call createServer — createDb internally runs ALTER TABLE meal_plans ADD COLUMN meals,
     // which should succeed on a DB that does NOT yet have that column.
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 4200 + Math.floor(Math.random() * 99); // port range 4200–4299
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {

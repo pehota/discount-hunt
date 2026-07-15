@@ -68,8 +68,9 @@ describe("@driving_port — shared shell on all routes; feed uses cards", () => 
     }).run();
 
     const { createServer } = await import("../../../src/server.ts");
-    serverPort = 5600 + Math.floor(Math.random() * 300); // port range 5600–5899
-    server = await createServer({ port: serverPort, dbPath });
+    const s = await createServer({ port: 0, dbPath });
+    server = s;
+    serverPort = s.port;
   });
 
   afterAll(() => {
