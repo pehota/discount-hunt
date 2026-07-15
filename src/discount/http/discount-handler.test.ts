@@ -253,3 +253,92 @@ describe("DiscountHandler filter pills", () => {
     expect(html).toMatch(/All\s*<span class="pill-count">2<\/span>/);
   });
 });
+
+/**
+ * Feed enhancements — server-rendered contract for the client-side search box and
+ * the selection-overview container. The interactive behavior (live filtering,
+ * cross-store aggregation, deselect-from-overview) is verified in-browser by the
+ * orchestrator; here we assert ONLY the static markup the unified controller binds to.
+ *
+ * Covers both render paths: store-context (with scrapeJobRepo + completed jobs) and
+ * fallback (no scrapeJobRepo).
+ */
+describe("DiscountHandler feed enhancements", () => {
+  const VU = thisWeekValidUntil();
+
+  async function seed(
+    service: DiscountService,
+    store: string,
+    count: number,
+    jobId: string,
+  ): Promise<void> {
+    for (let i = 0; i < count; i++) {
+      await service.registerDiscountItem(
+        {
+          externalId: `${store}-${i}`,
+          store,
+          name: `${store} item ${i}`,
+          category: "vegetable",
+          regularPrice: 200 + i,
+          salePrice: 100 + i,
+          validUntil: VU,
+          dietaryTags: ["vegan"],
+        },
+        jobId,
+      );
+    }
+  }
+
+  test("store-context path: accessible search input with an associated label is rendered", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    const jobRepo = new SQLiteScrapeJobRepository(db);
+    const jobA = await jobRepo.startJob("Aldi Süd");
+    await seed(service, "Aldi Süd", 2, jobA);
+    await jobRepo.completeJob(jobA, 2);
+
+    const handler = new DiscountHandler(service, jobRepo);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // A search input carrying id (its accessible name comes from the linked label).
+    expect(html).toMatch(/<input[^>]*type="search"[^>]*id="feed-search-input"|<input[^>]*id="feed-search-input"[^>]*type="search"/);
+    // A <label> whose for= links to the input id, giving it an accessible name.
+    expect(html).toMatch(/<label[^>]*for="feed-search-input"[^>]*>\s*Search products\s*<\/label>/);
+  });
+
+  test("store-context path: selection-overview container with a live count node and list is rendered", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    const jobRepo = new SQLiteScrapeJobRepository(db);
+    const jobA = await jobRepo.startJob("Aldi Süd");
+    await seed(service, "Aldi Süd", 3, jobA);
+    await jobRepo.completeJob(jobA, 3);
+
+    const handler = new DiscountHandler(service, jobRepo);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Overview container present.
+    expect(html).toMatch(/<section[^>]*class="selection-overview"/);
+    // Live count node: aria-live="polite" and initial "Selected (0)" text server-side.
+    expect(html).toMatch(/<span[^>]*class="selection-overview-count"[^>]*aria-live="polite"[^>]*>\s*Selected \(0\)\s*<\/span>|<span[^>]*aria-live="polite"[^>]*class="selection-overview-count"[^>]*>\s*Selected \(0\)\s*<\/span>/);
+    // The overview list container exists (empty by default; JS populates it).
+    expect(html).toMatch(/<ul[^>]*id="selection-overview-list"/);
+    // Hidden empty-state node the JS toggles.
+    expect(html).toMatch(/<p[^>]*class="no-match-state"[^>]*hidden/);
+  });
+
+  test("fallback path: search input + selection-overview also render without scrapeJobRepo", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    await seed(service, "Edeka", 2, "job-e");
+
+    const handler = new DiscountHandler(service); // no scrapeJobRepo → fallback path
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    expect(html).toMatch(/<input[^>]*id="feed-search-input"/);
+    expect(html).toMatch(/<label[^>]*for="feed-search-input"[^>]*>\s*Search products\s*<\/label>/);
+    expect(html).toMatch(/<section[^>]*class="selection-overview"/);
+    expect(html).toMatch(/Selected \(0\)/);
+    expect(html).toMatch(/<ul[^>]*id="selection-overview-list"/);
+  });
+});

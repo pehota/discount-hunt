@@ -195,6 +195,85 @@ const STYLE = `
       font-size: var(--fs-sm);
     }
 
+    /* ── Feed search (feed) ───────────────────────────────────────────────
+       Lives inside the .filter-bar <nav> (NOT the selection <form>), so the
+       global form { max-width:460px } clamp does not apply. It still inherits
+       the global input { width:100% } — its container is full-bleed on mobile,
+       constrained on desktop below. */
+    .feed-search { margin-top: var(--sp-2); }
+    .feed-search-label {
+      display: block;
+      margin-bottom: var(--sp-1);
+      color: var(--muted);
+      font-weight: 600;
+      font-size: var(--fs-sm);
+    }
+    .feed-search-input {
+      width: 100%;
+      min-height: var(--tap);              /* >=44px tap target */
+      padding: var(--sp-2) var(--sp-3);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      font-size: var(--fs-base);
+      background: var(--surface);
+      color: var(--text);
+    }
+
+    /* ── Selection overview (feed) ────────────────────────────────────────
+       ONE DOM node; CSS repositions per breakpoint. Mobile (default): renders
+       below the filter bar (it is a sibling AFTER the pills row in the DOM), the
+       list is collapsed and revealed via .expanded (toggle button). The list
+       scrolls internally and items wrap → never causes 375px PAGE h-overflow. */
+    .selection-overview { margin-top: var(--sp-2); }
+    .selection-overview-toggle {
+      /* Override the global primary button: a lighter, full-width summary row. */
+      width: 100%;
+      min-height: var(--tap);
+      text-align: left;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: var(--sp-2) var(--sp-3);
+      font-size: var(--fs-sm);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .selection-overview-count { color: var(--text); }
+    .selection-overview-list {
+      list-style: none;
+      padding: 0;
+      margin: var(--sp-2) 0 0;
+      display: none;                       /* collapsed on mobile by default */
+      max-height: 40vh;
+      overflow-y: auto;
+    }
+    .selection-overview.expanded .selection-overview-list { display: block; }
+    .selection-overview-list li { margin: 0 0 var(--sp-1); }
+    .selection-overview-list li button {
+      /* Override the global primary button: light, left-aligned, wrapping entry. */
+      width: 100%;
+      text-align: left;
+      white-space: normal;                 /* wrap long product names */
+      overflow-wrap: anywhere;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      padding: var(--sp-2) var(--sp-3);
+      min-height: var(--tap);
+      font-size: var(--fs-sm);
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    /* No-match empty state (toggled by the client controller). */
+    .no-match-state {
+      text-align: center;
+      color: var(--muted);
+      padding: var(--sp-4);
+    }
+
     /* ── Store section header ─────────────────────────────────────────────*/
     .store-group { margin-bottom: var(--sp-5); }
     .store-name {
@@ -221,6 +300,8 @@ const STYLE = `
       padding: var(--sp-3) var(--sp-4);
       box-shadow: var(--shadow-sm);
     }
+    /* Selected card highlight (client controller toggles .selected). */
+    .card.selected { border-color: var(--accent); background: var(--accent-soft); }
     .card .item-name { margin: 0 0 var(--sp-2); font-size: var(--fs-base); padding-right: 4.5rem; }
     .was-price { color: var(--muted); text-decoration: line-through; margin-right: var(--sp-2); }
     .sale-price { color: var(--sale); font-weight: 700; font-size: var(--fs-lg); }
@@ -499,6 +580,26 @@ const STYLE = `
 
       .container { padding: var(--sp-5); padding-bottom: var(--sp-6); }
       .card-grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: var(--sp-4); }
+
+      /* Filter bar on desktop: pills LEFT (flex:1), overview RIGHT on the same row.
+         min-width:0 lets the pills track shrink so its own overflow-x scroll engages
+         instead of pushing page h-overflow; the overview gets a bounded width. */
+      .filter-bar-row {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--sp-4);
+      }
+      .filter-bar-row .filter-pills { flex: 1 1 auto; min-width: 0; }
+      .filter-bar-row .selection-overview {
+        flex: 0 0 auto;
+        width: 260px;
+        max-width: 40%;
+        margin-top: 0;
+      }
+      /* Desktop: the toggle is a static header, the list is ALWAYS visible. */
+      .selection-overview-toggle { cursor: default; }
+      .selection-overview-list { display: block; max-height: 260px; }
+      .selection-overview.expanded .selection-overview-list { display: block; }
 
       /* Real table on desktop */
       table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); overflow: hidden; }
