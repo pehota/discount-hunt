@@ -22,16 +22,13 @@ _Last updated: 2026-07-15 (end of session). This is the "pick up tomorrow" file.
 - `bb7bf9e` shopping list (`src/shopping-list/`): add picked/typed items, week-scoped, snapshot-at-add, running total + "You save €X" (display-only, no savings_log write), 5th nav tab 🧾
 - Docs: `adc13b7` DISCUSS discount-hunt-ui · `0eca5d6` DISCUSS product-overhaul · `3373047` product vision · `b1192b5` CLAUDE.md (TBD workflow)
 
-## IN FLIGHT (uncommitted in working tree — verify + commit FIRST tomorrow)
-**Feed toast + overview actions** (agent was running at session end). Intended:
-- `POST /list/add` returns 204/JSON for AJAX (header `X-Requested-With: fetch`), keeps 303 for no-JS form fallback.
-- Feed intercepts "Add to Shopping List" → `fetch` + **toast** ("Added N…"), no redirect.
-- Selection overview hosts two actions on the current selection: **Add to Shopping List** (fetch+toast) and **Generate Meal Plan** (submits → /plan).
-Files touched: `src/discount/http/discount-handler.ts(+.test)`, `src/shared/layout.ts`, `src/shopping-list/http/shopping-list-handler.ts(+.test)`.
-→ **Action:** restart server, browser-verify (add→toast, no nav; overview add + generate; no-JS native buttons still work; 0 overflow @375px), run gates, commit code-only.
+## Nothing in flight
+All session work is committed (latest `24dc45a`: feed add-to-list toast + overview action hub, verified in-browser). Working tree clean.
 
 ## Backlog (ordered, decisions already locked)
-1. **(above) Verify + commit the feed toast/overview refinement.**
+1. **List counter in the header nav** — the "List" 🧾 nav item shows a badge with the number of items in the shopping list.
+   - How: add optional `listCount` to `renderPage`/`PageOptions`; each page handler passes the current week's shopping-list count (new `ShoppingListService.count()`); `layout.ts` renders a small badge on the List nav item when count>0. Live update: on a successful add-to-list (toast path) the feed JS increments the badge immediately (no reload); server-render keeps it accurate on nav/reload; remove decrements.
+   - Verify: tests (renderPage badge when count>0 / absent at 0; handlers pass the count; service count); in-browser — List tab badge = list size, add-via-feed bumps it live, navigate persists, remove decrements; 0 overflow + badge fits the 5-tab bar @375px.
 2. **Vercel AI SDK provider abstraction** — decouple LLM from Anthropic.
    - `CatalogueExtractor` port already exists (`src/scraping/adapters/catalogue-extractor.ts`); only impl is `HaikuCatalogueExtractor` (Anthropic, hardcoded `claude-haiku-4-5-20251001`, `ANTHROPIC_API_KEY`).
    - Replace with a Vercel-AI-SDK-based extractor: config-selected provider+model+base-URL (env), default = current Anthropic/Haiku to preserve behavior. Generalise the runner's `ANTHROPIC_API_KEY`-specific gating. Adds deps (`ai`, `@ai-sdk/*`) — do NOT run its `bun add` while another code agent's tests run.
