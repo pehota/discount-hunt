@@ -3,11 +3,86 @@
 # SSOT: validated job stories for discount-hunt
 # Bootstrapped during DISCUSS wave 2026-07-13
 # Format: each job has id, statement (job story format), dimensions, four_forces, opportunity_score
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# JOB HIERARCHY (reframed by feature `product-overhaul`, 2026-07-15)
+#   PRIMARY:     JOB-004  Control grocery spend across the whole shop (NEW)
+#   SUPPORTING:  JOB-002  Track savings vs full price  (retrospective half of JOB-004; re-parented)
+#   SUPPORTING:  JOB-001  Discount-driven meal planning (inspiration/decision support for the shop)
+#   SUPPORTING:  JOB-003  Dietary-restriction compliance (safety constraint on any plan/list)
+#
+# See jobs.yaml `hierarchy:` block at the bottom and the Changed-Assumptions section in
+# docs/feature/product-overhaul/feature-delta.md for the full rationale. IDs are STABLE:
+# JOB-001/002/003 keep their identifiers verbatim (shipped stories carry these job_ids).
+# ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
 
+  - id: JOB-004
+    title: "Control grocery spend across the whole shop"
+    # PRIMARY job as of feature product-overhaul (2026-07-15). Solution-neutral: this job is about
+    # KNOWING and CONTROLLING what a shop will cost BEFORE and DURING assembly — forward-looking spend
+    # control, of which JOB-002 (savings tracking) is the retrospective, after-the-fact half.
+    statement: >
+      When I am putting together my household grocery shop for the week (for me and my wife),
+      I want to assemble the exact set of items I intend to buy — favouring what is cheapest
+      right now but including whatever we actually need — and see the running total as I build it,
+      so I can decide what to buy and know what the shop will cost before I ever leave for the store,
+      instead of discovering the total at the till.
+    dimensions:
+      functional: >
+        Assemble a concrete, persisted set of intended purchases (a shopping list) drawn from this
+        week's discounts across the Munich stores AND from items we need regardless of discount.
+        See a running total of the list as items are added/removed. Sort discounted items cheapest-first
+        and narrow the feed by store / category / product name (additive filters) to find items fast.
+      emotional: >
+        Feel in control of the household grocery budget rather than anxious about an unknown till total.
+        Feel the shop is a deliberate, costed decision — not a surprise. Confidence replaces
+        end-of-shop dread.
+      social: >
+        Shared household budget (me + my wife). Feel like a household that shops deliberately and
+        does not overspend, without either of us doing tedious manual price maths.
+    four_forces:
+      push: >
+        Today the app only tells me what I saved AFTER the fact (JOB-002) and builds a meal plan
+        (JOB-001) — neither lets me deliberately assemble the actual shop and see its cost before I go.
+        I still discover the real total at the till. I cannot include the non-discounted staples we
+        always need alongside the deals, so the "cost of this shop" is never in one place.
+      pull: >
+        A single list I build by picking this week's cheapest items (and adding the staples we need),
+        with a live running total, would tell me exactly what the shop costs before I leave — turning
+        grocery spend from a surprise into a decision.
+      anxiety: >
+        What if the running total is wrong because a price is stale? What if I build a list and it is
+        not there when I come back to it? What if adding a non-discounted item I just typed in throws
+        off the total because it has no real price?
+      habit: >
+        Current workflow: browse discounts, maybe generate a meal plan, then shop and hope the total
+        is reasonable. The list of "what I'm actually buying" lives in my head or on a scrap of paper,
+        separate from the app; the app never knows the real shop.
+    opportunity_score:
+      importance: 5
+      current_satisfaction: 1
+      opportunity: 9
+      rationale: >
+        Highest importance — controlling household grocery spend is the stated main goal, a weekly
+        recurring decision with direct monetary impact. Current satisfaction is near-zero for the
+        FORWARD-looking half: the shipped app measures savings only retrospectively (JOB-002) and has
+        no notion of "the shop I am about to make" or its cost before the till. NOTE: this high score
+        comes from low satisfaction on forward spend control — it is NOT derived by rescoring JOB-001
+        downward. JOB-001 keeps its own high opportunity as a supporting inspiration job.
+    parent: null
+    children: [JOB-002, JOB-001, JOB-003]
+
   - id: JOB-001
     title: "Weekly grocery planning driven by discounts"
+    # HIERARCHY (product-overhaul, 2026-07-15): reframed from PRIMARY to SUPPORTING. Meal planning is
+    # now inspiration / decision-support that feeds candidate items into the shop (JOB-004), not the
+    # product's central goal. Statement, forces, and opportunity_score are UNCHANGED — the job is still
+    # valid and still highly valuable; only its position in the hierarchy changed. Shipped stories keep
+    # job_id: JOB-001 verbatim.
+    parent: JOB-004
+    hierarchy: supporting
     statement: >
       When I am planning my weekly grocery shopping and have no idea what discounts
       are available this week, I want to see what is cheapest RIGHT NOW across Aldi Süd,
@@ -60,6 +135,12 @@ jobs:
 
   - id: JOB-002
     title: "Track actual grocery savings vs full price"
+    # HIERARCHY (product-overhaul, 2026-07-15): re-parented under JOB-004. Savings tracking is the
+    # RETROSPECTIVE (after-the-shop) half of controlling grocery spend; JOB-004 adds the FORWARD half
+    # (know the cost before the till). NOT folded or deleted — statement, forces, opportunity_score,
+    # and job_id are UNCHANGED. Shipped savings stories keep job_id: JOB-002 verbatim.
+    parent: JOB-004
+    hierarchy: supporting
     statement: >
       When I finish my weekly shopping based on the discount meal plan, I want to see
       exactly how much money I saved compared to buying the same items at full price,
@@ -102,6 +183,11 @@ jobs:
 
   - id: JOB-003
     title: "Ensure meal plan respects dietary restrictions"
+    # HIERARCHY (product-overhaul, 2026-07-15): SUPPORTING safety constraint. Unchanged in scope, but
+    # its reach extends: dietary compatibility now also constrains what appears in the discount feed
+    # and shopping-list candidates, not only the meal plan. Statement/scores UNCHANGED; job_id verbatim.
+    parent: JOB-004
+    hierarchy: supporting
     statement: >
       When the app generates a weekly meal plan, I want it to automatically exclude
       ingredients and recipes that violate my dietary restrictions,
@@ -134,3 +220,36 @@ jobs:
       rationale: >
         Tied with JOB-001 on importance (a meal plan that ignores restrictions is unsafe/
         unusable). Zero satisfaction since no tool exists. Also 9.
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HIERARCHY (SSOT summary of the reframe — feature product-overhaul, 2026-07-15)
+# ─────────────────────────────────────────────────────────────────────────────
+hierarchy:
+  primary: JOB-004        # Control grocery spend across the whole shop (forward + retrospective)
+  supporting:
+    - JOB-002             # retrospective half of spend control (savings vs full price)
+    - JOB-001             # inspiration / decision-support (discount-driven meal ideas)
+    - JOB-003             # safety constraint (dietary compatibility on feed + list + plan)
+  rationale: >
+    The product's stated MAIN GOAL is managing grocery expenditure; meal planning is now SUPPORTING.
+    JOB-004 is minted as the new primary (forward-looking spend control via an assembled, costed
+    shopping list). JOB-002 becomes the retrospective half of the same spend-control job and is
+    re-parented under JOB-004. JOB-001 and JOB-003 remain valid and unchanged in scope; they are
+    repositioned as supporting jobs. No job was deleted, folded, or rescored downward. All existing
+    IDs are preserved verbatim so shipped/in-flight stories keep their job_id traceability.
+
+changelog:
+  - date: "2026-07-13"
+    feature: "discount-hunt"
+    change: "Bootstrapped JOB-001/002/003 during greenfield DISCUSS wave."
+  - date: "2026-07-15"
+    feature: "discount-hunt-ui"
+    change: "Added usability_criteria (solution-quality ACs) to JOB-001 and JOB-002. No new job."
+  - date: "2026-07-15"
+    feature: "product-overhaul"
+    change: >
+      STRATEGIC REFRAME. Minted JOB-004 (Control grocery spend across the whole shop) as the new
+      PRIMARY job. Re-parented JOB-002 under JOB-004 (retrospective half of spend control). Marked
+      JOB-001 and JOB-003 as SUPPORTING. Added a hierarchy block. All existing job statements, forces,
+      and opportunity_scores are UNCHANGED; all IDs preserved verbatim. See feature-delta
+      Changed-Assumptions section for the quoted prior framing and full rationale.

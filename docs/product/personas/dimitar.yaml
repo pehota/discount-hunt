@@ -13,6 +13,19 @@ goals:
   - Minimize weekly grocery spend by shopping around discount promotions
   - Cook real meals at home rather than ordering out
   - Know exactly how much money the app saves him each week/month
+  # Added by feature product-overhaul (2026-07-15):
+  - Know what the weekly shop will cost BEFORE leaving for the store (not discover it at the till)
+  - Assemble one deliberate list of what he's actually buying — cheapest items plus staples they need
+
+household:
+  # Added by feature product-overhaul (2026-07-15). The spend being controlled (JOB-004) is a
+  # SHARED household budget: Dimitar + his wife. Still a single-user app (Dimitar operates it);
+  # "household" describes whose money the budget represents, not additional user accounts.
+  members: [Dimitar, wife]
+  budget_owner: shared
+  note: >
+    The shopping list and its running total represent the household's intended shop, not just
+    Dimitar's personal picks. No multi-user auth is implied — Dimitar is still the only operator.
 
 frustrations:
   - Weekly flyer browsing across 3 supermarkets takes 30-45 minutes, mostly wasted effort
@@ -49,6 +62,7 @@ constraints:
   - Budget goal: reduce monthly grocery spend by 20-30% vs unplanned shopping
 
 jobs_referenced:
-  - JOB-001
-  - JOB-002
-  - JOB-003
+  - JOB-004  # PRIMARY (product-overhaul): control grocery spend across the whole shop
+  - JOB-001  # supporting: discount-driven meal planning
+  - JOB-002  # supporting: savings tracking (retrospective spend control)
+  - JOB-003  # supporting: dietary compliance

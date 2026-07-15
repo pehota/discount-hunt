@@ -1,0 +1,372 @@
+---
+# docs/product/journeys/grocery-expenditure-control.yaml
+# SSOT journey schema for the PRIMARY job JOB-004 (Control grocery spend across the whole shop).
+# Minted by feature `product-overhaul` (2026-07-15). The shopping list is the CENTRAL artifact;
+# the discount feed feeds it, the meal plan and recipe-inspiration are supporting flows OFF it.
+#
+# This journey does NOT replace weekly-discount-meal-planning.yaml. That journey remains valid as the
+# now-SUPPORTING meal-planning flow (JOB-001). This new journey is the primary spine of the product.
+schema_version: 1
+
+journey:
+  name: "Grocery Expenditure Control"
+  goal: >
+    Dimitar sits down (often on his phone) to plan the household grocery shop, assembles one
+    deliberate shopping list — favouring this week's cheapest discounted items but also adding the
+    staples he and his wife need regardless of discount — and walks away KNOWING what the shop will
+    cost before he ever leaves for the store, with meal ideas and recipes available to inspire what
+    goes on the list.
+  persona: "dimitar"
+  jobs:
+    - JOB-004   # PRIMARY
+    - JOB-002   # supporting (retrospective savings)
+    - JOB-001   # supporting (meal-plan inspiration)
+    - JOB-003   # supporting (dietary compatibility constraint)
+
+  # ── INFORMATION ARCHITECTURE (the load-bearing decision, see feature-delta D-numbered decisions) ──
+  # CENTRAL artifact: the shopping list (persisted set of intended purchases + running total).
+  # The list is the persisted evolution of the in-flight cross-store SELECTION OVERVIEW panel:
+  #   selection (transient) ──persist──▶ shopping list (durable, running total)
+  # Supporting flows fan OUT from the selection/list, they do not own it:
+  #   • Meal plan   — "what could I cook from these?" (existing Generate flow; now one branch, not the hub)
+  #   • Recipe idea — "what can I cook with THIS selection / with all discounts?" (extends Chefkoch lookup)
+  # The existing selection→Generate-meal-plan flow SURVIVES as a supporting branch; selection now fans
+  # out to (list | recipes | plan) rather than being consumed solely by plan generation.
+  information_architecture:
+    central_artifact: shopping_list
+    central_artifact_origin: >
+      Persisted form of the in-flight cross-store selection overview panel. The overview is the
+      transient view of the current selection; the shopping list is its durable, running-total form.
+    supporting_flows:
+      - name: meal_plan
+        relationship: "off the list/selection — 'what could I cook from these items?' (existing Generate flow)"
+      - name: recipe_inspiration
+        relationship: "off the selection or all-discounts — 'what can I cook with these?' (extends per-meal Chefkoch lookup)"
+    fate_of_existing_selection_to_plan_flow: >
+      Preserved. Selection still feeds meal-plan generation (Generate replaces the week's plan, savings
+      dedup guard intact). What changes: selection is no longer consumed ONLY by the plan — it now also
+      persists into the shopping list and can seed recipe inspiration. The plan becomes one destination
+      among several, not the single hub.
+
+  emotional_arc:
+    start: >
+      Expenditure ANXIETY / uncertainty — "I don't know what this week's shop will cost; I usually find
+      out at the till. There are deals but I can't tell what my actual basket adds up to."
+    middle: >
+      CONTROL building — as items go onto the list the running total climbs visibly; Dimitar sees the
+      cost forming in real time and starts making deliberate keep/drop decisions. Filters and cheapest-
+      first sort make it fast to find the good deals; recipe ideas suggest what to add.
+    end: >
+      CONFIDENCE / relief — "I know exactly what this shop costs (€X), it's within our budget, and it's
+      built on this week's cheapest items plus the staples we need. No surprise at the till."
+
+steps:
+
+  - id: 1
+    name: "Scan the discount feed (all deals, sorted cheapest-first, narrowable)"
+    trigger: "Dimitar opens the app to plan the week's shop"
+    action: >
+      The feed shows ALL discounted products this week. Dimitar narrows it with additive filters
+      (store AND category AND product-name combine, they do not replace one another) and reads
+      discounted items sorted by price ascending so the cheapest options surface first.
+
+    ui_mockup: |
+      +-- Discount Hunt — Week of 14 Jul 2026 -------------------------------------+
+      |  Filters (additive):  Store[All ▾]  Category[All ▾]  Search[__________]     |
+      |  Sort: Price ↑ (cheapest first)                                            |
+      |  ─────────────────────────────────────────────────────────────────────    |
+      |  Mozzarella 125g        Aldi Süd   €0.69  was €0.99   save €0.30   [+ Add] |
+      |  Bio Haferflocken 500g  Aldi Süd   €1.49  was €2.29   save €0.80   [+ Add] |
+      |  Rote Linsen 500g       Aldi Süd   €1.19  was €1.79   save €0.60   [+ Add] |
+      |  Campari Tomaten 500g   Edeka      €1.29  was €1.99   save €0.70   [+ Add] |
+      |  Bio Paprika (3er)      V-Markt    €1.79  was €2.49   save €0.70   [+ Add] |
+      |  ...                                                                        |
+      |  [ Shopping List (3) — €3.17 ▸ ]   [ Generate Meal Plan ]                  |
+      +----------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "discount_feed"
+        source: "database: discount_items (regular_price, sale_price, store, category, valid_until)"
+        displayed_as: "item name, store, sale price, was-price, save €X"
+        consumers: ["step 2 (add to list)", "step 4 (meal plan)", "existing savings tracker"]
+      - name: "category"
+        source: "database: discount_items.category (derived at scrape/normalize time)"
+        displayed_as: "category filter options"
+        consumers: ["step 1 (category filter)"]
+      - name: "list_badge_total"
+        source: "computed: SUM(sale_price or manual_price) over shopping_list_items"
+        displayed_as: "Shopping List (N) — €X.XX"
+        consumers: ["step 1 (persistent list affordance)", "step 3 (list view)"]
+
+    emotional_state:
+      entry: "Anxious/uncertain — what's cheap this week, and what will my basket cost?"
+      exit: "Oriented — cheapest deals are visible and rankable; a list affordance shows a running total"
+
+    integration_checkpoint: |
+      Feed shows ALL discounts (nothing pre-hidden except dietary-incompatible items per JOB-003).
+      Filters are ADDITIVE — store + category + name AND together, never replace. Sort defaults to
+      price ascending for discounted items. Category must exist as a scraped/derived field
+      (see OPEN QUESTION OQ-PO-2 — category source is a slice prerequisite).
+
+    failure_modes:
+      - "Category not yet derivable for some items: show them under 'Uncategorised' rather than dropping them"
+      - "Filter combination yields zero items: show 'No items match these filters' with a one-tap clear-filters action"
+      - "Scraper stale: existing staleness banner remains; sort/filter still operate on last-known data"
+
+    gherkin: |
+      Scenario: Dimitar narrows the feed with additive filters and cheapest-first sort
+        Given this week's feed contains discounted items across Aldi Süd, Edeka, and V-Markt in multiple categories
+        When Dimitar selects store "Aldi Süd" and category "Dairy" and types "Mozz" in search
+        Then only Aldi Süd dairy items whose name matches "Mozz" are shown
+        And the matching discounted items are ordered by sale price ascending
+        And clearing one filter widens the results without clearing the others
+
+      Scenario: Discounted items are sorted cheapest-first by default
+        Given the feed contains discounted items at various prices
+        When Dimitar opens the feed
+        Then the discounted items are displayed in ascending order of sale price
+
+  - id: 2
+    name: "Add items to the shopping list (discounted or not)"
+    trigger: "Dimitar taps '+ Add' on a feed item, or adds an item he needs that is not on sale"
+    action: >
+      Dimitar builds the list. He adds discounted items from the feed; he also adds staples he needs
+      regardless of discount (e.g. milk, eggs) by typing them in, even when the search yields no deal.
+      Each add updates the running total.
+
+    ui_mockup: |
+      +-- Add item ----------------------------------------------------------------+
+      |  Search yielded no discount for "Vollmilch 1L".                            |
+      |  Add it to your list anyway?                                               |
+      |    Name:  Vollmilch 1L                                                      |
+      |    Price: [ €1.09 ]   (optional — leave blank if unknown)                   |
+      |    [ Add to list ]                                                          |
+      +----------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "shopping_list_item"
+        source: "database: shopping_list_items (item_ref | manual_name, price_source, unit_price, qty)"
+        displayed_as: "list row: name, price, store-or-'manual'"
+        consumers: ["step 3 (list view + total)", "step 4 (plan seed)", "step 5 (recipe seed)"]
+      - name: "manual_price"
+        source: "user input at add-time (nullable); NOT from discount_items"
+        displayed_as: "editable price on a non-discounted row; blank = 'no price'"
+        consumers: ["step 3 (running total)"]
+
+    emotional_state:
+      entry: "Deliberate — deciding what actually goes in the basket, deals and staples alike"
+      exit: "In control — the basket is becoming the real shop, not just a deal list"
+
+    integration_checkpoint: |
+      A discounted add references discount_items by id (price = sale_price, single source, no recompute).
+      A non-discounted add is a MANUAL row: free-text name + optional manual price (CHEAP reading —
+      no full-catalogue lookup; see OPEN QUESTION OQ-PO-1). Manual rows with no price contribute €0 to
+      the total and are flagged as 'price unknown' so the total is not silently wrong.
+
+    failure_modes:
+      - "Non-discounted item with no price entered: add it, mark 'price unknown', exclude from the numeric total with a visible '+N items without a price' note (total is honest, not silently understated)"
+      - "Duplicate add of the same discounted item: increment quantity rather than adding a second row"
+      - "Item added then its discount expires mid-week: list keeps the captured sale_price (write-once, like regular_price/D22)"
+
+    gherkin: |
+      Scenario: Dimitar adds a discounted item to the shopping list
+        Given the feed shows "Rote Linsen 500g" on sale at Aldi Süd for €1.19
+        When Dimitar taps "+ Add" on that item
+        Then the item appears on the shopping list with price €1.19 and store "Aldi Süd"
+        And the list running total increases by €1.19
+
+      Scenario: Dimitar adds a staple that is not on sale
+        Given Dimitar searches for "Vollmilch 1L" and no discounted match is found
+        When Dimitar chooses to add it anyway and enters the price €1.09
+        Then "Vollmilch 1L" appears on the list as a manual item priced €1.09
+        And the running total includes the €1.09
+
+      Scenario: A manual item added without a price is counted honestly
+        Given Dimitar adds a manual item "Eier 10er" and leaves the price blank
+        When the item is added to the list
+        Then it appears on the list marked "price unknown"
+        And the numeric running total does not change
+        And the list shows a note that at least one item has no price
+
+  - id: 3
+    name: "Review the list and its running total — know the shop's cost"
+    trigger: "Dimitar opens the Shopping List"
+    action: >
+      Dimitar reviews the assembled list: every item, grouped by store, with the running total that
+      tells him what this shop will cost. He removes items to stay within budget, or adds more.
+
+    ui_mockup: |
+      +-- Shopping List — Week of 14 Jul 2026 -------------------------------------+
+      |  Aldi Süd                                                                  |
+      |    Rote Linsen 500g          €1.19   [–]                                    |
+      |    Mozzarella 125g           €0.69   [–]                                    |
+      |  Edeka                                                                     |
+      |    Campari Tomaten 500g      €1.29   [–]                                    |
+      |  Manual                                                                    |
+      |    Vollmilch 1L              €1.09   [–]                                    |
+      |    Eier 10er            price unknown [–]                                   |
+      |  ─────────────────────────────────────────────────────────────────────    |
+      |  TOTAL: €4.26      (+1 item without a price)                                |
+      |  You'd have paid €5.66 at full price — saving €1.40 on the discounted items |
+      |  [ Get recipe ideas from this list ]   [ Generate meal plan ]              |
+      +----------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "list_total"
+        source: "computed: SUM(unit_price*qty) over priced shopping_list_items"
+        displayed_as: "TOTAL: €X.XX (+N items without a price)"
+        consumers: ["step 1 (badge)", "step 3 (list footer)"]
+      - name: "list_savings"
+        source: "computed: SUM(regular_price - sale_price) over discounted list items (reuses JOB-002 logic)"
+        displayed_as: "saving €X.XX on the discounted items"
+        consumers: ["step 3 (list footer)", "existing savings tracker (JOB-002)"]
+
+    emotional_state:
+      entry: "Evaluative — is this basket right, and is it within budget?"
+      exit: "Confident — 'this shop costs €X, I know it before I leave, and it's built on the deals'"
+
+    integration_checkpoint: |
+      list_total is the CENTRAL output of this journey (the forward spend number JOB-004 exists for).
+      list_savings reuses the JOB-002 regular_price - sale_price computation from the SAME
+      discount_items rows — single source, no divergent maths. Removing/adding an item re-derives both.
+
+    failure_modes:
+      - "Empty list: show 'Your list is empty — add items from the feed' rather than a blank total"
+      - "All items are manual with no prices: total is €0 with a clear 'add prices to see your shop total' hint (not a misleading €0.00 shop)"
+      - "List persistence fails: surface the error and keep the in-memory list; never silently lose a built list"
+
+    gherkin: |
+      Scenario: Dimitar sees what the shop will cost before he leaves
+        Given Dimitar has added three discounted items and one priced manual item to his list
+        When he opens the Shopping List
+        Then a running total shows the sum of all priced items in euros
+        And items are grouped by store
+        And the total is visible before he leaves for the store
+
+      Scenario: Removing an item updates the running total immediately
+        Given a shopping list with a total of €4.26
+        When Dimitar removes the €1.29 Campari Tomaten item
+        Then the total updates to €2.97
+
+      Scenario: The list persists across sessions
+        Given Dimitar built a shopping list and closed the app
+        When he reopens the app later the same week
+        Then his shopping list and its items are still present
+
+  - id: 4
+    name: "(Supporting) Generate a meal plan from the list/selection"
+    trigger: "Dimitar taps 'Generate meal plan'"
+    action: >
+      The existing discount-driven meal-plan generation runs, seeded by the list/selection. This is
+      the SUPPORTING JOB-001 flow — unchanged in mechanics (Generate replaces the week's plan, savings
+      dedup guard intact), repositioned as one destination off the list rather than the product hub.
+
+    shared_artifacts:
+      - name: "meal_plan"
+        source: "database: meal_plans (existing; unchanged)"
+        displayed_as: "7-day plan; see weekly-discount-meal-planning.yaml for full detail"
+        consumers: ["existing meal-plan view", "existing savings tracker"]
+
+    emotional_state:
+      entry: "Curious — what could I cook from what I've picked?"
+      exit: "Inspired — the plan suggests meals; still my choice what lands on the list"
+
+    integration_checkpoint: |
+      Reuses the shipped meal-plan pipeline. The selection→Generate flow is preserved (D-decision).
+      Full mechanics, mockups, and error paths live in weekly-discount-meal-planning.yaml (SUPPORTING).
+
+    failure_modes:
+      - "See weekly-discount-meal-planning.yaml step 2 failure_modes (unchanged)"
+
+    gherkin: |
+      Scenario: Meal-plan generation from the list reuses the existing flow
+        Given Dimitar has a shopping list with discounted items
+        When he taps "Generate meal plan"
+        Then the existing discount-driven meal plan is generated from those items
+        And the previously-specified meal-plan behaviour (weekly-discount-meal-planning.yaml) is unchanged
+
+  - id: 5
+    name: "(Supporting) Get recipe inspiration from a selection or from all discounts"
+    trigger: >
+      Dimitar taps 'Get recipe ideas from this list' (or selects specific items, e.g. chicken, and asks
+      for recipes; or asks 'what can I cook from all this week's discounts?')
+    action: >
+      The app queries the existing Chefkoch recipe source using the selected items (or all discounted
+      items) as the search seed, returning recipe ideas that inspire what to add to the list. This is a
+      NEW entry point that EXTENDS the shipped per-meal Chefkoch lookup — it does not rebuild it.
+
+    ui_mockup: |
+      +-- Recipe ideas from your selection ----------------------------------------+
+      |  From: Rote Linsen, Campari Tomaten                                        |
+      |    • Red Lentil & Tomato Soup        Chefkoch ↗   [ Add ingredients to list ]|
+      |    • Linsen-Tomaten-Dal              Chefkoch ↗   [ Add ingredients to list ]|
+      |  From: all this week's discounts                                           |
+      |    • Caprese Salad                    Chefkoch ↗   [ Add ingredients to list ]|
+      |  ...                                                                        |
+      +----------------------------------------------------------------------------+
+
+    shared_artifacts:
+      - name: "recipe_idea"
+        source: "RecipeService / ChefkochRecipeSource (existing, cache-first 7d TTL) seeded by selection"
+        displayed_as: "recipe title + Chefkoch link + 'add ingredients to list' affordance"
+        consumers: ["step 5 (idea list)", "step 2 (add ingredients back to shopping list)"]
+      - name: "selection"
+        source: "in-flight cross-store selection (transient) / shopping_list_items"
+        displayed_as: "the seed set shown as 'From: ...'"
+        consumers: ["step 5 (recipe query seed)", "step 3 (list)"]
+
+    emotional_state:
+      entry: "Curious/uninspired — I have cheap chicken, now what?"
+      exit: "Inspired — concrete recipe ideas turn cheap items into a plan for the shop"
+
+    integration_checkpoint: |
+      Reuses RecipeService + ChefkochRecipeSource (shipped SLICE-05). The NEW behaviour is the entry
+      point: a selection/all-discounts search seed instead of a single planned meal. Dietary filter
+      (JOB-003) constrains the recipe query. Recipe ingredients can be added back to the list (step 2).
+
+    failure_modes:
+      - "No recipe match for the selection: show 'No recipe ideas found — try a different selection' with the manual Chefkoch search fallback (as shipped)"
+      - "Recipe source dead: cached ideas shown with the shipped 'source unavailable' notice"
+      - "Selection empty when asking for ideas: fall back to 'all this week's discounts' as the seed"
+
+    gherkin: |
+      Scenario: Dimitar gets recipe ideas from a selection of discounted items
+        Given Dimitar has selected "Rote Linsen" and "Campari Tomaten" from the feed
+        When he asks for recipe ideas from that selection
+        Then recipe ideas that use those ingredients are shown with links to their source
+        And each idea offers to add its ingredients to the shopping list
+
+      Scenario: Dimitar gets recipe ideas from all of this week's discounts
+        Given Dimitar has made no specific selection
+        When he asks "what can I cook from this week's discounts?"
+        Then recipe ideas seeded by the full discounted set are shown
+        And no recipe idea violates Dimitar's dietary restriction
+
+integration_validation:
+  shared_artifact_consistency:
+    - artifact: "sale_price"
+      must_match_across: [1, 2, 3]
+      failure_message: >
+        The sale price shown in the feed (step 1), captured on a list item (step 2), and summed into
+        the running total (step 3) must all read from the same discount_items.sale_price. No recompute.
+    - artifact: "list_savings vs JOB-002 savings"
+      must_match_across: [3]
+      failure_message: >
+        list_savings (step 3) must use the same regular_price - sale_price computation the shipped
+        savings tracker (JOB-002) uses, from the same discount_items rows. Two savings numbers that
+        disagree would break trust in the reframe.
+    - artifact: "dietary_filter"
+      must_match_across: [1, 5]
+      failure_message: >
+        Dietary restriction (JOB-003) must constrain both the feed candidates (step 1) and the recipe
+        idea query (step 5), consistent with the existing meal-plan filter.
+
+changelog:
+  - date: "2026-07-15"
+    feature: "product-overhaul"
+    change: >
+      New journey minted for the reframed PRIMARY job JOB-004. Shopping list is the central artifact
+      (persisted evolution of the in-flight selection overview). Meal plan (JOB-001) and recipe
+      inspiration (new entry point extending shipped Chefkoch lookup) are supporting flows off the
+      list. Emotional arc: expenditure anxiety → control building → confidence. Does NOT replace
+      weekly-discount-meal-planning.yaml (now the supporting meal-planning flow).
