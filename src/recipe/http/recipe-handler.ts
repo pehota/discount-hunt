@@ -129,8 +129,17 @@ function renderSteps(steps: string[]): string {
   return `<ol class="recipe-steps">${rows}</ol>`;
 }
 
+/**
+ * Fallback (a) notice (design §8): the cached source URL was unreachable when
+ * re-validated (sourceUrlValid === false). Reuses the .staleness-warning style.
+ */
+function renderUnavailableNotice(): string {
+  return `<div class="staleness-warning">Original source is currently unavailable — showing the last cached version.</div>`;
+}
+
 function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountItem[]): string {
-  const body = `<h1>${escapeHtml(recipe.name)}</h1>
+  const notice = recipe.sourceUrlValid === false ? renderUnavailableNotice() : "";
+  const body = `${notice}<h1>${escapeHtml(recipe.name)}</h1>
   <h2>Ingredients</h2>
   ${renderIngredients(recipe.ingredients, weekItems)}
   <h2>Preparation</h2>
@@ -138,6 +147,22 @@ function renderRecipeDetail(recipe: ResolvedRecipe, weekItems: StoredDiscountIte
   <p><a href="${escapeHtml(recipe.sourceUrl)}" target="_blank" rel="noopener">Open original recipe</a></p>
   <p>${BACK_LINK}</p>`;
   return renderPage({ title: recipe.name, activeNav: "plan", body });
+}
+
+/**
+ * Fallback (b) view (design §8): no recipe was found and nothing was cached.
+ * Show the meal's ingredient (= meal.name, the discounted item) plus a pre-filled
+ * manual Chefkoch search link opened in a new tab. Back-to-plan always present.
+ */
+function renderNoMatch(mealName: string): string {
+  const searchUrl = `https://www.chefkoch.de/suche.php?suche=${encodeURIComponent(mealName)}`;
+  const body = `<h1>${escapeHtml(mealName)}</h1>
+  <p>No recipe found — search Chefkoch for this ingredient.</p>
+  <h2>Ingredients</h2>
+  <ul class="recipe-ingredients"><li>${escapeHtml(mealName)}</li></ul>
+  <p><a href="${escapeHtml(searchUrl)}" target="_blank" rel="noopener">Search Chefkoch</a></p>
+  <p>${BACK_LINK}</p>`;
+  return renderPage({ title: mealName, activeNav: "plan", body });
 }
 
 export class RecipeHandler {
@@ -154,9 +179,14 @@ export class RecipeHandler {
     }
 
     const recipe = await this.recipeService.getRecipeForMeal(meal.name);
+    // Fallback (b): no recipe found and nothing cached → 200 no-match view (never crash).
+    if (recipe === null) {
+      return htmlResponse(renderNoMatch(meal.name), 200);
+    }
+
     // Live this-week feed for ingredient↔discount highlighting (design §7, restriction "none").
     const weekItems = await this.discountService.getWeeklyItems(currentWeekMonday(), "none");
-    return htmlResponse(renderRecipeDetail(recipe!, weekItems), 200);
+    return htmlResponse(renderRecipeDetail(recipe, weekItems), 200);
   }
 
   /** Locate the meal for meal_id in the current-week plan, or null if absent. */
