@@ -11,6 +11,12 @@
  *   B3 expired → re-fetch success   → refreshed content returned, cached_at advanced
  *   B7 source-null on a miss        → null (nothing found, nothing cached)
  *   B6 expired + source-null        → markSourceDead, return stale cached w/ sourceUrlValid=false
+ *
+ * Step 12-03: getRecipeForMeal now composes a meal-aware query via buildRecipeQuery.
+ * With the default mealType ('dinner') and default prefs (none/false/2/any), the
+ * composed query for a mealName is `<name> Abendessen für 2 Personen Rezept`, and the
+ * cache key is its lowercased/trimmed form. Seeded queryKeys and getByQuery/lastQuery
+ * assertions below use those composed values (the cache/behavior semantics are unchanged).
  */
 
 import { describe, test, expect } from "bun:test";
@@ -23,6 +29,14 @@ import { RecipeService } from "./recipe-service.ts";
 import type { FetchedRecipe, RecipeSource } from "./ports/recipe-source.ts";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Composed queries produced by buildRecipeQuery with the default mealType ('dinner')
+// and default prefs (none/false/2/any) — the values getRecipeForMeal drives when called
+// with only a mealName. The cache key is the lowercased form.
+const ROTE_LINSEN_QUERY = "Rote Linsen Abendessen für 2 Personen Rezept";
+const ROTE_LINSEN_KEY = ROTE_LINSEN_QUERY.toLowerCase();
+const UNBEKANNT_KEY = "Unbekanntes Gericht Abendessen für 2 Personen Rezept".toLowerCase();
+const ZUCCHINI_KEY = "Zucchini Abendessen für 2 Personen Rezept".toLowerCase();
 
 class FakeRecipeSource implements RecipeSource {
   findCallCount = 0;
@@ -57,7 +71,7 @@ describe("RecipeService", () => {
       const repo = new SQLiteRecipeRepository(db);
       const fresh: CachedRecipe = {
         id: "r1",
-        queryKey: "rote linsen",
+        queryKey: ROTE_LINSEN_KEY,
         name: "Cached Linsensuppe",
         ingredients: ["Linsen"],
         steps: ["Kochen"],
@@ -88,14 +102,14 @@ describe("RecipeService", () => {
       const result = await service.getRecipeForMeal("Rote Linsen");
 
       expect(source.findCallCount).toBe(1);
-      expect(source.lastQuery).toBe("rote linsen"); // normalized query key
+      expect(source.lastQuery).toBe(ROTE_LINSEN_QUERY); // composed query (original case) drives find()
       expect(result!.name).toBe(fetched.name);
       expect(result!.ingredients).toEqual(fetched.ingredients);
       expect(result!.steps).toEqual(fetched.steps);
       expect(result!.sourceUrl).toBe(fetched.sourceUrl);
       expect(result!.sourceUrlValid).toBe(true);
-      // A row now exists for the query.
-      const cached = repo.getByQuery("rote linsen");
+      // A row now exists for the composed query key.
+      const cached = repo.getByQuery(ROTE_LINSEN_KEY);
       expect(cached).not.toBeNull();
       expect(cached!.name).toBe(fetched.name);
     });
@@ -106,7 +120,7 @@ describe("RecipeService", () => {
       const repo = new SQLiteRecipeRepository(db);
       const stale: CachedRecipe = {
         id: "r2",
-        queryKey: "rote linsen",
+        queryKey: ROTE_LINSEN_KEY,
         name: "Old Name",
         ingredients: ["Old"],
         steps: ["Old step"],
@@ -122,7 +136,7 @@ describe("RecipeService", () => {
 
       expect(source.findCallCount).toBe(1); // expiry triggers a re-fetch
       expect(result!.name).toBe(fetched.name); // refreshed
-      const cached = repo.getByQuery("rote linsen");
+      const cached = repo.getByQuery(ROTE_LINSEN_KEY);
       expect(cached!.name).toBe(fetched.name);
       expect(cached!.cachedAt).toBeGreaterThan(stale.cachedAt);
     });
@@ -138,7 +152,7 @@ describe("RecipeService", () => {
 
       expect(source.findCallCount).toBe(1);
       expect(result).toBeNull();
-      expect(repo.getByQuery("unbekanntes gericht")).toBeNull();
+      expect(repo.getByQuery(UNBEKANNT_KEY)).toBeNull();
     });
   });
 
@@ -147,7 +161,7 @@ describe("RecipeService", () => {
       const repo = new SQLiteRecipeRepository(db);
       const stale: CachedRecipe = {
         id: "r3",
-        queryKey: "zucchini",
+        queryKey: ZUCCHINI_KEY,
         name: "Zucchinicremesuppe",
         ingredients: ["Zucchini", "Sahne"],
         steps: ["Anbraten", "Pürieren"],
@@ -169,7 +183,7 @@ describe("RecipeService", () => {
       expect(result!.steps).toEqual(stale.steps);
       expect(result!.sourceUrlValid).toBe(false);
       // Persisted: source_url_valid=0, cached_content preserved.
-      const persisted = repo.getByQuery("zucchini");
+      const persisted = repo.getByQuery(ZUCCHINI_KEY);
       expect(persisted!.sourceUrlValid).toBe(false);
       expect(persisted!.ingredients).toEqual(stale.ingredients);
     });

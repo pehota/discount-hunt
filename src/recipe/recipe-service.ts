@@ -15,8 +15,20 @@
 import { randomUUID } from "node:crypto";
 import type { SQLiteRecipeRepository, CachedRecipe } from "./adapters/sqlite-recipe-repository.ts";
 import type { RecipeSource } from "./ports/recipe-source.ts";
+import { buildRecipeQuery, type RecipeQueryPreferences } from "./recipe-query.ts";
+import type { MealSlot } from "../shared/types.ts";
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Safe defaults so callers that do not yet pass meal-type/prefs (e.g. recipe-handler
+// pre-12-04) keep compiling and behaving sensibly. 12-04 passes real values.
+const DEFAULT_MEAL_TYPE: MealSlot = "dinner";
+const DEFAULT_PREFS: RecipeQueryPreferences = {
+  dietaryRestriction: "none",
+  kidFriendly: false,
+  householdSize: 2,
+  cookingTime: "any",
+};
 
 /** Recipe resolved for the view — same surface as a cached row. */
 export type ResolvedRecipe = CachedRecipe;
@@ -27,15 +39,20 @@ export class RecipeService {
     private readonly recipeSource: RecipeSource,
   ) {}
 
-  async getRecipeForMeal(mealName: string): Promise<ResolvedRecipe | null> {
-    const queryKey = mealName.toLowerCase().trim();
+  async getRecipeForMeal(
+    mealName: string,
+    mealType: MealSlot = DEFAULT_MEAL_TYPE,
+    prefs: RecipeQueryPreferences = DEFAULT_PREFS,
+  ): Promise<ResolvedRecipe | null> {
+    const query = buildRecipeQuery(mealName, mealType, prefs);
+    const queryKey = query.toLowerCase().trim();
     const cached = this.recipeRepository.getByQuery(queryKey);
 
     if (cached && this.isFresh(cached)) {
       return cached;
     }
 
-    const fetched = await this.recipeSource.find(queryKey);
+    const fetched = await this.recipeSource.find(query);
 
     if (fetched) {
       const refreshed: CachedRecipe = {
