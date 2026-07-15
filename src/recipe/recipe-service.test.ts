@@ -12,11 +12,12 @@
  *   B7 source-null on a miss        → null (nothing found, nothing cached)
  *   B6 expired + source-null        → markSourceDead, return stale cached w/ sourceUrlValid=false
  *
- * Step 12-03: getRecipeForMeal now composes a meal-aware query via buildRecipeQuery.
- * With the default mealType ('dinner') and default prefs (none/false/2/any), the
- * composed query for a mealName is `<name> Abendessen für 2 Personen Rezept`, and the
- * cache key is its lowercased/trimmed form. Seeded queryKeys and getByQuery/lastQuery
- * assertions below use those composed values (the cache/behavior semantics are unchanged).
+ * Step 12-03: getRecipeForMeal has a backward-compatible bridge. When called with ONLY
+ * a mealName (1-arg — the recipe-handler path until 12-04), the query IS the bare meal
+ * name and the cache key is its lowercased/trimmed form — the pre-12-03 behavior. When
+ * BOTH mealType AND prefs are supplied (3-arg — the 12-04 path), it composes a meal-aware
+ * query via buildRecipeQuery. The B-behavior tests below exercise the 1-arg (bare-name)
+ * path; the dedicated composed-branch test pins the 3-arg path.
  */
 
 import { describe, test, expect } from "bun:test";
@@ -30,13 +31,11 @@ import type { FetchedRecipe, RecipeSource } from "./ports/recipe-source.ts";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Composed queries produced by buildRecipeQuery with the default mealType ('dinner')
-// and default prefs (none/false/2/any) — the values getRecipeForMeal drives when called
-// with only a mealName. The cache key is the lowercased form.
-const ROTE_LINSEN_QUERY = "Rote Linsen Abendessen für 2 Personen Rezept";
+// 1-arg getRecipeForMeal → query IS the bare meal name; cache key is its lowercased form.
+const ROTE_LINSEN_QUERY = "Rote Linsen";
 const ROTE_LINSEN_KEY = ROTE_LINSEN_QUERY.toLowerCase();
-const UNBEKANNT_KEY = "Unbekanntes Gericht Abendessen für 2 Personen Rezept".toLowerCase();
-const ZUCCHINI_KEY = "Zucchini Abendessen für 2 Personen Rezept".toLowerCase();
+const UNBEKANNT_KEY = "Unbekanntes Gericht".toLowerCase();
+const ZUCCHINI_KEY = "Zucchini".toLowerCase();
 
 class FakeRecipeSource implements RecipeSource {
   findCallCount = 0;
@@ -186,6 +185,28 @@ describe("RecipeService", () => {
       const persisted = repo.getByQuery(ZUCCHINI_KEY);
       expect(persisted!.sourceUrlValid).toBe(false);
       expect(persisted!.ingredients).toEqual(stale.ingredients);
+    });
+  });
+
+  test("3-arg call composes a meal-aware query via buildRecipeQuery and keys the cache on it", async () => {
+    await withDb(async (db) => {
+      const repo = new SQLiteRecipeRepository(db);
+      const source = new FakeRecipeSource(fetched);
+      const service = new RecipeService(repo, source);
+
+      const result = await service.getRecipeForMeal("Rote Linsen", "lunch", {
+        dietaryRestriction: "vegan",
+        kidFriendly: true,
+        householdSize: 4,
+        cookingTime: "quick",
+      });
+
+      const composedQuery = "Rote Linsen Mittagessen vegan kinderfreundlich für 4 Personen schnell Rezept";
+      expect(source.lastQuery).toBe(composedQuery); // composed query drives find()
+      expect(result!.name).toBe(fetched.name);
+      // The row is cached under the composed key — NOT the bare meal name.
+      expect(repo.getByQuery(composedQuery.toLowerCase())).not.toBeNull();
+      expect(repo.getByQuery("rote linsen")).toBeNull();
     });
   });
 });

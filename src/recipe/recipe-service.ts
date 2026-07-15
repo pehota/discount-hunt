@@ -20,16 +20,6 @@ import type { MealSlot } from "../shared/types.ts";
 
 const TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// Safe defaults so callers that do not yet pass meal-type/prefs (e.g. recipe-handler
-// pre-12-04) keep compiling and behaving sensibly. 12-04 passes real values.
-const DEFAULT_MEAL_TYPE: MealSlot = "dinner";
-const DEFAULT_PREFS: RecipeQueryPreferences = {
-  dietaryRestriction: "none",
-  kidFriendly: false,
-  householdSize: 2,
-  cookingTime: "any",
-};
-
 /** Recipe resolved for the view — same surface as a cached row. */
 export type ResolvedRecipe = CachedRecipe;
 
@@ -41,10 +31,13 @@ export class RecipeService {
 
   async getRecipeForMeal(
     mealName: string,
-    mealType: MealSlot = DEFAULT_MEAL_TYPE,
-    prefs: RecipeQueryPreferences = DEFAULT_PREFS,
+    mealType?: MealSlot,
+    prefs?: RecipeQueryPreferences,
   ): Promise<ResolvedRecipe | null> {
-    const query = buildRecipeQuery(mealName, mealType, prefs);
+    // Backward-compatible bridge: compose a meal-aware query ONLY when BOTH the meal
+    // slot AND the search preferences are supplied (the 12-04 path). Otherwise the query
+    // is the bare meal name — the pre-12-03 behavior the recipe-handler still relies on.
+    const query = mealType && prefs ? buildRecipeQuery(mealName, mealType, prefs) : mealName;
     const queryKey = query.toLowerCase().trim();
     const cached = this.recipeRepository.getByQuery(queryKey);
 
