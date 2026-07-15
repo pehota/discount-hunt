@@ -13,8 +13,17 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createDb } from "../../shared/db.ts";
 import { SQLiteDiscountItemRepository } from "../adapters/sqlite-discount-item-repository.ts";
+import { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 import { DiscountService } from "../discount-service.ts";
 import { DiscountHandler } from "./discount-handler.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
+
+/** A validUntil comfortably inside the current week so getByWeek (validUntil >= Monday) keeps it. */
+function thisWeekValidUntil(): string {
+  const monday = new Date(`${currentWeekMonday()}T00:00:00.000Z`);
+  monday.setUTCDate(monday.getUTCDate() + 6); // that week's Sunday
+  return monday.toISOString().slice(0, 10);
+}
 
 function makeRequest(): Request {
   return new Request("http://localhost/");
@@ -108,5 +117,118 @@ describe("DiscountHandler.handleGet", () => {
 
     expect(html).toContain("No discounts available this week");
     expect(html).toContain("Generate Meal Plan");
+  });
+});
+
+/**
+ * Multi-store filter-pills — server-rendered contract (client-side JS behavior is
+ * verified in-browser by the orchestrator; here we assert the markup the JS binds to).
+ * Covers BOTH render paths: fallback (no scrapeJobRepo) and store-context (with scrapeJobRepo).
+ */
+describe("DiscountHandler filter pills", () => {
+  const VU = thisWeekValidUntil();
+
+  async function seed(
+    service: DiscountService,
+    store: string,
+    count: number,
+    jobId: string,
+  ): Promise<void> {
+    for (let i = 0; i < count; i++) {
+      await service.registerDiscountItem(
+        {
+          externalId: `${store}-${i}`,
+          store,
+          name: `${store} item ${i}`,
+          category: "vegetable",
+          regularPrice: 200 + i,
+          salePrice: 100 + i,
+          validUntil: VU,
+          dietaryTags: ["vegan"],
+        },
+        jobId,
+      );
+    }
+  }
+
+  test("fallback path: All pill shows total, one pill per store with its count, default active = All", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    await seed(service, "Aldi Süd", 3, "job-a");
+    await seed(service, "Edeka", 2, "job-e");
+    const handler = new DiscountHandler(service); // no scrapeJobRepo → renderFallback
+
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // All pill = total (3 + 2 = 5), marked active by default
+    expect(html).toContain(`data-filter="__all__"`);
+    expect(html).toMatch(/data-filter="__all__"[^>]*class="filter-pill active"|class="filter-pill active"[^>]*data-filter="__all__"/);
+    expect(html).toContain(`aria-pressed="true"`);
+    expect(html).toMatch(/All\s*<span class="pill-count">5<\/span>/);
+
+    // Per-store pills carry their own counts
+    expect(html).toContain(`data-filter="Aldi Süd"`);
+    expect(html).toMatch(/Aldi Süd\s*<span class="pill-count">3<\/span>/);
+    expect(html).toContain(`data-filter="Edeka"`);
+    expect(html).toMatch(/Edeka\s*<span class="pill-count">2<\/span>/);
+
+    // Sections tagged with data-store so the client filter can target them
+    expect(html).toContain(`data-store="Aldi Süd"`);
+    expect(html).toContain(`data-store="Edeka"`);
+
+    // Status line defaults to All
+    expect(html).toContain("Showing: All (5)");
+  });
+
+  test("store-context path: pills + counts + data-store present when scrapeJobRepo is wired", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    const jobRepo = new SQLiteScrapeJobRepository(db);
+
+    // Real completed jobs → renderWithStoreContext path (recent completed = no staleness warning)
+    const jobA = await jobRepo.startJob("Aldi Süd");
+    await seed(service, "Aldi Süd", 4, jobA);
+    await jobRepo.completeJob(jobA, 4);
+    const jobE = await jobRepo.startJob("Edeka");
+    await seed(service, "Edeka", 1, jobE);
+    await jobRepo.completeJob(jobE, 1);
+
+    const handler = new DiscountHandler(service, jobRepo);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // All total = 5, default active
+    expect(html).toMatch(/All\s*<span class="pill-count">5<\/span>/);
+    expect(html).toContain(`aria-current="true"`);
+    // Per-store counts
+    expect(html).toMatch(/Aldi Süd\s*<span class="pill-count">4<\/span>/);
+    expect(html).toMatch(/Edeka\s*<span class="pill-count">1<\/span>/);
+    // data-store on the store-group sections (store-context path)
+    expect(html).toContain(`data-store="Aldi Süd"`);
+    expect(html).toContain(`data-store="Edeka"`);
+    expect(html).not.toContain("may be outdated"); // fresh jobs → no staleness warning
+  });
+
+  test("empty-state store gets a data-store section but NO pill (pills require >=1 item)", async () => {
+    const db = createDb(":memory:");
+    const service = new DiscountService(new SQLiteDiscountItemRepository(db));
+    const jobRepo = new SQLiteScrapeJobRepository(db);
+
+    // Store with items
+    const jobA = await jobRepo.startJob("Aldi Süd");
+    await seed(service, "Aldi Süd", 2, jobA);
+    await jobRepo.completeJob(jobA, 2);
+    // Store with a completed job but ZERO items → empty-state section
+    const jobV = await jobRepo.startJob("V-Markt");
+    await jobRepo.completeJob(jobV, 0);
+
+    const handler = new DiscountHandler(service, jobRepo);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Empty store: section tagged, but no pill for it
+    expect(html).toContain(`data-store="V-Markt"`);
+    expect(html).toContain("No discounts this week at V-Markt");
+    expect(html).not.toContain(`data-filter="V-Markt"`);
+    // All total reflects only real items (2)
+    expect(html).toMatch(/All\s*<span class="pill-count">2<\/span>/);
   });
 });
