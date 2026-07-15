@@ -45,6 +45,15 @@ export class SQLiteMealPlanRepository {
     }).run();
   }
 
+  /**
+   * Delete this week's plan row (if any). Called inside PlanService.savePlan's
+   * transaction so regenerating a week REPLACES rather than accumulates. Absent
+   * week is a harmless no-op (0 rows affected).
+   */
+  deleteByWeek(weekStart: WeekStart): void {
+    this.db.delete(mealPlans).where(eq(mealPlans.weekStart, weekStart)).run();
+  }
+
   findByWeek(weekStart: WeekStart): MealPlan | null {
     const row = this.db
       .select()

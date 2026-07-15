@@ -9,7 +9,7 @@
  *   - record is called inside the same SQLite transaction as meal_plans write (D23)
  */
 
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { savingsLog } from "../../shared/schema.ts";
 
@@ -38,6 +38,15 @@ export class SQLiteSavingsRepository {
       itemCount: savingsRecord.itemCount,
       recordedAt: savingsRecord.recordedAt,
     }).run();
+  }
+
+  /**
+   * Delete this week's savings row (if any). Called inside PlanService.savePlan's
+   * transaction so regenerating a week REPLACES rather than double-counts the
+   * saved amount. Absent week is a harmless no-op.
+   */
+  deleteByWeek(weekStart: string): void {
+    this.db.delete(savingsLog).where(eq(savingsLog.weekStart, weekStart)).run();
   }
 
   getAll(): SavingsRecord[] {

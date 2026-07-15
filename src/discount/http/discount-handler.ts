@@ -109,14 +109,14 @@ export class DiscountHandler {
     <h1>Weekly Discount Feed</h1>
   </header>
   ${filterBar}
-  <section id="discount-items">
-    ${itemsHtml}
-  </section>
-  <section id="meal-plan-action">
-    <form method="POST" action="/plan/generate">
+  <form class="selection-form" method="POST" action="/plan/generate">
+    <section id="discount-items">
+      ${itemsHtml}
+    </section>
+    <section id="meal-plan-action">
       <button type="submit" id="generate-meal-plan">Generate Meal Plan</button>
-    </form>
-  </section>`;
+    </section>
+  </form>`;
 
     const html = renderPage({
       title: "Discount Hunt — Weekly Deals",
@@ -257,9 +257,19 @@ export class DiscountHandler {
         const badge = pct > 0
           ? `<span class="savings-badge" aria-label="save ${pct} percent">−${pct}%</span>`
           : "";
+        // Selection checkbox — checked by default so Generate uses ALL items unless the
+        // user deselects. The <label> (associated via for/id) toggles it; a ≥44px tap
+        // target comes from CSS. The checkbox is independent of the filter: the filter JS
+        // only sets .hidden on sections, so a hidden card's checkbox STILL submits.
+        const inputId = `select-${escapeHtml(item.id)}`;
+        const selection = `<label class="card-select" for="${inputId}">
+          <input type="checkbox" id="${inputId}" name="itemIds" value="${escapeHtml(item.id)}" checked>
+          <span class="card-select-text">Include</span>
+        </label>`;
         return `
       <div class="card" data-item-card>
         ${badge}
+        ${selection}
         <article class="discount-item">
         <h3 class="item-name">${escapeHtml(item.name)}</h3>
         <p class="item-price">

@@ -407,6 +407,30 @@ const STYLE = `
       font-weight: 600;
     }
     #meal-plan-action form { max-width: none; }
+    /* Feed selection form wraps #discount-items + #meal-plan-action. display:contents
+       removes its box from layout so the grid/section children flow EXACTLY as before —
+       neutralizing the global form { display:grid; max-width:460px } clamp (which would
+       otherwise shrink the whole feed and cause 375px overflow). */
+    .selection-form { display: contents; }
+    /* Per-card selection toggle — reuses the --tap target; sits inside the card,
+       above the item name, so it never widens the card (no 375px overflow). */
+    .card-select {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--sp-2);
+      min-height: var(--tap);
+      font-weight: 600;
+      font-size: var(--fs-sm);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .card-select input[type="checkbox"] {
+      width: 1.25rem;
+      height: 1.25rem;
+      min-height: auto;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
 
     /* ── Recipe detail ────────────────────────────────────────────────────*/
     .recipe-ingredients { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }

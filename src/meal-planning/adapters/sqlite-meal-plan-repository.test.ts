@@ -63,6 +63,29 @@ describe("SQLiteMealPlanRepository — dietaryFilter snapshot round-trip", () =>
   });
 });
 
+// ─── deleteByWeek (replace-on-regenerate) ────────────────────────────────────
+describe("SQLiteMealPlanRepository — deleteByWeek", () => {
+  test("deleteByWeek removes the week's row; absent week is a no-op", () => {
+    const dir = mkdtempSync(join(tmpdir(), "dh-mealplan-del-"));
+    try {
+      const db = createDb(join(dir, "del.db"));
+      const repo = new SQLiteMealPlanRepository(db);
+      const weekStart = "2026-07-13";
+
+      repo.save(planWith("none", weekStart));
+      expect(repo.findByWeek(weekStart)).not.toBeNull();
+
+      repo.deleteByWeek(weekStart);
+      expect(repo.findByWeek(weekStart)).toBeNull();
+
+      // Absent week: does not throw.
+      expect(() => repo.deleteByWeek("2026-01-05")).not.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ─── Step 04-01: budgetCapCents snapshot round-trip ─────────────────────────
 describe("SQLiteMealPlanRepository — budgetCapCents snapshot round-trip", () => {
   test("save→findByWeek preserves the snapshotted budgetCapCents (cents or null)", () => {

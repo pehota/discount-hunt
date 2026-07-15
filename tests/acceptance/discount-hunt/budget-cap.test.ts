@@ -130,10 +130,22 @@ async function saveBudgetCap(port: number, euros: number | string | null): Promi
   });
 }
 
-/** POST /plan/generate — freezes the current-week plan (snapshots the active cap). */
+/**
+ * POST /plan/generate — freezes the current-week plan (snapshots the active cap).
+ * Submits the feed's CHECKED selection (post-SLICE contract: Generate builds from
+ * EXACTLY the submitted items); extracts checked itemIds from GET / to faithfully
+ * simulate the browser (the feed is restriction-filtered).
+ */
 async function generatePlan(port: number): Promise<Response> {
+  const html = await (await fetch(`http://localhost:${port}/`)).text();
+  const ids: string[] = [];
+  const re = /<input type="checkbox"[^>]*name="itemIds"[^>]*value="([^"]*)"[^>]*checked/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) ids.push(m[1]!);
   return fetch(`http://localhost:${port}/plan/generate`, {
     method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: ids.map((id) => `itemIds=${encodeURIComponent(id)}`).join("&"),
     redirect: "manual",
   });
 }

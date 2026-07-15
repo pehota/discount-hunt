@@ -181,6 +181,26 @@ async function saveDietaryRestriction(port: number, restriction: string): Promis
   });
 }
 
+/**
+ * Generate a plan by submitting the feed's CHECKED selection (post-SLICE contract:
+ * Generate builds from EXACTLY the submitted items). Extracts checked itemIds from
+ * GET / — the feed is restriction-filtered, so this faithfully simulates the browser
+ * and keeps every dietary scenario's meaning (veg feed → veg ids → veg-only plan).
+ */
+async function generatePlanFromFeed(port: number): Promise<Response> {
+  const html = await (await fetch(`http://localhost:${port}/`)).text();
+  const ids: string[] = [];
+  const re = /<input type="checkbox"[^>]*name="itemIds"[^>]*value="([^"]*)"[^>]*checked/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) ids.push(m[1]!);
+  return fetch(`http://localhost:${port}/plan/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: ids.map((id) => `itemIds=${encodeURIComponent(id)}`).join("&"),
+    redirect: "manual",
+  });
+}
+
 // ─── Scenario 1: Settings page loads with current restriction pre-selected ────
 // §6 "Settings saved" row (pre-fill half) + §4 pre-selection.
 // RED reason: GET /settings → 404 (no route in server.ts).
@@ -374,10 +394,7 @@ describe("@driving_port — Generated meal plan excludes meat/fish under a veget
 
     // Precondition: vegetarian saved, then generate a plan (POST returns 303).
     await saveDietaryRestriction(serverPort, "vegetarian");
-    await fetch(`http://localhost:${serverPort}/plan/generate`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    await generatePlanFromFeed(serverPort);
   });
 
   afterAll(() => {
@@ -435,10 +452,7 @@ describe("@driving_port — An existing vegetarian plan stays meat-free after th
     // → switch the setting to none. getOrGenerateCurrentWeekPlan is idempotent, so the same-week
     // GET /plan returns the frozen plan; no regenerate endpoint is required.
     await saveDietaryRestriction(serverPort, "vegetarian");
-    await fetch(`http://localhost:${serverPort}/plan/generate`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    await generatePlanFromFeed(serverPort);
     await saveDietaryRestriction(serverPort, "none");
   });
 
@@ -496,10 +510,7 @@ describe("@driving_port — Plan view warns and links to settings when no compat
 
     // Precondition: vegetarian saved → every seeded item is incompatible → 0 compatible.
     await saveDietaryRestriction(serverPort, "vegetarian");
-    await fetch(`http://localhost:${serverPort}/plan/generate`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    await generatePlanFromFeed(serverPort);
   });
 
   afterAll(() => {
@@ -557,10 +568,7 @@ describe("@driving_port — Empty plan distinguishes no-data from restriction-fi
 
     // Default restriction 'none' set explicitly, then generate a plan over an empty DB.
     await saveDietaryRestriction(serverPort, "none");
-    await fetch(`http://localhost:${serverPort}/plan/generate`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    await generatePlanFromFeed(serverPort);
   });
 
   afterAll(() => {
@@ -682,10 +690,7 @@ describe("@driving_port — An empty plan is transient and refreshes under the c
     // → switch the restriction to none. Because the plan is empty, it must NOT be frozen; the next
     // GET /plan re-queries under "none" and the meat item becomes visible.
     await saveDietaryRestriction(serverPort, "vegetarian");
-    await fetch(`http://localhost:${serverPort}/plan/generate`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    await generatePlanFromFeed(serverPort);
     await saveDietaryRestriction(serverPort, "none");
   });
 
@@ -734,10 +739,7 @@ describe("@driving_port — Item names with HTML special chars are escaped on re
     serverPort = s.port;
 
     await saveDietaryRestriction(serverPort, "none");
-    await fetch(`http://localhost:${serverPort}/plan/generate`, {
-      method: "POST",
-      redirect: "manual",
-    });
+    await generatePlanFromFeed(serverPort);
   });
 
   afterAll(() => {

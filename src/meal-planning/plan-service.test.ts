@@ -12,6 +12,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 import * as fc from "fast-check";
+import { eq } from "drizzle-orm";
 import { createDb } from "../shared/db.ts";
 import { discountItems, mealPlans, savingsLog } from "../shared/schema.ts";
 import { SQLiteMealPlanRepository } from "./adapters/sqlite-meal-plan-repository.ts";
@@ -203,6 +204,101 @@ describe("PlanService", () => {
     const savingsRows = db.select().from(savingsLog).all();
     expect(planRows).toHaveLength(1);
     expect(savingsRows).toHaveLength(1);
+  });
+});
+
+// ─── Generate-from-selection + no-double-count (SLICE feature) ───────────────
+
+describe("PlanService — generate from a user-selected subset", () => {
+  let db: ReturnType<typeof createDb>;
+
+  beforeEach(() => {
+    db = createDb(":memory:");
+    const discountItemRepo = new SQLiteDiscountItemRepository(db);
+    const discountService = new DiscountService(discountItemRepo);
+    for (const item of SEED_ITEMS) {
+      discountService.registerDiscountItem(
+        {
+          externalId: item.externalId,
+          store: item.store,
+          name: item.name,
+          category: item.category,
+          regularPrice: item.regularPrice,
+          salePrice: item.salePrice,
+          validUntil: item.validUntil,
+          dietaryTags: [],
+        },
+        "scrape-job-001",
+      );
+    }
+  });
+
+  function storedItems() {
+    return db.select().from(discountItems).all().map((row) => ({
+      id: row.id,
+      store: row.store,
+      name: row.name,
+      category: row.category,
+      regularPrice: row.regularPrice,
+      salePrice: row.salePrice,
+      validUntil: row.validUntil,
+      dietaryTags: JSON.parse(row.dietaryTags),
+      scrapeJobId: row.scrapeJobId,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  // Regression guard (already satisfied by the pure generatePlan): a chosen subset
+  // drives itemIds, per-meal ids and estimatedSavings — nothing outside the subset.
+  test("generatePlan over a 3-item subset counts ONLY the subset", () => {
+    const { planService } = buildServices(db);
+    const all = storedItems();
+    const subset = [all[0]!, all[2]!]; // Zucchini (100) + Spinat (90) = 190
+    const subsetIds = new Set(subset.map((i) => i.id));
+
+    const plan = planService.generatePlan(TEST_WEEK, subset);
+
+    expect(plan.itemIds).toEqual(subset.map((i) => i.id)); // order preserved
+    expect(plan.estimatedSavings).toBe(190);
+    for (const meal of plan.meals) {
+      if (meal.discountItemId !== null) {
+        expect(subsetIds.has(meal.discountItemId)).toBe(true);
+      }
+    }
+  });
+
+  // THE LANDMINE: regenerating the SAME week with a DIFFERENT subset must REPLACE,
+  // never double-count. Exactly one savings_log row + one meal_plans row for the week,
+  // carrying subset B's value (the new one — not summed, not stale A).
+  test("regenerating the same week REPLACES and never double-counts savings", async () => {
+    const { planService } = buildServices(db);
+    const all = storedItems();
+
+    // Subset A: item[1] only → 249-149 = 100
+    const planA = planService.generatePlan(TEST_WEEK, [all[1]!]);
+    await planService.savePlan(planA);
+
+    // Subset B: item[0] + item[2] → 100 + 90 = 190 (different ids + value)
+    const planB = planService.generatePlan(TEST_WEEK, [all[0]!, all[2]!]);
+    await planService.savePlan(planB);
+
+    const savingsRows = db
+      .select()
+      .from(savingsLog)
+      .where(eq(savingsLog.weekStart, TEST_WEEK))
+      .all();
+    expect(savingsRows).toHaveLength(1);
+    expect(savingsRows[0]!.savedAmount).toBe(190); // B's value, not 100 nor 290
+    expect(savingsRows[0]!.planId).toBe(planB.id);
+
+    const planRows = db
+      .select()
+      .from(mealPlans)
+      .where(eq(mealPlans.weekStart, TEST_WEEK))
+      .all();
+    expect(planRows).toHaveLength(1);
+    expect(planRows[0]!.id).toBe(planB.id);
+    expect(planRows[0]!.estimatedSavings).toBe(190);
   });
 });
 

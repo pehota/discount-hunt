@@ -98,6 +98,13 @@ export class PlanService {
     // execute inside the same bun:sqlite transaction (connection-scoped).
     // _tx is unused directly; repos call this.db internally.
     this.db.transaction((_tx) => {
+      // REPLACE-on-save: wipe any prior plan + savings row for this week FIRST, so a
+      // regenerate can never accumulate a second savings_log row or double-count the
+      // week's savings. Both deletes + both inserts execute in this single sync
+      // bun-sqlite transaction (connection-scoped) — atomic by construction. On the
+      // get-or-generate path there is no prior row → both deletes are harmless no-ops.
+      this.mealPlanRepository.deleteByWeek(plan.weekStart);
+      this.savingsService.deleteByWeek(plan.weekStart);
       this.mealPlanRepository.save(plan);
       // D23: same cents value written to both tables atomically
       this.savingsService.recordSavings(
@@ -132,6 +139,37 @@ export class PlanService {
   async getCurrentWeekItemsById(): Promise<Map<string, StoredDiscountItem>> {
     const items = await this.discountService.getWeeklyItems(currentWeekMonday(), "none");
     return new Map(items.map((item) => [item.id, item]));
+  }
+
+  /**
+   * Generate + persist THIS week's plan from EXACTLY the user-selected discount items
+   * (feed checkbox selection). Replaces any existing plan for the week (savePlan is
+   * replace-on-save), so regenerating never double-counts savings.
+   *
+   * Selection is authoritative: items are resolved with restriction "none" so every
+   * checked id resolves regardless of the current dietary filter; the filter + budget
+   * cap are still snapshotted onto the plan (banner semantics, D25) exactly as the
+   * get-or-generate path reads them.
+   *
+   * Returns null WITHOUT any DB write when the selection resolves to an empty subset —
+   * the caller must render a no-selection state and MUST NOT persist (an empty selection
+   * must never wipe an existing good plan). Feed order is preserved in the subset.
+   */
+  async generateFromSelection(selectedIds: string[]): Promise<MealPlan | null> {
+    if (selectedIds.length === 0) return null;
+
+    const weekStart = currentWeekMonday();
+    const selected = new Set(selectedIds);
+    const items = await this.discountService.getWeeklyItems(weekStart, "none");
+    const subset = items.filter((item) => selected.has(item.id)); // preserves feed order
+    if (subset.length === 0) return null;
+
+    const preferences = this.preferencesRepository?.get();
+    const restriction = preferences?.dietaryRestriction ?? "none";
+    const budgetCapCents = preferences?.budgetCapCents ?? null;
+    const plan = this.generatePlan(weekStart, subset, restriction, budgetCapCents);
+    await this.savePlan(plan);
+    return plan;
   }
 
   async getOrGenerateCurrentWeekPlan(): Promise<MealPlan> {

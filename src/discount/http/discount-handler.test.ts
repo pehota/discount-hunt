@@ -12,6 +12,7 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createDb } from "../../shared/db.ts";
+import { discountItems } from "../../shared/schema.ts";
 import { SQLiteDiscountItemRepository } from "../adapters/sqlite-discount-item-repository.ts";
 import { SQLiteScrapeJobRepository } from "../../scraping/adapters/sqlite-scrape-job-repository.ts";
 import { DiscountService } from "../discount-service.ts";
@@ -32,9 +33,10 @@ function makeRequest(): Request {
 describe("DiscountHandler.handleGet", () => {
   let handler: DiscountHandler;
   let discountService: DiscountService;
+  let db: ReturnType<typeof createDb>;
 
   beforeEach(() => {
-    const db = createDb(":memory:");
+    db = createDb(":memory:");
     const repo = new SQLiteDiscountItemRepository(db);
     discountService = new DiscountService(repo);
     handler = new DiscountHandler(discountService);
@@ -105,6 +107,25 @@ describe("DiscountHandler.handleGet", () => {
 
     // Generate Meal Plan button always visible (US-01 AC)
     expect(html).toContain("Generate Meal Plan");
+
+    // Selection form wraps the feed and posts to the generate route.
+    expect(html).toMatch(/<form[^>]*action="\/plan\/generate"/);
+
+    // Each item card carries a CHECKED itemIds checkbox with an associated label.
+    // Extract item ids from the discount_items DB rows to assert value= wiring.
+    const seededIds = db.select().from(discountItems).all().map((r) => r.id);
+    expect(seededIds).toHaveLength(3);
+    for (const id of seededIds) {
+      // A single checkbox input carrying name="itemIds", the item id as value, and
+      // checked by default (attribute order-agnostic; all three on the same tag).
+      const re = new RegExp(
+        `<input type="checkbox"[^>]*name="itemIds"[^>]*value="${id}"[^>]*checked`,
+      );
+      expect(html).toMatch(re);
+      // an associated label references this checkbox by id (for="select-<id>")
+      expect(html).toContain(`for="select-${id}"`);
+      expect(html).toContain(`id="select-${id}"`);
+    }
   });
 
   test("B2: returns 200 HTML with empty-state message and Generate Meal Plan button when no items exist", async () => {

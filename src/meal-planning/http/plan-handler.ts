@@ -160,6 +160,18 @@ function renderPlanHtml(
   return renderPage({ title: "Meal Plan", activeNav: "plan", body });
 }
 
+/**
+ * Inline no-selection state for POST /plan/generate when the user submitted zero
+ * products. NOT a redirect to /plan (that would auto-generate from ALL items). Steers
+ * the user back to the feed to pick at least one product and generate again.
+ */
+function renderNoSelectionHtml(): string {
+  const body = `<h1>Meal Plan</h1>
+  <p class="empty-plan-warning">No products selected — pick at least one and generate again.</p>
+  <p><a href="/">Back to the discount feed</a></p>`;
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body });
+}
+
 const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
 
 export class PlanHandler {
@@ -185,8 +197,29 @@ export class PlanHandler {
     });
   }
 
-  async handlePostGenerate(_request: Request): Promise<Response> {
-    await this.planService.getOrGenerateCurrentWeekPlan();
+  async handlePostGenerate(request: Request): Promise<Response> {
+    // Parse the feed's checkbox selection. A bodyless POST (or a non-form body)
+    // makes formData() throw — treat that as an empty selection, never a crash.
+    let selectedIds: string[] = [];
+    try {
+      const form = await request.formData();
+      selectedIds = form.getAll("itemIds").map(String);
+    } catch {
+      selectedIds = [];
+    }
+
+    // Empty selection: render an inline no-selection state and return 200. Crucially
+    // this happens BEFORE any persistence — we must NOT touch savePlan (no delete, no
+    // insert), so an existing good plan is preserved. Redirecting to /plan here would
+    // re-trigger get-or-generate-from-ALL-items — the exact junk-meal bug this fixes.
+    const plan = await this.planService.generateFromSelection(selectedIds);
+    if (plan === null) {
+      return new Response(renderNoSelectionHtml(), {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
     return Response.redirect("/plan", 303);
   }
 }

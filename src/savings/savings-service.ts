@@ -70,6 +70,15 @@ export class SavingsService {
     return { history, thisWeek, monthToDateCents, unavailableWeekStarts };
   }
 
+  /**
+   * Delete this week's savings row. Delegated to the repo so PlanService can wipe
+   * the prior savings_log entry inside its savePlan transaction without importing
+   * drizzle (D34). Synchronous — it runs inside the sync bun-sqlite transaction.
+   */
+  deleteByWeek(weekStart: string): void {
+    this.savingsRepository.deleteByWeek(weekStart);
+  }
+
   recordSavings(
     planId: string,
     savedAmount: number,
