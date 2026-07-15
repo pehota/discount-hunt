@@ -34,12 +34,13 @@ export function parseSlug(location: string | null | undefined): string {
     throw new AldiSudFetchError("Missing Location header in HEAD response");
   }
   const match = SLUG_PATTERN.exec(location);
-  if (!match) {
+  const slug = match?.[1];
+  if (!slug) {
     throw new AldiSudFetchError(
       `Location header did not match expected pattern: ${location}`
     );
   }
-  return match[1];
+  return slug;
 }
 
 export class AldiSudFetchError extends Error {

@@ -145,8 +145,8 @@ describe("PlanService", () => {
 
     const planRows = db.select().from(mealPlans).all();
     expect(planRows).toHaveLength(1);
-    expect(planRows[0].weekStart).toBe(TEST_WEEK);
-    expect(planRows[0].estimatedSavings).toBe(EXPECTED_SAVINGS);
+    expect(planRows[0]!.weekStart).toBe(TEST_WEEK);
+    expect(planRows[0]!.estimatedSavings).toBe(EXPECTED_SAVINGS);
   });
 
   test("D23 invariant: meal_plans.estimated_savings equals savings_log.saved_amount (written in one transaction)", async () => {
@@ -175,9 +175,9 @@ describe("PlanService", () => {
     expect(savingsRows).toHaveLength(1);
 
     // D23 structural guarantee: both values must be equal
-    expect(planRows[0].estimatedSavings).toBe(savingsRows[0].savedAmount);
-    expect(savingsRows[0].savedAmount).toBe(EXPECTED_SAVINGS);
-    expect(savingsRows[0].planId).toBe(planRows[0].id);
+    expect(planRows[0]!.estimatedSavings).toBe(savingsRows[0]!.savedAmount);
+    expect(savingsRows[0]!.savedAmount).toBe(EXPECTED_SAVINGS);
+    expect(savingsRows[0]!.planId).toBe(planRows[0]!.id);
   });
 
   test("getOrGenerateCurrentWeekPlan generates and persists a plan when none exists", async () => {
@@ -247,17 +247,17 @@ describe("PlanService.generatePlan — 14-meal structure (PBT)", () => {
 
         // Items cycled: slot i picks items[i % items.length]
         for (let i = 0; i < 14; i++) {
-          const expected = items[i % items.length];
-          if (plan.meals[i].discountItemId !== expected.id) return false;
-          if (plan.meals[i].name !== expected.name) return false;
+          const expected = items[i % items.length]!;
+          if (plan.meals[i]!.discountItemId !== expected.id) return false;
+          if (plan.meals[i]!.name !== expected.name) return false;
         }
 
         // Day range 1-7, alternating slots
         for (let i = 0; i < 14; i++) {
           const day = Math.floor(i / 2) + 1;
           const slot = i % 2 === 0 ? "lunch" : "dinner";
-          if (plan.meals[i].day !== day) return false;
-          if (plan.meals[i].slot !== slot) return false;
+          if (plan.meals[i]!.day !== day) return false;
+          if (plan.meals[i]!.slot !== slot) return false;
         }
 
         return true;

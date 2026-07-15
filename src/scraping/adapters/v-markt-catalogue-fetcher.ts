@@ -79,10 +79,11 @@ export class VMarktCatalogueFetcher {
     const response = await this.fetchFn(DISCOVERY_URL);
     const html = await response.text();
     const slugs = this.extractSlugs(html);
-    if (slugs.length === 0) {
+    const latest = slugs.sort().reverse()[0];
+    if (!latest) {
       throw new Error("VMarktCatalogueFetcher: no valid VMMUC slugs found on discovery page");
     }
-    return slugs.sort().reverse()[0];
+    return latest;
   }
 
   private extractSlugs(html: string): string[] {
@@ -91,7 +92,7 @@ export class VMarktCatalogueFetcher {
     let match: RegExpExecArray | null;
     while ((match = regex.exec(html)) !== null) {
       const slug = match[1];
-      if (VALID_SLUG_PATTERN.test(slug)) {
+      if (slug && VALID_SLUG_PATTERN.test(slug)) {
         slugs.push(slug);
       }
     }
@@ -110,7 +111,7 @@ export class VMarktCatalogueFetcher {
     const pTagPattern = /<p>([\s\S]*?)<\/p>/gi;
     let match: RegExpExecArray | null;
     while ((match = pTagPattern.exec(html)) !== null) {
-      const text = match[1].replace(/<[^>]*>/g, "").trim();
+      const text = (match[1] ?? "").replace(/<[^>]*>/g, "").trim();
       if (text.length > 0) {
         paragraphs.push(text);
       }

@@ -65,20 +65,24 @@ export class PlanService {
   private buildMeals(discountItems: StoredDiscountItem[]): Meal[] {
     const meals: Meal[] = [];
     for (let day = 1; day <= DAYS_PER_WEEK; day++) {
-      for (let slotIdx = 0; slotIdx < MEAL_SLOTS.length; slotIdx++) {
-        meals.push(this.buildMealSlot(day, slotIdx, discountItems));
-      }
+      MEAL_SLOTS.forEach((slot, slotIdx) => {
+        meals.push(this.buildMealSlot(day, slot, slotIdx, discountItems));
+      });
     }
     return meals;
   }
 
-  private buildMealSlot(day: number, slotIdx: number, discountItems: StoredDiscountItem[]): Meal {
+  private buildMealSlot(day: number, slot: MealSlot, slotIdx: number, discountItems: StoredDiscountItem[]): Meal {
     if (discountItems.length === 0) {
-      return { day, slot: MEAL_SLOTS[slotIdx], name: NO_DISCOUNT_PLACEHOLDER, discountItemId: null };
+      return { day, slot, name: NO_DISCOUNT_PLACEHOLDER, discountItemId: null };
     }
     const slotIndex = (day - 1) * MEAL_SLOTS.length + slotIdx;
     const item = discountItems[slotIndex % discountItems.length];
-    return { day, slot: MEAL_SLOTS[slotIdx], name: item.name, discountItemId: item.id };
+    if (!item) {
+      // Unreachable: modulo over a non-empty array always yields a valid index.
+      throw new Error("buildMealSlot: index out of range");
+    }
+    return { day, slot, name: item.name, discountItemId: item.id };
   }
 
   /**

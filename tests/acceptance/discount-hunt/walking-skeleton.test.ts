@@ -191,7 +191,7 @@ describe("Walking Skeleton — Scenario 1: Shopper sees discounted items, genera
     // Extracting via data attribute (not display format) makes this locale- and format-stable.
     const attrMatch = planHtml.match(/data-estimated-savings="(\d+)"/);
     expect(attrMatch).not.toBeNull(); // plan must expose estimated_savings as data attribute
-    estimatedSavingRendered = attrMatch![1]; // cents string e.g. "290"
+    estimatedSavingRendered = attrMatch![1]!; // cents string e.g. "290"
 
     // 14-meal assertion: plan must contain exactly 14 meal slot entries (7 days × 2 slots)
     expect((planHtml.match(/data-meal-slot/g) ?? []).length).toBe(14);

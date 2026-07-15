@@ -165,7 +165,7 @@ describe("SavingsService.getSummary", () => {
     const history = await service.getHistory();
 
     expect(history).toHaveLength(2);
-    expect(history[0].weekStart >= history[1].weekStart).toBe(true);
+    expect(history[0]!.weekStart >= history[1]!.weekStart).toBe(true);
   });
 });
 
@@ -223,6 +223,6 @@ describe("sumMonthToDateCents (pure, explicit reference month)", () => {
     const history = await service.getHistory();
 
     expect(history).toHaveLength(2);
-    expect(history[0].weekStart >= history[1].weekStart).toBe(true);
+    expect(history[0]!.weekStart >= history[1]!.weekStart).toBe(true);
   });
 });

@@ -98,8 +98,8 @@ describe("CatalogueNormalizer", () => {
 
           if (result.length !== 1) return false;
           return (
-            result[0].regularPrice === regularCents &&
-            result[0].salePrice === actualSaleCents
+            result[0]!.regularPrice === regularCents &&
+            result[0]!.salePrice === actualSaleCents
           );
         }
       )
@@ -116,9 +116,9 @@ describe("CatalogueNormalizer", () => {
     // classification is already property-covered above.
     const [result] = normalizer.normalize([rawItem({ productType: undefined })]);
 
-    expect(result.category).toBe("unknown");
-    expect(result.category).toBeString();
-    expect(result.dietaryTags).toEqual([]);
+    expect(result!.category).toBe("unknown");
+    expect(result!.category).toBeString();
+    expect(result!.dietaryTags).toEqual([]);
   });
 
   // ── Property 3: dietary tags per productType ──────────────────────────────
@@ -140,7 +140,7 @@ describe("CatalogueNormalizer", () => {
           const result = normalizer.normalize([rawItem({ productType })]);
           if (result.length !== 1) return false;
           const expected = TAG_MAP[productType] ?? [];
-          const actual = result[0].dietaryTags;
+          const actual = result[0]!.dietaryTags;
           return (
             actual.length === expected.length &&
             expected.every((t) => actual.includes(t as never))

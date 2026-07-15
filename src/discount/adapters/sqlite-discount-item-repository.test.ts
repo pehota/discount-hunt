@@ -51,7 +51,7 @@ describe("SQLiteDiscountItemRepository.getByWeek", () => {
     const results = await repo.getByWeek(weekStart, "none");
 
     expect(results.length).toBe(1);
-    expect(results[0].validUntil).toBe("2026-07-15");
+    expect(results[0]!.validUntil).toBe("2026-07-15");
   });
 
   // -------------------------------------------------------------------------
@@ -82,9 +82,9 @@ describe("SQLiteDiscountItemRepository.getByWeek", () => {
           // Guarantee d1 < weekStart <= d2
           // Sort all three; assign d1 = min, weekStart = mid, d2 = max
           const sorted = [rawD1, weekStart, rawD2].sort();
-          const d1 = sorted[0];
-          const ws = sorted[1];
-          const d2 = sorted[2];
+          const d1 = sorted[0]!;
+          const ws = sorted[1]!;
+          const d2 = sorted[2]!;
 
           // If d1 == ws, d1 is NOT before weekStart, skip
           if (d1 >= ws) return;

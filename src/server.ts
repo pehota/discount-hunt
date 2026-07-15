@@ -121,7 +121,11 @@ export async function createServer(
   });
 
   // 6. Handle
-  return { stop: () => server.stop(), port: server.port };
+  const { port } = server;
+  if (port === undefined) {
+    throw new Error("Bun.serve did not expose a bound port");
+  }
+  return { stop: () => server.stop(), port };
 }
 
 // Direct invocation (cron / systemd)

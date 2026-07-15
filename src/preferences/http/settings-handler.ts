@@ -172,7 +172,14 @@ export class SettingsHandler {
       cookingTime: parseCookingTime(form.get("cookingTime")),
       mealTypes: parseMealTypes(form.getAll("mealTypes")),
     };
-    this.preferencesService.updatePreferences(view);
+    this.preferencesService.updatePreferences({
+      dietaryRestriction: view.dietaryRestriction,
+      budgetCapCents: view.budgetCapCents ?? null,
+      kidFriendly: view.kidFriendly,
+      householdSize: view.householdSize,
+      cookingTime: view.cookingTime,
+      mealTypes: view.mealTypes,
+    });
     return this.htmlResponse(renderSettingsHtml(view, true));
   }
 
