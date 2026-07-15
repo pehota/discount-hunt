@@ -13,7 +13,7 @@
 | Users | 1 | Single-user, no concurrency |
 | Scrape volume | ~155 items/week | prospekt.aldi-sued.de catalogue |
 | DB rows/year | ~8,000 discount items + ~260 recipes + ~52 plan rows | <5 MB/year |
-| Recipe lookups | ~5/week | Brave API: ~260/year vs 2,000/mo free tier |
+| Recipe lookups | ~5/week | Chefkoch site-search + JSON-LD; no API key; ~260/year, 7-day cache |
 | QPS | < 1 | One human, a few clicks per week |
 | Peak load | 1 person clicking "Generate Plan" | Plan generation <5s NFR easily met in-memory |
 | Scraper runtime | ~30s once/week | Monday 06:00 CET |
@@ -68,15 +68,12 @@ flowchart TB
 
     Edeka["Edeka / V-Markt\n[External System]\nWeekly discount catalogues\n(future stores)"]
 
-    Brave["Brave Search API\n[External System]\nRecipe search\n2,000 req/mo free tier"]
-
-    Chefkoch["chefkoch.de\n[External System]\nRecipe pages\nschema.org/Recipe JSON-LD"]
+    Chefkoch["chefkoch.de\n[External System]\nSite-search + recipe pages\nschema.org/Recipe JSON-LD\n(no API key)"]
 
     Dimitar -->|"Views discount feed,\ngenerates meal plan,\nchecks savings"| DiscountHunt
     DiscountHunt -->|"HEAD → 302 slug,\nGET hotspots_data.json pages"| Prospekt
     DiscountHunt -->|"GET catalogue pages\n(SLICE-02+)"| Edeka
-    DiscountHunt -->|"Search query\n~5 req/week"| Brave
-    DiscountHunt -->|"GET recipe page\nparse JSON-LD"| Chefkoch
+    DiscountHunt -->|"GET suche.php site-search,\nthen GET recipe page,\nparse JSON-LD (~5/week)"| Chefkoch
 ```
 
 ---
@@ -98,13 +95,11 @@ flowchart TB
     end
 
     ExtProspekt["prospekt.aldi-sued.de\n[External]"]
-    ExtBrave["Brave Search API\n[External]"]
     ExtChefkoch["chefkoch.de\n[External]"]
 
     Dimitar -->|"http://localhost\nbrowser"| Web
     Web -->|"SQL reads"| DB
-    Web -->|"Brave Search query\n(plan generation)"| ExtBrave
-    Web -->|"GET recipe page\n(cache miss)"| ExtChefkoch
+    Web -->|"GET suche.php + recipe page\n(cache miss, recipe detail view)"| ExtChefkoch
     Web -->|"SQL write\n(recipe cache)"| DB
 
     Scheduler -->|"exec weekly"| Scraper
@@ -124,7 +119,7 @@ Per Principle 9 (Earned Trust), each infrastructure component must empirically v
 | Scraper | JSON shape change (`price`, `discountedPrice` fields absent) | Validate first parsed item has at least `title` and `price`; warn if both-price coverage drops below 10% | Log structured warning; proceed with available data; mark scrape as partial |
 | Web server | SQLite WAL mode on this filesystem | On startup: write a probe row, read it back, delete it | Refuse to start if read-back fails |
 | Web server | Data staleness (>48h since last scrape) | Read `scrape_jobs.last_successful_run` on every request | Display staleness warning banner (already an NFR) |
-| Recipe fetcher | Chefkoch JSON-LD shape | Validate fetched page contains `@type: "Recipe"` with `recipeIngredient[]` | Fall back to cached content; set `source_url_valid = false` |
+| Recipe source (`ChefkochRecipeSource`) | Chefkoch site-search + JSON-LD shape | `find()` returns null unless the page contains `@type: "Recipe"` with `recipeIngredient[]`; never throws into the domain (SPIKE-02 closure probe validated 3/3 live) | Fall back to cached content; `MarkSourceDead` sets `source_url_valid = false`; UI shows "unavailable" notice |
 
 **Note on fsync:** Docker overlayfs may silently no-op `fsync`. If deployed in Docker (Option B deployment variant), SQLite must be configured with `PRAGMA journal_mode=WAL` and the startup probe must confirm WAL mode is active. On bare-process localhost, this risk is absent.
 
@@ -173,7 +168,7 @@ Per Principle 9 (Earned Trust), each infrastructure component must empirically v
 | **Catalogue Scraping** | Fetches external store catalogues; normalizes raw JSON to domain objects; records scrape metadata | `ScrapeJob` | `scrape_jobs` | Invokes `RegisterDiscountItem` command on Discount/Pricing context (ACL to external stores) |
 | **Discount / Pricing** | Owns discounted item records; enforces price invariants; resolves item availability | `DiscountItem` | `discount_items` | Customer: receives normalized data from Scraping context; Supplier to Meal Planning |
 | **Meal Planning** | Generates dietary-filtered, discount-driven 7-day meal plan; coordinates item selection + recipe linking; computes and commits estimated savings | `MealPlan` | `meal_plans` | Customer: reads DiscountItem from Discount/Pricing, reads Recipe from Recipe Matching, reads UserPreferences from Preferences |
-| **Recipe Matching** | Finds recipes for discounted ingredients via Brave Search + Chefkoch parse; maintains 7-day cache | `Recipe` | `recipes` | ACL to Brave Search API and chefkoch.de; Supplier to Meal Planning |
+| **Recipe Matching** | Finds recipes for meal ingredients via Chefkoch site-search + JSON-LD parse; maintains 7-day cache | `Recipe` | `recipes` | ACL to chefkoch.de (single `RecipeSource` port); Supplier to Meal Planning |
 | **Savings Tracking** | Stores immutable weekly savings records; displays week/month history | `SavingsRecord` | `savings_log` | Customer: receives committed `saved_amount` from Meal Planning at plan-save time; read-only thereafter |
 | **User Preferences** | Stores dietary restriction setting; single-user configuration | `UserPreferences` | `user_settings` | Supplier to Meal Planning (read at plan-generation time) |
 
@@ -359,7 +354,7 @@ Events are **domain-modeling constructs** realized as direct in-process calls an
 | `DiscountItemExpired` | `valid_until` date passed | Discount/Pricing | Item excluded from new plan generation |
 | `PlanGenerated` | User clicks "Generate Meal Plan" | Meal Planning | `meal_plans` INSERT + `savings_log` INSERT (same transaction) |
 | `PlanRegenerated` | User clicks "Regenerate" | Meal Planning | `meal_plans` row replaced + current week's `savings_log` row replaced via `ReplaceSavings` (same transaction); prior weeks untouched |
-| `RecipeCached` | Brave Search + Chefkoch fetch returns valid JSON-LD | Recipe Matching | `recipes` INSERT; available for MealPlan recipe_id reference |
+| `RecipeCached` | Chefkoch site-search + fetch returns valid JSON-LD | Recipe Matching | `recipes` INSERT; available for MealPlan recipe_id reference |
 | `RecipeRefreshed` | TTL expired; re-fetch succeeds | Recipe Matching | `recipes` UPDATE (except recipe_id, ingredient_name) |
 | `RecipeSourceInvalidated` | Source URL returns non-2xx on check | Recipe Matching | `source_url_valid = false`; UI shows "cached version" notice |
 | `SavingsRecorded` | MealPlan commit (same transaction as PlanGenerated) | Savings Tracking | `savings_log` INSERT; displayed in Savings Tracker view |
@@ -375,8 +370,7 @@ flowchart TB
     subgraph External["External Systems"]
         Prospekt["prospekt.aldi-sued.de\n(Aldi Süd catalogue)"]
         Edeka["Edeka / V-Markt\n(future stores)"]
-        Brave["Brave Search API"]
-        Chefkoch["chefkoch.de"]
+        Chefkoch["chefkoch.de\n(site-search + recipe pages)"]
     end
 
     subgraph Core["Core Domain"]
@@ -400,8 +394,7 @@ flowchart TB
     Discount -->|"Customer-Supplier:\nDiscountItem read (by week)"| MealPlanning
     Prefs -->|"Customer-Supplier:\nread dietary_filter\n(plan generation)"| MealPlanning
     Prefs -->|"Customer-Supplier:\nread dietary_filter\n(discount dashboard)"| Discount
-    Brave -->|"ACL: search result\nnormalized to Recipe"| Recipe
-    Chefkoch -->|"ACL: JSON-LD\nparsed to Recipe"| Recipe
+    Chefkoch -->|"ACL: site-search + JSON-LD\nnormalized to Recipe"| Recipe
     Recipe -->|"Customer-Supplier:\nRecipe read (by ingredient)"| MealPlanning
     MealPlanning -->|"Customer-Supplier:\nsaved_amount written\n(same transaction)"| Savings
 ```
@@ -411,7 +404,7 @@ flowchart TB
 | Relationship | Pattern | Rationale |
 |-------------|---------|-----------|
 | External stores → Catalogue Scraping | **ACL** | External catalogue JSON (Publitas format, Aldi Süd-specific) translated at boundary; protects domain from schema drift |
-| Brave Search / Chefkoch → Recipe Matching | **ACL** | External API response and HTML JSON-LD translated to internal `Recipe` aggregate; substrate probes guard against shape changes |
+| Chefkoch → Recipe Matching | **ACL** | Site-search HTML + recipe-page JSON-LD translated to internal `Recipe` aggregate via the single `RecipeSource` port; `find()` returns null on any shape change (never throws into the domain) |
 | Catalogue Scraping → Discount/Pricing | **Customer-Supplier** | Scraping is upstream; Discount/Pricing is downstream consumer of normalized rows. Scraping owns the schema; Discount/Pricing conforms to it |
 | Discount/Pricing → Meal Planning | **Customer-Supplier** | Discount/Pricing is upstream supplier; Meal Planning is downstream customer. Meal Planning reads by `week_start`; no negotiation needed at this scale |
 | User Preferences → Meal Planning | **Customer-Supplier** | Preferences is upstream supplier; Meal Planning reads restriction at plan-generation time |
@@ -491,13 +484,14 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 
 | Layer | File | Responsibility |
 |-------|------|----------------|
-| Primary adapter (HTTP) | `src/recipe/http/recipe-handler.ts` | `GET /plan/{meal_id}` — cache-first lookup; triggers `CacheRecipe` on miss |
-| Domain service | `src/recipe/recipe-service.ts` | `GetRecipe(ingredientName)`: check TTL (7-day), return cached or trigger fetch; `CacheRecipe`, `RefreshRecipe`, `MarkSourceDead` use-case implementations |
-| ACL: Brave Search | `src/recipe/adapters/brave-search-client.ts` | Brave Search API client; query `"{ingredient} vegetarisch Rezept"`; returns top-result URL; substrate probe on first call |
-| ACL: Chefkoch parser | `src/recipe/adapters/chefkoch-recipe-fetcher.ts` | `GET recipe page`; parse `schema.org/Recipe` JSON-LD; return `Recipe` value object |
+| Primary adapter (HTTP) | `src/recipe/http/recipe-handler.ts` | `GET /plan/{meal_id}` — recipe detail view (name, ingredients, steps, "Open original recipe ↗", "Back to meal plan"); read-only plan lookup (no spurious generation); ingredient↔discount highlighting via `data-on-sale`; fallbacks (no-match → ingredient + Chefkoch search link; dead source → cached + "unavailable" notice); escapes all interpolated text via `escapeHtml` |
+| Domain service | `src/recipe/recipe-service.ts` | `getRecipeForMeal(...)`: cache-first with 7-day TTL, refresh-on-expiry, mark-source-dead; `CacheRecipe`, `RefreshRecipe`, `MarkSourceDead` use-case implementations; depends on the `RecipeSource` port, never on Chefkoch directly |
+| Driven port (source) | `src/recipe/ports/recipe-source.ts` | `RecipeSource` port — `find(query): Promise<FetchedRecipe \| null>`. The single testability seam: prod wires `ChefkochRecipeSource`, tests wire `FakeRecipeSource` (no network). Read-only (no write method); returns null on no-hit or shape change, never throws into the domain |
+| ACL adapter (live) | `src/recipe/adapters/chefkoch-recipe-source.ts` | `ChefkochRecipeSource` — Chefkoch site-search (`suche.php`) → first `/rezepte/…` link → recipe-page `schema.org/Recipe` JSON-LD extraction (`url ?? mainEntityOfPage` fallback); no API key |
+| ACL adapter (tests) | (inline in test files; injected via `config.recipeSource`) | `FakeRecipeSource` — deterministic in-memory `RecipeSource`; the test suite never hits the network. Prod default in `server.ts` is `new ChefkochRecipeSource()` |
+| Pure match heuristic | `src/recipe/ingredient-match.ts` | `matchIngredient(ingredient, weekItems)` + `tokensOverlap(a, b)` — pure, display-only ingredient↔discount matcher (case-insensitive, unit/quantity stop-words dropped, length-≥4 token guard, substring-either-direction, first-week-item-wins); documented §9 over-match characterized, never affects savings math |
 | Driven port (DB) | `src/recipe/ports/recipe-repository.ts` | Port: `getByIngredient(name)`, `cache(recipe)`, `refresh(id, data)`, `markDead(id)` |
 | Secondary adapter | `src/recipe/adapters/sqlite-recipe-repository.ts` | Drizzle ORM; `recipes` table; enforces `cached_content IS NOT NULL` |
-| Substrate probe | `src/recipe/probes/recipe-source-probe.ts` | Validates Brave API key responds; validates Chefkoch response contains `@type: "Recipe"` with `recipeIngredient[]` |
 
 #### Savings Tracking — `src/savings/`
 
@@ -546,7 +540,8 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | SQLite client | `src/shared/db.ts` | All 5 secondary adapters need a DB connection | bounded-change | One probe row (`_probe` table) written + deleted at startup | Startup probe must succeed before first handler is registered; CI: WAL mode assertion | **Single factory** | Multiple clients = multiple WAL writers = SQLite locking issue; one connection instance is the correct SQLite pattern |
 | Scrape-time `dietary_tags[]` classifier | `src/scraping/adapters/catalogue-normalizer.ts` | Tags produced here; `isCompatible()` in shared kernel consumes them | pure-function / return-only | Input: raw ingredient strings; output: `DietaryTag[]` | Unit test: known ingredient list → deterministic tag set | **Separate from predicate** (different responsibility: tag production vs compatibility check) | Classifier runs once at scrape time; predicate runs at query time; collapsing them couples scraper to preference model |
 | `estimated_savings` computation | `src/meal-planning/plan-service.ts` | Appears in Meal Plan footer (US-02) and Savings Tracker (US-04) | pure-function / return-only | Input: `DiscountItem[]` with `regular_price` and `sale_price`; output: `Money` | Same-transaction write (plan INSERT + savings_log INSERT); test: both rows present or neither | **Single computation site** in `plan-service.ts`; written to both `meal_plans.estimated_savings` and `savings_log.saved_amount` in one transaction | Separate computation = consistency gap (registry risk MEDIUM); single computation + same-transaction write makes divergence non-representable |
-| Recipe HTML fetcher | `src/recipe/adapters/chefkoch-recipe-fetcher.ts` | Only Chefkoch in SLICE-05; future stores could reuse parser interface | pure-function / return-only | Input: URL + raw HTML; output: `Recipe` or `null` | Substrate probe validates JSON-LD shape; unit test with fixture HTML | **Single file per site** under common `RecipeFetcher` port | Other recipe sites (AllRecipes, BBC Good Food) get separate adapters implementing the same port — swappable without changing `recipe-service.ts` |
+| Recipe source | `src/recipe/adapters/chefkoch-recipe-source.ts` | Only Chefkoch in SLICE-05; future sites could reuse the port | effectful adapter behind pure port | Input: query string; output: `FetchedRecipe` or `null` | SPIKE-02 closure probe (3/3 live); `FakeRecipeSource` in the test suite (no network) | **Single adapter** implementing the `RecipeSource` port | Other recipe sites (AllRecipes, BBC Good Food) get separate adapters implementing the same `RecipeSource` port — swappable without changing `recipe-service.ts` |
+| Ingredient match heuristic | `src/recipe/ingredient-match.ts` | Consumed by `recipe-handler.ts` for display-only ingredient↔discount highlighting | pure-function / return-only | Input: `ingredient` + `weekItems[]`; output: match or null | Unit test: characterized incl. known §9 over-match (plurals/compounds/short-token substring) | **Single pure function** extracted from the handler (step 08-08) | Extraction makes the heuristic unit-testable in isolation; a miss/over-match is cosmetic and never affects savings math |
 
 ---
 
@@ -557,13 +552,15 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `/` | GET | `src/discount/http/discount-handler.ts` | Display weekly discount feed filtered LIVE by dietary restriction; card-grid | Discount / Pricing | S01 — DELIVERED (live filter S03) |
 | `/plan` | GET | `src/meal-planning/http/plan-handler.ts` | Render current week's meal plan; empty-state discriminator + over-budget banner | Meal Planning | S01 — DELIVERED |
 | `/plan/generate` | POST | `src/meal-planning/http/plan-handler.ts` | Trigger `GeneratePlan` use case; redirect to `/plan` | Meal Planning | S01 — DELIVERED |
-| `/plan/:meal_id` | GET | `src/recipe/http/recipe-handler.ts` | Render recipe detail for a plan meal (cache-first, partial HTML swap via HTMX) | Recipe Matching | S05 — FUTURE (blocked on SPIKE-02) |
+| `/plan/{meal_id}` | GET | `src/recipe/http/recipe-handler.ts` | Recipe detail view for a plan meal — name, ingredients (with `data-on-sale` discount highlighting), steps, "Open original recipe ↗", "Back to meal plan"; cache-first read-only lookup (no spurious plan generation) | Recipe Matching | S05 — DELIVERED (Chefkoch, no Brave) |
 | `/savings` | GET | `src/savings/http/savings-handler.ts` | Render this-week breakdown + month-to-date + "Savings unavailable" | Savings Tracking | S01 (basic) — DELIVERED; S04 (history) — DELIVERED |
 | `/settings` | GET | `src/preferences/http/settings-handler.ts` | Render Preferences form pre-filled with dietary restriction + budget cap | User Preferences | S03 — DELIVERED (budget field: increment 1.5) |
 | `/settings` | POST | `src/preferences/http/settings-handler.ts` | Validate + `upsert` preferences (dietary + budget euros→cents); re-render with "Settings saved" | User Preferences | S03 — DELIVERED |
 | CLI: `bun run scrape.ts` | — | `src/scraping/scraper-runner.ts` | Invoke `ScrapingService`; one-shot, exit on completion | Catalogue Scraping | S01 — DELIVERED |
 
-**HTTP server entry point:** `src/server.ts` — registers all handlers with `Bun.serve` (see ADR-004); composition root: creates Drizzle client, runs SQLite WAL probe (`src/shared/db.ts`), then registers routes. Adapters that fail their probe cause the server to log `health.startup.refused` and exit with code 1.
+**HTTP server entry point:** `src/server.ts` — registers all handlers with `Bun.serve` (see ADR-004); composition root: creates Drizzle client, runs SQLite WAL probe (`src/shared/db.ts`), then registers routes. Adapters that fail their probe cause the server to log `health.startup.refused` and exit with code 1. The recipe lookup is injected via `config.recipeSource` — prod defaults to `new ChefkochRecipeSource()`, tests pass a `FakeRecipeSource` so the suite never hits the network.
+
+**Testing convention (ephemeral ports):** `createServer` binds to an OS-assigned ephemeral port (port `0`) and returns the bound port, so the acceptance suite runs servers concurrently without port collisions (step 08-07 — eliminated the prior port-collision flake; the suite is now deterministic).
 
 ---
 
@@ -581,18 +578,16 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `CatalogueFetcher` | `edeka-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | FUTURE — not implemented; Edeka blocked by Akamai Bot Manager | Yes: Edeka catalogue |
 | `CatalogueFetcher` | `v-markt-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | Delivered S02 | Yes: V-Markt catalogue |
 | `CatalogueExtractor` | `haiku-catalogue-extractor.ts` | Anthropic SDK (claude-haiku-4-5) | Catalogue Scraping | Delivered S02 | Yes: Anthropic API |
-| `RecipeSearchClient` | `brave-search-client.ts` | `Bun.fetch` + Brave REST API | Recipe Matching | `recipe-source-probe.ts` — API key + response shape | Yes: api.search.brave.com |
-| `RecipeFetcher` | `chefkoch-recipe-fetcher.ts` | `Bun.fetch` + JSON-LD parse | Recipe Matching | `recipe-source-probe.ts` — JSON-LD `@type: Recipe` check | Yes: chefkoch.de |
+| `RecipeSource` | `chefkoch-recipe-source.ts` (prod) / `FakeRecipeSource` (tests) | `Bun.fetch` + Chefkoch site-search + JSON-LD parse | Recipe Matching | SPIKE-02 closure probe (3/3 live); `find()` returns null on shape change | Yes: chefkoch.de (`suche.php` + recipe pages) |
 
 **External integrations requiring contract tests (handoff annotation for platform-architect):**
-- Brave Search API (REST): consumer-driven contracts via Pact-JS in CI acceptance stage — detect breaking changes in `/web/search` response shape before production.
-- chefkoch.de (schema.org JSON-LD): substrate probe is the primary guard; consider HTTP recording fixture tests (e.g., `nock` or Bun fetch mock) to detect JSON-LD schema drift in CI.
+- chefkoch.de (site-search HTML + schema.org JSON-LD): the single `RecipeSource` port is the seam; `FakeRecipeSource` keeps the suite off the network. `ChefkochRecipeSource` is validated by the SPIKE-02 closure probe; consider HTTP recording fixture tests (e.g., `nock` or Bun fetch mock) to detect site-search / JSON-LD schema drift in CI. (Brave dropped at SPIKE-02 closure — no external API key.)
 
 ---
 
 ### Dietary Filter Enforcement
 
-The dietary restriction is enforced as a single invariant via the **Shared Kernel function** `isCompatible(tags: DietaryTag[], restriction: DietaryRestriction): boolean` in `src/shared/dietary.ts`. This pure function is the sole point of truth for compatibility logic. Three consumers (Discount dashboard at `GET /`, `GeneratePlan` in `plan-service.ts`, and recipe ingredient display in `recipe-handler.ts`) all import and call `isCompatible()` — they never re-implement the predicate. The `DietaryRestriction` value is always sourced from `UserPreferencesRepository.get()` at call time; no consumer caches or hardcodes the restriction. The application boundary invariant is: **no `DiscountItem` may appear in a generated plan, a dashboard listing, or a recipe ingredient highlight unless `isCompatible(item.dietary_tags, preferences.dietary_restrictions)` returns `true`**. Enforcement layers: (1) `isCompatible()` as Shared Kernel (structural — wrong predicate becomes a compile error); (2) import-linter rule forbidding dietary filtering logic outside `src/shared/dietary.ts` (static enforcement); (3) property-based test on `isCompatible()` covering all `DietaryTag × DietaryRestriction` combinations (behavioral — mutation-tested). The dietary classifier (keyword → `DietaryTag[]`) runs exclusively at scrape time in `src/scraping/adapters/catalogue-normalizer.ts` and is a separate responsibility from the compatibility predicate.
+The dietary restriction is enforced as a single invariant via the **Shared Kernel function** `isCompatible(tags: DietaryTag[], restriction: DietaryRestriction): boolean` in `src/shared/dietary.ts`. This pure function is the sole point of truth for compatibility logic. Two consumers (Discount dashboard at `GET /` and `GeneratePlan` in `plan-service.ts`) import and call `isCompatible()` — they never re-implement the predicate. The recipe detail view (`recipe-handler.ts`) does NOT call `isCompatible()` directly (as-shipped): it highlights ingredients against the current week's discount items, which are already dietary-filtered upstream by `DiscountService` before they reach the highlighter (`src/recipe/ingredient-match.ts`, a pure token-overlap heuristic). The `DietaryRestriction` value is always sourced from `UserPreferencesRepository.get()` at call time; no consumer caches or hardcodes the restriction. The application boundary invariant is: **no `DiscountItem` may appear in a generated plan or a dashboard listing unless `isCompatible(item.dietary_tags, preferences.dietary_restrictions)` returns `true`**; the recipe highlighter inherits that guarantee by only ever seeing already-filtered week items. Enforcement layers: (1) `isCompatible()` as Shared Kernel (structural — wrong predicate becomes a compile error); (2) import-linter rule forbidding dietary filtering logic outside `src/shared/dietary.ts` (static enforcement); (3) property-based test on `isCompatible()` covering all `DietaryTag × DietaryRestriction` combinations (behavioral — mutation-tested). The dietary classifier (keyword → `DietaryTag[]`) runs exclusively at scrape time in `src/scraping/adapters/catalogue-normalizer.ts` and is a separate responsibility from the compatibility predicate.
 
 **Application boundary (plain language):** In `GeneratePlan`, filter `DiscountItem[]` with `isCompatible()` **before** building the candidate set for meal assignment — not after. No meal is assigned without passing the predicate. This is an unconditional pre-condition, not a post-filter.
 
@@ -627,14 +622,12 @@ flowchart TB
 
     subgraph Adapters["Secondary Adapters"]
         SQLRepos["SQLite repositories\n(one per BC, Drizzle ORM)"]
-        BraveClient["brave-search-client\nsrc/recipe/adapters/"]
-        ChefkochFetcher["chefkoch-recipe-fetcher\nsrc/recipe/adapters/"]
+        ChefkochSource["ChefkochRecipeSource\nsrc/recipe/adapters/\n(RecipeSource port)"]
         AldiAdapter["aldi-sud-catalogue-fetcher\nsrc/scraping/adapters/"]
     end
 
     CLI["OS cron / systemd\n(exec weekly)"]
     ExtSQLite[("SQLite DB\ndiscount-hunt.db")]
-    ExtBrave["Brave Search API\n[External]"]
     ExtChefkoch["chefkoch.de\n[External]"]
     ExtProspekt["prospekt.aldi-sued.de\n[External]"]
 
@@ -646,7 +639,6 @@ flowchart TB
 
     DS -->|"calls"| DietaryFn
     PS -->|"calls"| DietaryFn
-    RH -->|"calls"| DietaryFn
 
     DS -->|"persists via"| SQLRepos
     PS -->|"persists via (one transaction)"| SQLRepos
@@ -655,13 +647,11 @@ flowchart TB
     PrefS -->|"reads/writes via"| SQLRepos
     Scraper -->|"persists via"| SQLRepos
 
-    RS -->|"searches via"| BraveClient
-    RS -->|"parses via"| ChefkochFetcher
+    RS -->|"find() via RecipeSource port"| ChefkochSource
     Scraper -->|"fetches via"| AldiAdapter
 
     SQLRepos -->|"executes SQL against"| ExtSQLite
-    BraveClient -->|"GET /web/search"| ExtBrave
-    ChefkochFetcher -->|"GET recipe page"| ExtChefkoch
+    ChefkochSource -->|"GET suche.php + recipe page"| ExtChefkoch
     AldiAdapter -->|"HEAD + GET JSON pages"| ExtProspekt
 
     CLI -->|"exec bun run scrape.ts"| Scraper
@@ -675,9 +665,9 @@ flowchart TB
 
 ### Slice → Component Map
 
-*Last updated: 2026-07-14 — S01 + S02 DELIVERED*
+*Last updated: 2026-07-15 — S01 + S02 + S03 + inc-1.5 + S04 + UI + bugfix(07) + S05 DELIVERED*
 
-| Component | First slice | S02 Status | Incremental additions |
+| Component | First slice | Status | Incremental additions |
 |---|---|---|---|
 | `src/scraping/scraper-runner.ts` | S01 | IMPLEMENTED | S03: no change expected |
 | `src/scraping/scraping-service.ts` | S01 | IMPLEMENTED | S03: no change expected |
@@ -696,15 +686,15 @@ flowchart TB
 | `src/savings/http/savings-handler.ts` | S01 (current week only) | IMPLEMENTED (S01 scope) | S04: historical list + month-to-date |
 | `src/savings/savings-service.ts` | S01 | IMPLEMENTED | S04: `getHistory()` + month aggregation |
 | `src/savings/adapters/sqlite-savings-repository.ts` | S01 | IMPLEMENTED | S04: history queries |
-| `src/preferences/http/settings-handler.ts` | S03 | PLANNED | — |
-| `src/preferences/preferences-service.ts` | S03 | PLANNED | — |
-| `src/preferences/adapters/sqlite-preferences-repository.ts` | S03 | PLANNED | — |
-| `src/recipe/http/recipe-handler.ts` | S05 | PLANNED | — |
-| `src/recipe/recipe-service.ts` | S01 (stub: hardcoded URL) | IMPLEMENTED (stub) | S05: real Brave + Chefkoch integration |
-| `src/recipe/adapters/brave-search-client.ts` | S05 | PLANNED | — |
-| `src/recipe/adapters/chefkoch-recipe-fetcher.ts` | S05 | PLANNED | — |
-| `src/recipe/adapters/sqlite-recipe-repository.ts` | S01 (stub cache) | IMPLEMENTED (stub) | S05: TTL refresh + `markDead` |
-| `src/recipe/probes/recipe-source-probe.ts` | S05 | PLANNED | — |
+| `src/preferences/http/settings-handler.ts` | S03 | IMPLEMENTED | S03: GET/POST `/settings`; inc-1.5: budget field |
+| `src/preferences/preferences-service.ts` | S03 | IMPLEMENTED | — |
+| `src/preferences/adapters/sqlite-user-preferences-repository.ts` | S03 | IMPLEMENTED | inc-1.5: `budget_cap_cents` column |
+| `src/recipe/http/recipe-handler.ts` | S05 | IMPLEMENTED | S05: `GET /plan/{meal_id}` detail view + ingredient↔discount highlighting + fallbacks |
+| `src/recipe/recipe-service.ts` | S05 | IMPLEMENTED | S05: cache-first, 7-day TTL, refresh-on-expiry, mark-source-dead; depends on `RecipeSource` port |
+| `src/recipe/ports/recipe-source.ts` | S05 | IMPLEMENTED | S05: single `RecipeSource` port (testability seam); replaces the two planned Brave/fetcher ports |
+| `src/recipe/adapters/chefkoch-recipe-source.ts` | S05 | IMPLEMENTED | S05: live Chefkoch site-search + JSON-LD; no API key (Brave dropped at SPIKE-02) |
+| `src/recipe/ingredient-match.ts` | S05 | IMPLEMENTED | S05: pure display-only ingredient↔discount match heuristic (extracted step 08-08) |
+| `src/recipe/adapters/sqlite-recipe-repository.ts` | S05 | IMPLEMENTED | S05: `recipes` table, TTL refresh + `markDead` |
 | `src/shared/dietary.ts` | S01 | IMPLEMENTED | S03: full restriction enum; S05: tags cross-checked against recipe ingredients |
 | `src/shared/schema.ts` | S01 | IMPLEMENTED | Each slice adds table definitions as new tables are introduced |
 | `src/shared/db.ts` | S01 | IMPLEMENTED | — |
@@ -727,3 +717,31 @@ flowchart TB
 | D35 | Composition root | `src/server.ts` — wire → probe → register routes | Implements "wire then probe then use" invariant (Principle 13); adapters that fail probe cause `health.startup.refused` + process exit code 1 before any route is registered |
 | D36 | Recipe rotation window | 4-week exclusion — `GeneratePlan` excludes any `recipe_id` used in the last 28 days | Prevents weekly repetition of the same recipe when the same ingredient recurs on sale; enforced in `plan-service.ts` via `getRecentRecipeIds(since)` pre-filter; window is a named constant (`RECIPE_ROTATION_DAYS = 28`) for future tunability |
 | D37 | Plan generation contract shape | `generatePlan(weekStart, preferences): MealPlan` — pure computation returning a `MealPlan` value; `savePlan(plan): void` is the only impure function (writes to DB + savings_log in one transaction) | Plan-value pattern (Principle 12): `generatePlan` cannot silently write; the bug class "preview wrote to savings_log" becomes structurally impossible |
+
+---
+
+## Wave: DELIVER / [REF] Delivery Reconciliation (2026-07-15)
+
+*Reconciles the design SSOT above with what shipped through the DELIVER wave. Design decisions D1–D37 stand; the notes below record supersessions, closures, and fixes discovered during delivery.*
+
+### Slice / spike status at close
+
+| Item | Status | Notes |
+|------|--------|-------|
+| SLICE-01 (Walking Skeleton) | DELIVERED | Aldi Süd scrape, feed, plan, savings |
+| SLICE-02 (Multi-store + staleness) | DELIVERED | V-Markt via Haiku extraction; Edeka dropped (Akamai) |
+| SLICE-03 (Dietary preference) + inc-1.5 (Budget cap warn) | DELIVERED | Live dashboard filter + snapshotted `dietary_filter`/`budget_cap_cents` |
+| SLICE-04 (Savings history UI) | DELIVERED | This-week breakdown + month-to-date + "unavailable" |
+| SLICE-05 (Recipe integration) | **DELIVERED** | `GET /plan/{meal_id}`; single `RecipeSource` port; Chefkoch live + `FakeRecipeSource` tests; cache-first 7-day TTL; ingredient↔discount highlighting; fallbacks |
+| SPIKE-02 (Recipe source) | **CLOSED (2026-07-15)** | Chefkoch site-search + JSON-LD, 3/3 live. **Brave dropped — no external API key.** See `spike/findings-02-recipe-source.md` |
+
+### Reconciliations vs. the design SSOT
+
+- **D7 / D14 / D19 Brave references — RESOLVED.** The DISCUSS/DESIGN design assumed Brave Search → top-result URL → Chefkoch JSON-LD. SPIKE-02 closure replaced the two-adapter design (`RecipeSearchClient` + `RecipeFetcher`) with a **single `RecipeSource` port** and one live adapter `ChefkochRecipeSource` (Chefkoch's own `suche.php` site-search). The open question "Brave Search API key validation" (OQ-1 in the 2026-07-14 evolution doc) is reconciled as **RESOLVED — Brave eliminated, no key required.**
+- **D36 (4-week recipe rotation / `getRecentRecipeIds`) — DEFERRED, not shipped in SLICE-05.** The design-slice-05 doc (§0) scopes rotation out of this slice; `getRecentRecipeIds` is not on the `MealPlanRepository` port today. D36 remains a future increment.
+- **Empty-plan freshness fix (bugfix phase 07).** Bug: "plan says no discounts while discounts are listed." Root cause: `getOrGenerateCurrentWeekPlan` persisted an EMPTY plan, and get-or-create then returned that stale empty plan forever while the dashboard queried live data. Fix in `plan-service.ts`: **never persist an empty plan** (`items.length > 0` guard) — empty plans are transient and re-query on the next read; non-empty plans stay frozen (the weekly-commitment invariant is preserved). Also removed a bogus €0 savings row. Regression test D2 was re-scoped (it had encoded the buggy behavior). Verified fixed for `none` / `vegetarian` / `vegan`.
+- **Ephemeral-port testing convention (step 08-07).** `createServer` binds port `0` and returns the bound port; the acceptance suite runs servers concurrently without port collisions. Eliminated the prior port-collision flake — the suite is now deterministic.
+
+### Data model at close
+
+`recipes` table is live (`src/recipe/adapters/sqlite-recipe-repository.ts`, `cached_content IS NOT NULL`, `cached_at` + 7-day TTL). Full table set: `discount_items`, `meal_plans` (carries snapshotted `dietary_filter` + `budget_cap_cents`), `recipes`, `savings_log`, `scrape_jobs`, `user_settings`.

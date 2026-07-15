@@ -7,9 +7,19 @@
 
 ## Binary Verdict
 
-**EXTRACTION WORKS. SEARCH UNVALIDATED (no Brave key available).**
+**EXTRACTION WORKS. SEARCH VALIDATED via Chefkoch site-search (no API key). SPIKE-02 CLOSED (2026-07-15).**
 
-The riskier half — JSON-LD Recipe extraction from Chefkoch — is fully validated: 3/3 extractions succeeded with name, ingredients, steps, and source URL. The search half (Brave API returning Chefkoch URLs for German queries) was mocked and remains an open risk.
+The riskier half — JSON-LD Recipe extraction from Chefkoch — is fully validated: 3/3 extractions succeeded with name, ingredients, steps, and source URL. The search half was re-probed on 2026-07-15 using Chefkoch's own site search (`suche.php`) instead of Brave — **3/3 German ingredient queries returned a valid Chefkoch recipe URL whose page yielded a Recipe JSON-LD** (name + 11–14 ingredients + steps + source). **No Brave key is required.**
+
+### SPIKE-02 closure probe (2026-07-15)
+
+| Query | Search HTTP | Top recipe | Extraction |
+|-------|-------------|-----------|------------|
+| Rote Linsen vegetarisch | 200 | Indische Linsensuppe | ✓ 14 ingredients + steps |
+| Zucchini vegetarisch | 200 | Zucchini-Möhren-Puffer | ✓ 12 ingredients + steps |
+| Kürbis Suppe vegetarisch | 200 | Kürbis-Mango-Suppe | ✓ 11 ingredients + steps |
+
+**Decision for SLICE-05: drop Brave. Use Chefkoch site-search → first `/rezepte/<id>/<slug>.html` link → JSON-LD extraction.** No external API key, no bot protection. Behind a `RecipeSource` port so tests use a fake (never hit the network).
 
 ---
 

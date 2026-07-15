@@ -2,7 +2,7 @@
   "roadmap": {
     "project_id": "discount-hunt",
     "created_at": "2026-07-13T20:49:27Z",
-    "total_steps": 28
+    "total_steps": 38
   },
   "phases": [
     {
@@ -603,6 +603,216 @@
             "06-01"
           ],
           "implementation_notes": "Refactor each handler so it builds ONLY its inner body markup and returns renderPage({title, activeNav, body}). Preserve EVERY existing asserted string/attribute verbatim (data-*, marker texts, hrefs) — the refactor must not drop them. Discount feed: wrap each rendered item in <div class=\"card\" data-item-card>...</div> inside a <div class=\"card-grid\">, keeping escapeHtml(item.name) and existing price/staleness markup. Keep per-store sections + empty-state + staleness warnings intact. Plan/settings/savings keep their tables/forms as the body, now inside the shell. Author tests/acceptance/discount-hunt/ui-shell.test.ts: seed minimal data, start createServer (fresh port range e.g. 5600+random), fetch each of the four GET routes, assert class=\"site-nav\" + the four hrefs + '<style' present on each; on GET / assert data-item-card present for a seeded item. Then run FULL bun test — everything green."
+        }
+      ]
+    },
+    {
+      "id": "07",
+      "name": "Bugfix: empty plan must not cache-stale (no-discounts shown while discounts exist)",
+      "steps": [
+        {
+          "id": "07-01",
+          "name": "Do not persist an empty plan; regenerate on read until real items exist",
+          "criteria": [
+            "Given a plan generated on an empty DB, when discounts later arrive and GET /plan (or POST /plan/generate) runs, then the plan shows real meals and NOT 'No discounts available'",
+            "An empty (no-compatible-items) plan is NOT written to meal_plans and creates NO savings_log row",
+            "A non-empty plan remains idempotent (get-or-create returns the same saved plan; savings_log still one row/week)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/plan-freshness.test.ts",
+          "scenario_name": "@driving_port — empty plan does not cache-stale once discounts arrive",
+          "files_to_modify": [
+            "src/meal-planning/plan-service.ts",
+            "tests/acceptance/discount-hunt/plan-freshness.test.ts"
+          ],
+          "deps": [
+            "05-03"
+          ],
+          "implementation_notes": "Root cause: getOrGenerateCurrentWeekPlan (plan-service.ts ~110-122) persists an empty plan (items.length===0 => all-null meals) and get-or-create returns it forever, so once discounts arrive the plan still says 'No discounts available' while the live dashboard shows them; it also writes a 0-savings row. Fix: in getOrGenerateCurrentWeekPlan, after generatePlan, only savePlan when the plan has >=1 compatible item (items.length>0). If items.length===0, return the generated (UNSAVED) plan for display without saving. This keeps empty plans non-sticky (next read re-queries) and prevents 0-savings rows. Do NOT add a regenerate endpoint or savings-replace (out of scope; savePlan stays insert-only). Non-empty plans unchanged (still saved + idempotent). Regression AT in a new file plan-freshness.test.ts: (1) empty DB, POST /plan/generate, then insert discount_items directly via db (validUntil in current week, mirror multi-store seed), then GET /plan -> asserts a real item name present AND 'No discounts available' absent; (2) idempotency: seed items, GET /plan twice -> same plan (same estimated-savings), and assert exactly one savings_log row for the week (SELECT COUNT). Keep all existing empty-state/no-data ATs (03-07 no-data, scenario 6 restriction-empty) green — they read once within a session and still show the correct message from a freshly generated (unsaved) empty plan."
+        },
+        {
+          "id": "07-02",
+          "name": "Complete the fix: empty plans never persist (all restrictions); re-scope D2",
+          "criteria": [
+            "Empty plan is never persisted regardless of restriction (guard = items.length > 0); a vegetarian user whose plan was empty sees compatible discounts once they arrive",
+            "Switching restriction on an empty-result plan refreshes it (meat-only DB + vegetarian empty -> switch to none -> plan now shows meat)",
+            "Scenario 5 (NON-empty vegetarian plan stays meat-free after switching to none) remains green — non-empty plans still freeze"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/plan-freshness.test.ts",
+          "scenario_name": "@driving_port — empty plans refresh for all restrictions; non-empty stays frozen",
+          "files_to_modify": [
+            "src/meal-planning/plan-service.ts",
+            "tests/acceptance/discount-hunt/plan-freshness.test.ts",
+            "tests/acceptance/discount-hunt/dietary-preferences.test.ts"
+          ],
+          "deps": [
+            "07-01"
+          ],
+          "implementation_notes": "07-01's guard (items.length>0 || dietaryFilter!=='none') only fixed the 'none' case; a restriction user's empty plan still cache-stales (reproduced: veg user, empty->veg discounts arrive, dashboard shows item, plan stays 'No compatible meals found'). Root principle (advisor): an empty plan is a transient 'couldn't build one' state (nothing to freeze); a non-empty plan is a durable weekly commitment (frozen until next week). The split is exactly items.length===0. Fix: change the guard to save ONLY when items.length>0 (drop the dietaryFilter clause). Empty plans (any restriction) are not persisted -> next read re-queries with the CURRENT restriction, and the empty-state discriminator still shows the right message from the fresh plan's snapshot (which equals the live setting). Re-scope D2 in dietary-preferences.test.ts: the old D2 asserted an empty vegetarian plan STAYS 'No compatible meals found' after switching to none — that is the bug, contradicted by the user report. Replace it with the CORRECTED behavior: meat-only DB + vegetarian (empty) -> switch to none -> GET /plan now SHOWS the meat item (plan refreshed). Add a note in the test that the old 'discriminator reads live vs snapshot' mutant is eliminated by construction (empty plans no longer persist, so a fresh empty plan's snapshot always equals the live setting) — coverage not dropped. Extend plan-freshness.test.ts with the VEGETARIAN data-arrival case (veg user, empty -> veg item arrives -> plan shows it). Scenario 5 (non-empty veg plan frozen after switching to none) MUST stay green — do NOT touch the non-empty/idempotent path. This is acceptance-designer test-intent work + a one-line crafter guard change."
+        }
+      ]
+    },
+    {
+      "id": "08",
+      "name": "SLICE-05: Recipe integration (Chefkoch site-search, RecipeSource port, /plan/{meal_id} detail)",
+      "steps": [
+        {
+          "id": "08-01",
+          "name": "recipes table + schema + guarded migration + SQLiteRecipeRepository",
+          "criteria": [
+            "recipes table exists (id, query_key UNIQUE, name, cached_content JSON, source_url, source_url_valid, cached_at); guarded migration does not crash existing DB",
+            "SQLiteRecipeRepository: getByQuery(queryKey), cache(recipe), markSourceDead(id) round-trip; markSourceDead preserves cached_content",
+            "cached_content NOT NULL enforced"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@driving_port — recipe detail (schema/repo prerequisite)",
+          "files_to_modify": [
+            "src/shared/schema.ts",
+            "src/shared/db.ts",
+            "src/recipe/adapters/sqlite-recipe-repository.ts",
+            "src/recipe/adapters/sqlite-recipe-repository.test.ts"
+          ],
+          "deps": [
+            "05-03"
+          ],
+          "implementation_notes": "Add recipes table to schema.ts + CREATE_RECIPES in db.ts (CREATE TABLE IF NOT EXISTS; no ALTER needed since new table, but keep the CREATE idempotent). Replace the __SCAFFOLD__ SQLiteRecipeRepository with a real Drizzle impl: getByQuery(queryKey) returns the row or null; cache(recipe) upsert by query_key; markSourceDead(id) sets source_url_valid=0 keeping cached_content. query_key = meal.name.toLowerCase().trim(). Colocated real-sqlite tests (createDb). Remove the __SCAFFOLD__ export."
+        },
+        {
+          "id": "08-02",
+          "name": "RecipeSource port + FakeRecipeSource + ChefkochRecipeSource + RecipeService (cache-first, TTL) + createServer injection",
+          "criteria": [
+            "RecipeSource port find(query):Promise<FetchedRecipe|null>; FakeRecipeSource (tests) + ChefkochRecipeSource (live)",
+            "RecipeService.getRecipeForMeal(name): cache-first within 7-day TTL; on miss/expiry calls RecipeSource.find, caches, returns; null when source finds nothing; on expiry+source-null marks source dead and returns stale cached",
+            "createServer accepts optional recipeSource (prod default new ChefkochRecipeSource); no network in tests"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@driving_port — recipe service cache-first (unit) + injection",
+          "files_to_modify": [
+            "src/recipe/ports/recipe-source.ts",
+            "src/recipe/adapters/chefkoch-recipe-source.ts",
+            "src/recipe/recipe-service.ts",
+            "src/recipe/recipe-service.test.ts",
+            "src/server.ts"
+          ],
+          "deps": [
+            "08-01"
+          ],
+          "implementation_notes": "Define RecipeSource port (find(query:string):Promise<FetchedRecipe|null>; FetchedRecipe={name,ingredients:string[],steps:string[],sourceUrl:string}). ChefkochRecipeSource implements the SPIKE-02 flow: GET https://www.chefkoch.de/suche.php?suche=<q> (Chrome UA) -> first /rezepte/<id>/<slug>.html link -> fetch -> extract <script type=application/ld+json> Recipe (name, recipeIngredient[], recipeInstructions HowToStep, source=url??mainEntityOfPage). DO NOT unit-test the live adapter against the network (validated by the SPIKE probe); optionally add a PARSE unit test over a saved HTML fixture string (no fetch). Replace the __SCAFFOLD__ RecipeService with cache-first+TTL(7d via cached_at) logic using RecipeRepository + RecipeSource; getRecipeForMeal(name). Unit-test RecipeService cache-hit / miss->fetch->cache / expiry-refresh / source-null->markDead+stale using FakeRecipeSource + real sqlite repo. createServer({port,dbPath,recipeSource?}): default new ChefkochRecipeSource(); pass into RecipeService. Remove __SCAFFOLD__ exports."
+        },
+        {
+          "id": "08-03",
+          "name": "RecipeHandler + GET /plan/{meal_id} route + detail view",
+          "criteria": [
+            "GET /plan/1-lunch renders recipe name, ingredients, steps, 'Open original recipe' link (target=_blank rel=noopener to sourceUrl), 'Back to meal plan' (href=/plan)",
+            "GET /plan and POST /plan/generate still behave as before; GET /plan/<bad-id> that is not a real meal -> 404 (not 500)",
+            "All interpolated recipe text escaped (XSS)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@driving_port — recipe detail renders / routing intact / xss",
+          "files_to_modify": [
+            "src/recipe/http/recipe-handler.ts",
+            "src/server.ts",
+            "src/meal-planning/plan-service.ts"
+          ],
+          "deps": [
+            "08-02"
+          ],
+          "implementation_notes": "RecipeHandler.handleGet(request, mealId): parse mealId 'day-slot'; load current plan (via PlanService or MealPlanRepository.findByWeek(currentWeekMonday())); find the meal by day+slot; if none -> 404. Resolve recipe via RecipeService.getRecipeForMeal(meal.name). Render via renderPage(activeNav='plan'): name, ingredient <ul>, steps <ol>, <a target=_blank rel=noopener href=sourceUrl>Open original recipe</a>, <a href=/plan>Back to meal plan</a>. escapeHtml all text. server.ts: add GET matcher for /plan/<id> AFTER the exact /plan and /plan/generate checks (e.g. method GET && pathname.startsWith('/plan/') && pathname!=='/plan/generate'); extract mealId = pathname.slice('/plan/'.length). May need a PlanService method to expose the current plan's meals for lookup (add getCurrentWeekPlan or reuse getOrGenerateCurrentWeekPlan read-only — do NOT regenerate/save here; reuse existing)."
+        },
+        {
+          "id": "08-04",
+          "name": "Ingredient-discount highlighting",
+          "criteria": [
+            "An ingredient matching a discount item in this week's feed shows data-on-sale with store + sale price; non-matching ingredients have no badge"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@driving_port — ingredient highlighting",
+          "files_to_modify": [
+            "src/recipe/http/recipe-handler.ts"
+          ],
+          "deps": [
+            "08-03"
+          ],
+          "implementation_notes": "Add a pure annotate(ingredients, weekDiscountItems) in the handler layer: for each recipe ingredient string, if it token-contains a discount item name (case-insensitive substring/keyword match — display-only heuristic, honest about accuracy), render a data-on-sale badge with escapeHtml(store) + formatEuros(salePrice). Fetch this week's items via the existing discount service/repo (getByWeek current week, restriction none for display or current restriction — pick current-week live feed). Non-matching ingredients: plain <li>."
+        },
+        {
+          "id": "08-05",
+          "name": "Fallbacks: dead-source unavailable notice + no-match search link",
+          "criteria": [
+            "Cached recipe whose source is marked unreachable -> detail shows cached content + an 'unavailable' notice; cached ingredients still render",
+            "No recipe match (source returns null, nothing cached) -> detail shows the meal ingredient(s) + a pre-filled manual web-search link; Back-to-plan present; no crash"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@driving_port — dead-source + no-match fallbacks",
+          "files_to_modify": [
+            "src/recipe/http/recipe-handler.ts",
+            "src/recipe/recipe-service.ts"
+          ],
+          "deps": [
+            "08-03"
+          ],
+          "implementation_notes": "Dead-source: when the resolved recipe has source_url_valid=false, render an 'unavailable' notice (reuse class staleness-warning + word 'unavailable') alongside the cached ingredients/steps. No-match: when RecipeService returns null, render the meal name's ingredient(s) (the discount item name at minimum) + <a target=_blank rel=noopener href='https://www.chefkoch.de/suche.php?suche=<encodeURIComponent(meal.name)>'>search</a>. Both keep Back-to-plan. Coordinate with 08-02's re-validation seam (source_url_valid)."
+        },
+        {
+          "id": "08-06",
+          "name": "Link meal titles on /plan to /plan/{day}-{slot}",
+          "criteria": [
+            "GET /plan renders each meal name as <a href='/plan/{day}-{slot}'>; empty-state / no-data views unchanged"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@driving_port — meal titles link to detail",
+          "files_to_modify": [
+            "src/meal-planning/http/plan-handler.ts"
+          ],
+          "deps": [
+            "08-03"
+          ],
+          "implementation_notes": "In plan-handler renderPlanHtml populated branch, wrap escapeHtml(meal.name) in <a href='/plan/${meal.day}-${meal.slot}'>. Keep data-meal-slot and all existing markers. Do NOT alter empty-state renderers."
+        },
+        {
+          "id": "08-07",
+          "name": "Eliminate test port-collision flake via ephemeral ports",
+          "criteria": [
+            "createServer returns the actual bound port (server.port); passing port:0 yields an OS-assigned free port",
+            "Every acceptance test uses port:0 and reads the returned port — no hardcoded port bands remain",
+            "Full bun test is deterministically green across repeated runs (no cross-file port collisions)"
+          ],
+          "test_file": "tests/acceptance/discount-hunt/recipe-detail.test.ts",
+          "scenario_name": "@infrastructure — deterministic ephemeral ports (no collisions)",
+          "files_to_modify": [
+            "src/server.ts",
+            "tests/acceptance/discount-hunt/walking-skeleton.test.ts",
+            "tests/acceptance/discount-hunt/multi-store.test.ts",
+            "tests/acceptance/discount-hunt/dietary-preferences.test.ts",
+            "tests/acceptance/discount-hunt/budget-cap.test.ts",
+            "tests/acceptance/discount-hunt/savings-history.test.ts",
+            "tests/acceptance/discount-hunt/ui-shell.test.ts",
+            "tests/acceptance/discount-hunt/plan-freshness.test.ts",
+            "tests/acceptance/discount-hunt/recipe-detail.test.ts"
+          ],
+          "deps": [
+            "08-06"
+          ],
+          "implementation_notes": "Root cause: AT files hardcode overlapping port bands (budget-cap/savings-history/recipe-detail/ui-shell all overlap 5300-5900), so ~1/6 concurrent full-suite runs collide (a server binds a port another file uses -> fetch hits the wrong server/DB -> flaky non-recipe failure). Fix: (1) PRODUCTION src/server.ts: Bun.serve with port:0 assigns a free ephemeral port; return the actual port from createServer -> change `return { stop: () => server.stop() }` to `return { stop: () => server.stop(), port: server.port }`. (The import.meta.main path keeps its fixed PORT; unaffected.) (2) TESTS: in EVERY acceptance test file, replace `serverPort = <BASE> + Math.floor(Math.random()*99)` + `createServer({port: serverPort, dbPath})` with `const s = await createServer({port: 0, dbPath}); server = s; serverPort = s.port;` (read the assigned port). Keep all `http://localhost:${serverPort}` usages. Remove all hardcoded numeric port bands. Do NOT change any assertion. (3) Verify: run `bun test` at least 5 times -> 0 fail every time. Update ServerConfig/type only if strictly needed (port stays a number; 0 is valid); prefer not editing types.ts — if createServer's return type is inline, add port there. This is an @infrastructure step (no business-behavior change); the recipe-detail test_file is a nominal anchor."
+        },
+        {
+          "id": "08-08",
+          "name": "Extract + unit-test the ingredient-match heuristic (close B13)",
+          "criteria": [
+            "The ingredient↔discount match heuristic is a pure, exported function with unit tests",
+            "Tests cover the §9 documented cases: exact match, compound ('Rote Linsen' vs item 'Linsen'), plural, and the short-token guard (len<4 does not match, e.g. 'Reis' not matching inside 'Preiselbeeren' / 'Ei' not in 'Eis')",
+            "recipe-detail highlighting ATs stay green (behavior unchanged — pure refactor + tests)"
+          ],
+          "test_file": "src/recipe/ingredient-match.test.ts",
+          "scenario_name": "unit — ingredient-discount match heuristic edge cases",
+          "files_to_modify": [
+            "src/recipe/ingredient-match.ts",
+            "src/recipe/ingredient-match.test.ts",
+            "src/recipe/http/recipe-handler.ts"
+          ],
+          "deps": [
+            "08-07"
+          ],
+          "implementation_notes": "Review WARNING (design B13): the pure annotate/tokensOverlap heuristic in recipe-handler.ts (~lines 62-96) has documented failure modes (§9: plurals, compounds, short-token over-match) but zero unit tests. Extract the pure matching logic into src/recipe/ingredient-match.ts: export a pure function e.g. matchIngredient(ingredient: string, weekItems: {store,name,salePrice,...}[]): {store,salePrice}|null (and/or the tokensOverlap predicate), preserving CURRENT behavior exactly (length>=4 token guard, case-insensitive, first-match-wins). Re-import it in recipe-handler.ts annotate (behavior identical - the recipe-detail highlighting ATs must stay green). Add src/recipe/ingredient-match.test.ts: table-driven/PBT unit tests documenting actual behavior for: exact ('Rote Linsen' matches item 'Rote Linsen'), compound/substring ('Rote Linsen' ingredient vs discount item named 'Linsen' -> matches by containment), the length>=4 guard prevents short-token false positives ('Ei' does not match 'Eis'; 'Reis' vs 'Preiselbeeren' -> assert the ACTUAL documented outcome, honestly - if the heuristic over-matches, the test documents that as known behavior with a comment, do NOT silently 'fix' the heuristic beyond what design specifies), and no-match returns null. This is a pure refactor + characterization tests; do NOT change highlighting behavior. Full bun test stays green."
         }
       ]
     }

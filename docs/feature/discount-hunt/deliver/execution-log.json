@@ -610,6 +610,237 @@
       "s": "EXECUTED",
       "d": "PASS",
       "t": "2026-07-14T21:05:53Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "FAIL",
+      "t": "2026-07-14T22:21:00Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "GREEN",
+      "s": "SKIPPED",
+      "d": "CHECKPOINT_PENDING: spec fix (items.length>0) breaks existing AT 03-08 D2 snapshot-discriminator; architect must choose between narrower guard (items.length>0 || dietaryFilter!=none) or re-scoping the D2 AT via nw-acceptance-designer. STOP-AND-FLAG raised.",
+      "t": "2026-07-14T22:23:27Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "COMMIT",
+      "s": "SKIPPED",
+      "d": "CHECKPOINT_PENDING: blocked by GREEN \u2014 no code change committed; working tree at baseline 151 pass.",
+      "t": "2026-07-14T22:23:27Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T22:28:02Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T22:28:30Z"
+    },
+    {
+      "sid": "07-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-14T22:29:18Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:02:36Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:03:30Z"
+    },
+    {
+      "sid": "07-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:04:35Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:40:31Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:41:50Z"
+    },
+    {
+      "sid": "08-01",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:42:16Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:43:16Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:44:49Z"
+    },
+    {
+      "sid": "08-02",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:45:14Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:50:44Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:52:35Z"
+    },
+    {
+      "sid": "08-03",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T05:53:00Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:03:44Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:03:44Z"
+    },
+    {
+      "sid": "08-04",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:03:44Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:05:00Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:05:00Z"
+    },
+    {
+      "sid": "08-05",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:05:00Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:10:30Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:10:30Z"
+    },
+    {
+      "sid": "08-06",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:10:31Z"
+    },
+    {
+      "sid": "08-07",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:19:46Z"
+    },
+    {
+      "sid": "08-07",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:21:48Z"
+    },
+    {
+      "sid": "08-07",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:22:18Z"
+    },
+    {
+      "sid": "08-08",
+      "p": "RED",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:37:28Z"
+    },
+    {
+      "sid": "08-08",
+      "p": "GREEN",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:38:17Z"
+    },
+    {
+      "sid": "08-08",
+      "p": "COMMIT",
+      "s": "EXECUTED",
+      "d": "PASS",
+      "t": "2026-07-15T06:38:52Z"
     }
   ]
 }
