@@ -62,6 +62,26 @@ export function isTaxonomyCategory(value: string): value is TaxonomyCategory {
   return (TAXONOMY_CATEGORIES as readonly string[]).includes(value);
 }
 
+/**
+ * Cross-cutting product tags — additive labels that span taxonomy categories
+ * (e.g. frozen fish is category "Meat & Fish" AND tag "Frozen"). An item carries
+ * ZERO OR MORE tags. Assigned by the categorisation context alongside the single
+ * food-type taxonomy_category; only members of TAGS are ever stored (unknowns are
+ * coerced/dropped). Tags do NOT replace or duplicate the taxonomy category.
+ */
+export type Tag = "Frozen" | "Organic" | "Vegan" | "Vegetarian" | "Alcoholic";
+
+/** The ONE canonical tag list. Consumers import this — never re-list the literals. */
+export const TAGS: readonly Tag[] = ["Frozen", "Organic", "Vegan", "Vegetarian", "Alcoholic"];
+
+/**
+ * Type guard for tag membership. Widens to `readonly string[]` for the same
+ * strict-mode reason as isTaxonomyCategory (readonly union `.includes` rejects `string`).
+ */
+export function isTag(value: string): value is Tag {
+  return (TAGS as readonly string[]).includes(value);
+}
+
 /** ISO date string representing the Monday of a week (e.g. "2026-07-13"). */
 export type WeekStart = string;
 
