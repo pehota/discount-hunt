@@ -11,7 +11,7 @@
  * Driven ports: SQLiteDiscountItemRepository
  */
 
-import type { NormalizedItem, WeekStart, DietaryRestriction } from "../shared/types.ts";
+import type { NormalizedItem, WeekStart, DietaryRestriction, TaxonomyCategory, Tag } from "../shared/types.ts";
 import type { SQLiteDiscountItemRepository, StoredDiscountItem } from "./adapters/sqlite-discount-item-repository.ts";
 
 export class DiscountService {
@@ -21,8 +21,13 @@ export class DiscountService {
     await this.discountItemRepository.register(item, scrapeJobId);
   }
 
-  async replaceStoreItems(store: string, items: NormalizedItem[], scrapeJobId: string): Promise<void> {
-    this.discountItemRepository.replaceStore(store, items, scrapeJobId);
+  async replaceStoreItems(
+    store: string,
+    items: NormalizedItem[],
+    scrapeJobId: string,
+    classifications?: { category: TaxonomyCategory; tags: Tag[] }[],
+  ): Promise<void> {
+    this.discountItemRepository.replaceStore(store, items, scrapeJobId, classifications);
   }
 
   async getWeeklyItems(weekStart: WeekStart, restriction: DietaryRestriction = "none"): Promise<StoredDiscountItem[]> {

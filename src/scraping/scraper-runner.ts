@@ -58,6 +58,7 @@ import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts"
 import { MarktguruEdekaCatalogueFetcher, DEFAULT_PLZ } from "./adapters/marktguru-edeka-catalogue-fetcher.ts";
 import { LlmCatalogueExtractor } from "./adapters/llm-catalogue-extractor.ts";
 import { resolveLlm } from "../llm/resolve-llm.ts";
+import { LlmCategoryClassifier } from "../categorisation/adapters/llm-category-classifier.ts";
 import { runCategorisation, buildDeps as buildCategoriseDeps } from "../categorisation/categoriser-runner.ts";
 import { ConsoleLogger, type Logger } from "../shared/logger.ts";
 
@@ -169,18 +170,26 @@ function buildInfrastructure() {
   const normalizer = new CatalogueNormalizer();
   const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
   const discountService = new DiscountService(new SQLiteDiscountItemRepository(db));
-  return { normalizer, scrapeJobRepo, discountService };
+  // Categorise-before-insert: resolve the LLM once and build the classifier so
+  // ScrapingService can classify each batch in memory before the atomic swap.
+  // When no LLM is configured (null), the classifier is null → today's behavior
+  // (NULL taxonomy at insert; the post-scrape hook heals later).
+  const llm = resolveLlm();
+  const classifier = llm ? new LlmCategoryClassifier(llm) : null;
+  return { normalizer, scrapeJobRepo, discountService, classifier };
 }
 
 /** Returns a scrape runner wired to real DB infrastructure. */
 function makeProdRunScrape(): (fetcher: CatalogueFetcher, store: string) => Promise<void> {
-  const { normalizer, scrapeJobRepo, discountService } = buildInfrastructure();
+  const { normalizer, scrapeJobRepo, discountService, classifier } = buildInfrastructure();
   return async (fetcher, store) => {
     const service = new ScrapingService(
       fetcher as { fetchCurrentWeek(): Promise<unknown[]> },
       normalizer,
       scrapeJobRepo,
       discountService,
+      undefined,
+      classifier,
     );
     await service.run(store);
   };
@@ -194,10 +203,10 @@ async function runFakeScrape(): Promise<StoreResult[]> {
     throw new Error("FAKE_CATALOGUE_FIXTURE env var is required when CATALOGUE_SOURCE=fake");
   }
 
-  const { normalizer, scrapeJobRepo, discountService } = buildInfrastructure();
+  const { normalizer, scrapeJobRepo, discountService, classifier } = buildInfrastructure();
 
   const runScrape = async (fetcher: CatalogueFetcher, store: string) => {
-    await new ScrapingService(fetcher, normalizer, scrapeJobRepo, discountService).run(store);
+    await new ScrapingService(fetcher, normalizer, scrapeJobRepo, discountService, undefined, classifier).run(store);
   };
 
   const summary: StoreResult[] = [];

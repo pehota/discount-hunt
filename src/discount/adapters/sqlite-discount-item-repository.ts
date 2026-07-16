@@ -55,11 +55,18 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
    * synchronous writes on the same connection; an async callback would silently
    * skip rollback. Delete binds the passed `store` param, not item.store.
    */
-  replaceStore(store: string, items: NormalizedItem[], scrapeJobId: string): void {
+  replaceStore(
+    store: string,
+    items: NormalizedItem[],
+    scrapeJobId: string,
+    classifications?: { category: TaxonomyCategory; tags: Tag[] }[],
+  ): void {
     const storeId = getOrCreateStoreId(this.db, store);
     this.db.transaction(() => {
       this.db.run(sql`DELETE FROM discount_items WHERE store_id = ${storeId}`);
-      for (const item of items) this.insertRow(item, scrapeJobId, storeId);
+      for (let i = 0; i < items.length; i++) {
+        this.insertRow(items[i]!, scrapeJobId, storeId, classifications?.[i]);
+      }
     });
   }
 
@@ -67,21 +74,32 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
    * Single writer of the discount_items INSERT — shared by register + replaceStore.
    * `storeId` is resolved once by the caller (name-at-boundary) and bound to the FK.
    */
-  private insertRow(item: NormalizedItem, scrapeJobId: string, storeId: number): void {
+  private insertRow(
+    item: NormalizedItem,
+    scrapeJobId: string,
+    storeId: number,
+    classification?: { category: TaxonomyCategory; tags: Tag[] },
+  ): void {
     // Defense-in-depth: an undefined interpolation makes Drizzle's `sql`
     // template silently drop the binding, emitting malformed SQL. Fail loudly
     // with the offending field name so future schema drift is diagnosable.
     this.assertNoUndefinedField(item, scrapeJobId);
 
     const id = `${item.store}:${item.externalId}`;
+    // Categorise-before-insert: when a classification is supplied, write the
+    // taxonomy bucket + tags at insert time so the atomic swap never exposes a
+    // NULL-taxonomy window. Absent → NULL taxonomy + '[]' tags (preserves the
+    // register() path where categorisation runs later).
+    const taxonomyCategory = classification?.category ?? null;
+    const tags = classification ? JSON.stringify(classification.tags) : "[]";
     // INSERT OR IGNORE — D22 write-once: regular_price not overwritten on conflict
     this.db.run(sql`
       INSERT OR IGNORE INTO discount_items
-        (id, store_id, name, category, regular_price, sale_price, valid_until, dietary_tags, source_url, image_url, brand, description, scrape_job_id, created_at)
+        (id, store_id, name, category, regular_price, sale_price, valid_until, dietary_tags, tags, taxonomy_category, source_url, image_url, brand, description, scrape_job_id, created_at)
       VALUES
         (${id}, ${storeId}, ${item.name}, ${item.category},
          ${item.regularPrice}, ${item.salePrice}, ${item.validUntil},
-         ${JSON.stringify(item.dietaryTags)}, ${item.sourceUrl}, ${item.imageUrl}, ${item.brand}, ${item.description}, ${scrapeJobId}, ${Date.now()})
+         ${JSON.stringify(item.dietaryTags)}, ${tags}, ${taxonomyCategory}, ${item.sourceUrl}, ${item.imageUrl}, ${item.brand}, ${item.description}, ${scrapeJobId}, ${Date.now()})
     `);
   }
 

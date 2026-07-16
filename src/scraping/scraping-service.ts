@@ -12,6 +12,8 @@
 import type { CatalogueNormalizer } from "./adapters/catalogue-normalizer.ts";
 import type { SQLiteScrapeJobRepository } from "./adapters/sqlite-scrape-job-repository.ts";
 import type { DiscountService } from "../discount/discount-service.ts";
+import type { CategoryClassifier } from "../categorisation/ports.ts";
+import type { TaxonomyCategory, Tag } from "../shared/types.ts";
 import { ConsoleLogger, type Logger } from "../shared/logger.ts";
 
 interface CatalogueFetcher {
@@ -25,6 +27,7 @@ export class ScrapingService {
     private readonly scrapeJobRepository: SQLiteScrapeJobRepository,
     private readonly discountService: DiscountService,
     private readonly logger: Logger = new ConsoleLogger(),
+    private readonly classifier: CategoryClassifier | null = null,
   ) {}
 
   async run(store: string = "Aldi Süd"): Promise<void> {
@@ -58,8 +61,32 @@ export class ScrapingService {
         return;
       }
 
+      // Categorise-before-insert: classify the normalized batch IN MEMORY here in
+      // run() (async), BEFORE the synchronous replaceStore transaction — so the
+      // atomic swap only ever writes already-categorised rows (no NULL-taxonomy
+      // window). Never move classify() inside replaceStore: that transaction is
+      // deliberately synchronous and an async callback would silently skip rollback.
+      // Graceful degradation: any failure/length-mismatch → classifications
+      // undefined → insert with NULL taxonomy; the post-scrape hook heals later.
+      let classifications: { category: TaxonomyCategory; tags: Tag[] }[] | undefined;
+      if (this.classifier) {
+        try {
+          const result = await this.classifier.classify(
+            normalizedItems.map((i) => ({ name: i.name, productType: i.category })),
+          );
+          // port guarantees order-aligned + same length; length guard is a backstop
+          classifications = result.length === normalizedItems.length ? result : undefined;
+          if (classifications === undefined) {
+            this.logger.log("warn", "scrape.categorise.length_mismatch", { store, expected: normalizedItems.length, got: result.length });
+          }
+        } catch (error) {
+          this.logger.log("warn", "scrape.categorise.failed", { store, error: String(error) });
+          classifications = undefined;
+        }
+      }
+
       // Replace-per-store: delete happens only now that fetch+normalize succeeded.
-      await this.discountService.replaceStoreItems(store, normalizedItems, jobId);
+      await this.discountService.replaceStoreItems(store, normalizedItems, jobId, classifications);
       const registered = normalizedCount;
       this.logger.log("info", "scrape.register", { store, registered });
 

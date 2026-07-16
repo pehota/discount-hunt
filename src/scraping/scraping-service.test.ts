@@ -14,13 +14,14 @@
 import { describe, test, expect } from "bun:test";
 import type { LogLevel, Logger } from "../shared/logger.ts";
 import { createDb } from "../shared/db.ts";
-import { scrapeJobs } from "../shared/schema.ts";
+import { scrapeJobs, discountItems } from "../shared/schema.ts";
 import { CatalogueNormalizer } from "./adapters/catalogue-normalizer.ts";
 import { SQLiteScrapeJobRepository } from "./adapters/sqlite-scrape-job-repository.ts";
 import { SQLiteDiscountItemRepository } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import { DiscountService } from "../discount/discount-service.ts";
 import { ScrapingService } from "./scraping-service.ts";
-import type { NormalizedItem } from "../shared/types.ts";
+import type { CategoryClassifier } from "../categorisation/ports.ts";
+import type { NormalizedItem, TaxonomyCategory, Tag } from "../shared/types.ts";
 
 interface CapturedEvent {
   level: LogLevel;
@@ -55,13 +56,14 @@ function rawItem(id: string, opts: { discounted: boolean }) {
   };
 }
 
-function buildService(rawItems: unknown[], logger: Logger) {
+function buildService(rawItems: unknown[], logger: Logger, classifier: CategoryClassifier | null = null) {
   const db = createDb(":memory:");
   const fetcher = { fetchCurrentWeek: async () => rawItems };
   const normalizer = new CatalogueNormalizer();
   const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
   const discountService = new DiscountService(new SQLiteDiscountItemRepository(db));
-  return new ScrapingService(fetcher, normalizer, scrapeJobRepo, discountService, logger);
+  const service = new ScrapingService(fetcher, normalizer, scrapeJobRepo, discountService, logger, classifier);
+  return { service, db };
 }
 
 describe("ScrapingService — lifecycle logging (success)", () => {
@@ -73,7 +75,7 @@ describe("ScrapingService — lifecycle logging (success)", () => {
       rawItem("c", { discounted: false }),
     ];
     const spy = new SpyLogger();
-    const service = buildService(raw, spy);
+    const { service } = buildService(raw, spy);
 
     await service.run("Aldi Süd");
 
@@ -193,5 +195,67 @@ describe("ScrapingService — lifecycle logging (failure)", () => {
     const jobs = db.select().from(scrapeJobs).all();
     expect(jobs.length).toBe(1);
     expect(jobs[0]!.status).toBe("failed");
+  });
+});
+
+describe("ScrapingService — categorise-before-insert", () => {
+  // Small batch (2-3 items, well under CLASSIFY_CHUNK_SIZE) so tests never depend
+  // on the chunk-size constant: 2 discounted raw items → 2 normalized rows.
+  const rawBatch = () => [
+    rawItem("a", { discounted: true }),
+    rawItem("b", { discounted: true }),
+  ];
+
+  test("classifies before insert → rows land WITH taxonomy+tags, zero NULL taxonomy window", async () => {
+    // Classifier returns an order-aligned, same-length result per the port contract.
+    class FakeClassifier implements CategoryClassifier {
+      async classify(items: { name: string; productType: string }[]) {
+        return items.map(() => ({
+          category: "Produce" as TaxonomyCategory,
+          tags: ["Organic"] as Tag[],
+        }));
+      }
+    }
+    const spy = new SpyLogger();
+    const { service, db } = buildService(rawBatch(), spy, new FakeClassifier());
+
+    await service.run("Aldi Süd");
+
+    // Query the table directly — every inserted row is already categorised.
+    const rows = db.select().from(discountItems).all();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.taxonomyCategory).toBe("Produce");
+      expect(row.tags).toBe('["Organic"]');
+    }
+    // No NULL taxonomy anywhere → no "Other" window.
+    expect(rows.every((row) => row.taxonomyCategory !== null)).toBe(true);
+  });
+
+  test("classifier throws → graceful: run() resolves, rows still inserted with NULL taxonomy, warn logged", async () => {
+    class ThrowingClassifier implements CategoryClassifier {
+      async classify(): Promise<{ category: TaxonomyCategory; tags: Tag[] }[]> {
+        throw new Error("llm exploded");
+      }
+    }
+    const spy = new SpyLogger();
+    const { service, db } = buildService(rawBatch(), spy, new ThrowingClassifier());
+
+    // Categorisation failure MUST NOT fail the scrape.
+    await service.run("Aldi Süd");
+
+    // Rows still inserted, but uncategorised (the post-scrape hook heals later).
+    const rows = db.select().from(discountItems).all();
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.taxonomyCategory === null)).toBe(true);
+
+    // A visible warn was logged and the scrape still completed.
+    const failed = spy.find("scrape.categorise.failed");
+    expect(failed).toBeDefined();
+    expect(failed!.level).toBe("warn");
+    expect(failed!.fields.store).toBe("Aldi Süd");
+    expect(String(failed!.fields.error)).toContain("llm exploded");
+    expect(spy.eventNames()).toContain("scrape.store.completed");
+    expect(spy.eventNames()).not.toContain("scrape.store.failed");
   });
 });
