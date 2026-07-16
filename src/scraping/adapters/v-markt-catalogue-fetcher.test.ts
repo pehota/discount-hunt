@@ -12,7 +12,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import fc from "fast-check";
-import { VMarktCatalogueFetcher } from "./v-markt-catalogue-fetcher.ts";
+import { VMarktCatalogueFetcher, stableOfferId } from "./v-markt-catalogue-fetcher.ts";
 import { FakeCatalogueExtractor } from "../../../tests/acceptance/support/fake-catalogue-extractor.ts";
 import type { LogLevel, Logger } from "../../shared/logger.ts";
 import { currentWeekSunday } from "../../shared/week.ts";
@@ -304,6 +304,86 @@ describe("VMarktCatalogueFetcher — output shape", () => {
     // Must not throw — no real API key needed, FakeCatalogueExtractor handles it.
     const result = await fetcher.fetchCurrentWeek();
     expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+// ── deterministic content-hash id (dedup across re-runs, new id per week) ──────
+
+describe("VMarktCatalogueFetcher — deterministic offer ids", () => {
+  const twoOfferFixture = [
+    { name: "Bio Haferflocken 500g", regularPrice: "2.29", salePrice: "1.49" },
+    { name: "Rote Linsen 400g", regularPrice: "1.99", salePrice: "1.19" },
+  ];
+
+  function stubFetch(discoveryHtml: string, catalogueHtml: string): void {
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0]): Promise<Response> => {
+      const urlStr = String(url);
+      if (urlStr.includes("v-markt.de/angebote/muenchen")) return makeHtmlResponse(discoveryHtml);
+      return makeHtmlResponse(catalogueHtml);
+    }) as unknown as typeof fetch;
+  }
+
+  test("two runs over identical extractor data produce identical ids (dedups across re-runs)", async () => {
+    const discoveryHtml = makeDiscoveryHtml([
+      "https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/",
+    ]);
+    const catalogueHtml = makeCatalogueHtml(["dummy"]);
+    stubFetch(discoveryHtml, catalogueHtml);
+
+    const first = await new VMarktCatalogueFetcher(
+      new FakeCatalogueExtractor(twoOfferFixture)
+    ).fetchCurrentWeek();
+    const second = await new VMarktCatalogueFetcher(
+      new FakeCatalogueExtractor(twoOfferFixture)
+    ).fetchCurrentWeek();
+
+    expect(first.map((i) => i.id)).toEqual(second.map((i) => i.id));
+  });
+
+  test("offers differing in name OR price get different ids", async () => {
+    const discoveryHtml = makeDiscoveryHtml([
+      "https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/",
+    ]);
+    stubFetch(discoveryHtml, makeCatalogueHtml(["dummy"]));
+
+    const result = await new VMarktCatalogueFetcher(
+      new FakeCatalogueExtractor([
+        { name: "Apfel", regularPrice: "2.00", salePrice: "1.00" },
+        { name: "Birne", regularPrice: "2.00", salePrice: "1.00" }, // name differs
+        { name: "Apfel", regularPrice: "2.00", salePrice: "1.50" }, // salePrice differs
+      ])
+    ).fetchCurrentWeek();
+
+    const ids = result.map((i) => i.id);
+    expect(new Set(ids).size).toBe(ids.length); // all distinct
+  });
+
+  test("same product+price appearing twice in one extraction collapses to one id (repo dedups)", async () => {
+    const discoveryHtml = makeDiscoveryHtml([
+      "https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/",
+    ]);
+    stubFetch(discoveryHtml, makeCatalogueHtml(["dummy"]));
+
+    const dup = { name: "Milch 1L", regularPrice: "1.29", salePrice: "0.99" };
+    const result = await new VMarktCatalogueFetcher(
+      new FakeCatalogueExtractor([dup, { ...dup }])
+    ).fetchCurrentWeek();
+
+    expect(result).toHaveLength(2);
+    expect(result[0]!.id).toBe(result[1]!.id);
+  });
+
+  test("stableOfferId: same name+prices but different validUntil (week) yields different id", () => {
+    const idWeekA = stableOfferId("Milch 1L", "1.29", "0.99", "2026-07-19");
+    const idWeekB = stableOfferId("Milch 1L", "1.29", "0.99", "2026-07-26");
+    expect(idWeekA).not.toBe(idWeekB);
+  });
+
+  test("stableOfferId: identical inputs yield identical 16-char hex id", () => {
+    const a = stableOfferId("Milch 1L", "1.29", "0.99", "2026-07-19");
+    const b = stableOfferId("Milch 1L", "1.29", "0.99", "2026-07-19");
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{16}$/);
   });
 });
 

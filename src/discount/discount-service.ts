@@ -21,6 +21,10 @@ export class DiscountService {
     await this.discountItemRepository.register(item, scrapeJobId);
   }
 
+  async replaceStoreItems(store: string, items: NormalizedItem[], scrapeJobId: string): Promise<void> {
+    this.discountItemRepository.replaceStore(store, items, scrapeJobId);
+  }
+
   async getWeeklyItems(weekStart: WeekStart, restriction: DietaryRestriction = "none"): Promise<StoredDiscountItem[]> {
     return this.discountItemRepository.getByWeek(weekStart, restriction);
   }

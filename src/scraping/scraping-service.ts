@@ -44,11 +44,23 @@ export class ScrapingService {
         dropped: rawCount - normalizedCount,
       });
 
-      let registered = 0;
-      for (const item of normalizedItems) {
-        await this.discountService.registerDiscountItem(item, jobId);
-        registered++;
+      // Guard against wiping a store on a flaky-but-non-throwing extraction:
+      // an empty normalize would DELETE all rows and insert 0. Skip the replace,
+      // keep the existing (stale) rows, and complete the job with count 0.
+      if (normalizedCount === 0) {
+        this.logger.log("warn", "scrape.replace.skipped_empty", { store });
+        await this.scrapeJobRepository.completeJob(jobId, 0);
+        this.logger.log("info", "scrape.store.completed", {
+          store,
+          itemCount: 0,
+          durationMs: Date.now() - startedAt,
+        });
+        return;
       }
+
+      // Replace-per-store: delete happens only now that fetch+normalize succeeded.
+      await this.discountService.replaceStoreItems(store, normalizedItems, jobId);
+      const registered = normalizedCount;
       this.logger.log("info", "scrape.register", { store, registered });
 
       await this.scrapeJobRepository.completeJob(jobId, normalizedCount);

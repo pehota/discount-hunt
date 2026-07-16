@@ -14,11 +14,13 @@
 import { describe, test, expect } from "bun:test";
 import type { LogLevel, Logger } from "../shared/logger.ts";
 import { createDb } from "../shared/db.ts";
+import { scrapeJobs } from "../shared/schema.ts";
 import { CatalogueNormalizer } from "./adapters/catalogue-normalizer.ts";
 import { SQLiteScrapeJobRepository } from "./adapters/sqlite-scrape-job-repository.ts";
 import { SQLiteDiscountItemRepository } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import { DiscountService } from "../discount/discount-service.ts";
 import { ScrapingService } from "./scraping-service.ts";
+import type { NormalizedItem } from "../shared/types.ts";
 
 interface CapturedEvent {
   level: LogLevel;
@@ -122,5 +124,74 @@ describe("ScrapingService — lifecycle logging (failure)", () => {
     // start fired, completed did not.
     expect(spy.eventNames()).toContain("scrape.store.start");
     expect(spy.eventNames()).not.toContain("scrape.store.completed");
+  });
+
+  test("does NOT replace store items when normalize yields empty (guards against wiping on flaky extraction)", async () => {
+    const spy = new SpyLogger();
+    const db = createDb(":memory:");
+    // Fetch succeeds with raw items, but normalize yields [] (e.g. LLM extraction returns nothing without throwing).
+    const fetcher = { fetchCurrentWeek: async (): Promise<unknown[]> => [rawItem("a", { discounted: true })] };
+    const normalizer = { normalize: (): NormalizedItem[] => [] } as unknown as CatalogueNormalizer;
+    const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
+
+    const replaceStoreCalls: { store: string; items: NormalizedItem[]; scrapeJobId: string }[] = [];
+    const fakeDiscountService = {
+      replaceStoreItems: async (store: string, items: NormalizedItem[], scrapeJobId: string): Promise<void> => {
+        replaceStoreCalls.push({ store, items, scrapeJobId });
+      },
+    } as unknown as DiscountService;
+
+    const service = new ScrapingService(fetcher, normalizer, scrapeJobRepo, fakeDiscountService, spy);
+
+    // Empty normalize is NOT an error — run() completes without throwing.
+    await service.run("Aldi Süd");
+
+    // Never deleted/replaced — existing rows left intact.
+    expect(replaceStoreCalls.length).toBe(0);
+
+    // A visible warn was logged.
+    const skipped = spy.find("scrape.replace.skipped_empty");
+    expect(skipped).toBeDefined();
+    expect(skipped!.level).toBe("warn");
+    expect(skipped!.fields.store).toBe("Aldi Süd");
+
+    // Job COMPLETED (not failed) with count 0.
+    expect(spy.eventNames()).toContain("scrape.store.completed");
+    expect(spy.eventNames()).not.toContain("scrape.store.failed");
+    const jobs = db.select().from(scrapeJobs).all();
+    expect(jobs.length).toBe(1);
+    expect(jobs[0]!.status).toBe("completed");
+    expect(jobs[0]!.itemCount).toBe(0);
+  });
+
+  test("does NOT replace store items when fetch throws (delete only after successful fetch)", async () => {
+    const spy = new SpyLogger();
+    const db = createDb(":memory:");
+    const fetcher = {
+      fetchCurrentWeek: async (): Promise<unknown[]> => {
+        throw new Error("boom");
+      },
+    };
+    const normalizer = new CatalogueNormalizer();
+    const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
+
+    const replaceStoreCalls: { store: string; items: NormalizedItem[]; scrapeJobId: string }[] = [];
+    const fakeDiscountService = {
+      replaceStoreItems: async (store: string, items: NormalizedItem[], scrapeJobId: string): Promise<void> => {
+        replaceStoreCalls.push({ store, items, scrapeJobId });
+      },
+    } as unknown as DiscountService;
+
+    const service = new ScrapingService(fetcher, normalizer, scrapeJobRepo, fakeDiscountService, spy);
+
+    await expect(service.run("Aldi Süd")).rejects.toThrow("boom");
+
+    // Never deleted/replaced — fetch failed before the replace step.
+    expect(replaceStoreCalls.length).toBe(0);
+
+    // Job was marked failed (proven via the real repo's table).
+    const jobs = db.select().from(scrapeJobs).all();
+    expect(jobs.length).toBe(1);
+    expect(jobs[0]!.status).toBe("failed");
   });
 });

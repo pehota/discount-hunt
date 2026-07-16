@@ -167,6 +167,92 @@ describe("SQLiteDiscountItemRepository.register", () => {
 });
 
 // ---------------------------------------------------------------------------
+// replaceStore() — replace-per-store scrape semantics
+// ---------------------------------------------------------------------------
+
+describe("SQLiteDiscountItemRepository.replaceStore", () => {
+  test("registers a store batch [a,b]; getByWeek shows exactly a,b", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    repo.replaceStore(
+      "test-store",
+      [makeItem("a", "2026-07-20"), makeItem("b", "2026-07-20")],
+      "job-1",
+    );
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const ids = results.map((r) => r.id);
+    expect(new Set(ids)).toEqual(new Set(["test-store:a", "test-store:b"]));
+    expect(ids.length).toBe(2);
+  });
+
+  test("replaces the store's rows — after [a,b] then [b',c], store has EXACTLY b,c (a gone, no accumulation)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    repo.replaceStore(
+      "test-store",
+      [makeItem("a", "2026-07-20"), makeItem("b", "2026-07-20")],
+      "job-1",
+    );
+
+    const bPrime = { ...makeItem("b", "2026-07-20"), name: "Item b renamed" };
+    repo.replaceStore("test-store", [bPrime, makeItem("c", "2026-07-20")], "job-2");
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const ids = results.map((r) => r.id);
+    expect(new Set(ids)).toEqual(new Set(["test-store:b", "test-store:c"]));
+    expect(ids.length).toBe(2);
+    // Replacement (delete-then-fresh-insert) preserves the new value, not write-once IGNORE.
+    expect(results.find((r) => r.id === "test-store:b")?.name).toBe("Item b renamed");
+  });
+
+  test("replaceStore for store Y does NOT affect store X's rows", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("x1", "2026-07-20"), "job-1");
+    await repo.register(makeItem("x2", "2026-07-20"), "job-1");
+
+    const storeYItem: NormalizedItem = {
+      externalId: "d",
+      store: "store-y",
+      name: "Item d",
+      category: "test",
+      regularPrice: 200,
+      salePrice: 150,
+      validUntil: "2026-07-20",
+      dietaryTags: [],
+      sourceUrl: null,
+    };
+    repo.replaceStore("store-y", [storeYItem], "job-2");
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const ids = results.map((r) => r.id);
+    expect(ids).toContain("test-store:x1");
+    expect(ids).toContain("test-store:x2");
+    expect(ids).toContain("store-y:d");
+  });
+
+  test("within-run dedup: a batch with two items sharing the same id yields 1 row (INSERT OR IGNORE)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    repo.replaceStore(
+      "test-store",
+      [makeItem("dup", "2026-07-20"), makeItem("dup", "2026-07-20")],
+      "job-1",
+    );
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const ids = results.map((r) => r.id);
+    expect(ids).toEqual(["test-store:dup"]);
+    expect(ids.length).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // DiscountCategoryStore port — taxonomy_category read/write (categorisation)
 // ---------------------------------------------------------------------------
 

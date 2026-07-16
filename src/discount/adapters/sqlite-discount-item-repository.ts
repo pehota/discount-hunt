@@ -41,6 +41,24 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
   constructor(private readonly db: DbClient) {}
 
   async register(item: NormalizedItem, scrapeJobId: string): Promise<void> {
+    this.insertRow(item, scrapeJobId);
+  }
+
+  /**
+   * Replace-per-store: atomically delete ALL rows for `store` (old/stale too)
+   * and insert the fresh batch. SYNC — bun-sqlite drizzle transactions wrap only
+   * synchronous writes on the same connection; an async callback would silently
+   * skip rollback. Delete binds the passed `store` param, not item.store.
+   */
+  replaceStore(store: string, items: NormalizedItem[], scrapeJobId: string): void {
+    this.db.transaction(() => {
+      this.db.run(sql`DELETE FROM discount_items WHERE store = ${store}`);
+      for (const item of items) this.insertRow(item, scrapeJobId);
+    });
+  }
+
+  /** Single writer of the discount_items INSERT — shared by register + replaceStore. */
+  private insertRow(item: NormalizedItem, scrapeJobId: string): void {
     // Defense-in-depth: an undefined interpolation makes Drizzle's `sql`
     // template silently drop the binding, emitting malformed SQL. Fail loudly
     // with the offending field name so future schema drift is diagnosable.
