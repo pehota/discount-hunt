@@ -96,6 +96,30 @@ document.addEventListener('DOMContentLoaded', function () {
     if (noMatch) { noMatch.hidden = totalCards === 0 || anyVisible; }
   }
 
+  // Category pill counts follow the active STORE facet only (not search, not the
+  // active category): "how many <category> does this store have". Counts by store
+  // membership from the DOM — cards hidden by the current filter still count.
+  function updateCategoryCounts() {
+    var pills = document.querySelectorAll('.category-filter-pills .filter-pill');
+    for (var p = 0; p < pills.length; p++) {
+      var pill = pills[p];
+      var pillCategory = pill.getAttribute('data-category');
+      var count = pill.querySelector('.pill-count');
+      if (!count) continue;
+      var cards = document.querySelectorAll('#discount-items .card[data-item-card]');
+      var n = 0;
+      for (var c = 0; c < cards.length; c++) {
+        var card = cards[c];
+        var group = card.closest('.store-group[data-store]');
+        var cardStore = group ? group.getAttribute('data-store') : null;
+        var storeMatch = activeStore === '__all__' || cardStore === activeStore;
+        var categoryMatch = pillCategory === '__all__' || card.getAttribute('data-category') === pillCategory;
+        if (storeMatch && categoryMatch) { n++; }
+      }
+      count.textContent = String(n);
+    }
+  }
+
   function refreshSelection() {
     var checkboxes = document.querySelectorAll('input[name="itemIds"]');
     checkedCount = 0;
@@ -196,6 +220,8 @@ document.addEventListener('DOMContentLoaded', function () {
       var count = pill.querySelector('.pill-count');
       var n = count ? count.textContent : '';
       if (status) { status.textContent = 'Showing: ' + label + ' (' + n + ')'; }
+      // Category pill counts follow the newly-selected store.
+      updateCategoryCounts();
     } else if (categoryFilter !== null) {
       activeCategory = categoryFilter;
     }
@@ -261,6 +287,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   refreshSelection();
+  updateCategoryCounts();
   applyFilters();
 });
 `;
