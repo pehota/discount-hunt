@@ -1,7 +1,7 @@
 /**
  * CatalogueExtractor — driven port (outbound from VMarktCatalogueFetcher to LLM).
  *
- * Implementations: AiSdkCatalogueExtractor (production), FakeCatalogueExtractor (tests).
+ * Implementations: LlmCatalogueExtractor (production), FakeCatalogueExtractor (tests).
  */
 
 export interface CatalogueExtractor {

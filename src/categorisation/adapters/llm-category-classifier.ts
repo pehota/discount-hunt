@@ -1,18 +1,18 @@
 /**
- * AiSdkCategoryClassifier — production adapter implementing CategoryClassifier.
+ * LlmCategoryClassifier — production adapter implementing CategoryClassifier.
  *
- * Provider-agnostic: delegates to any injected Vercel AI SDK LanguageModel
- * (mirrors AiSdkCatalogueExtractor). Used only as the LLM FALLBACK for products
- * the rules classifier could not place.
+ * Provider-agnostic: delegates to any injected LlmTextGenerator (the concrete
+ * provider is selected at wiring time; see src/llm/resolve-llm.ts). Used only as
+ * the LLM FALLBACK for products the rules classifier could not place.
  *
  * Contract: output length ALWAYS equals input length (pad/truncate with "Other").
  * Any parsed bucket outside the taxonomy is coerced to "Other". No JSON array in
  * the response → all "Other".
  */
 
-import { generateText, type LanguageModel } from "ai";
 import type { CategoryClassifier } from "../ports.ts";
 import { TAXONOMY_CATEGORIES, isTaxonomyCategory, type TaxonomyCategory } from "../../shared/types.ts";
+import type { LlmTextGenerator } from "../../llm/ports/llm-text-generator.ts";
 
 /**
  * Single source of truth for the classification prompt. The bucket list is built
@@ -24,18 +24,15 @@ export const CLASSIFICATION_PROMPT =
   "Return ONLY a JSON array of category strings — one entry per input product, in the " +
   "same order as the inputs. Use \"Other\" when no category fits.";
 
-export class AiSdkCategoryClassifier implements CategoryClassifier {
-  constructor(private readonly model: LanguageModel) {}
+export class LlmCategoryClassifier implements CategoryClassifier {
+  constructor(private readonly llm: LlmTextGenerator) {}
 
   async classify(items: { name: string; productType: string }[]): Promise<TaxonomyCategory[]> {
     const userContent = items
       .map((item, i) => `${i + 1}. name="${item.name}" productType="${item.productType}"`)
       .join("\n");
 
-    const { text } = await generateText({
-      model: this.model,
-      prompt: `${CLASSIFICATION_PROMPT}\n\n${userContent}`,
-    });
+    const text = await this.llm.run(CLASSIFICATION_PROMPT, userContent);
 
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {

@@ -18,7 +18,6 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^4.0.15",
     "@ai-sdk/openai-compatible": "^3.0.11",
     "ai": "^7.0.29",
     "better-sqlite3": "^11.10.0",

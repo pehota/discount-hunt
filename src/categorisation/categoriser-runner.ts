@@ -5,17 +5,17 @@
  *
  * Environment (test seam — same idiom as scraper-runner):
  *   TEST_DB_PATH — SQLite file path; defaults to ./discount-hunt.db
- *   Catalogue-LLM config (see catalogue-llm-config.ts): when a usable LLM is
- *   configured the classifier is wired for the LLM fallback; otherwise the run
- *   is rules-only and unmatched rows stay NULL (pending).
+ *   LLM config (see src/llm/resolve-llm.ts): when a usable LLM is configured the
+ *   classifier is wired for the LLM fallback; otherwise the run is rules-only and
+ *   unmatched rows stay NULL (pending).
  *
  * NULL-only idempotent: only newly-added / still-unclassified items are processed.
  */
 
 import { createDb } from "../shared/db.ts";
 import { SQLiteDiscountItemRepository } from "../discount/adapters/sqlite-discount-item-repository.ts";
-import { AiSdkCategoryClassifier } from "./adapters/ai-sdk-category-classifier.ts";
-import { resolveCatalogueLlm } from "../scraping/adapters/catalogue-llm-config.ts";
+import { LlmCategoryClassifier } from "./adapters/llm-category-classifier.ts";
+import { resolveLlm } from "../llm/resolve-llm.ts";
 import { RulesClassifier } from "./rules-classifier.ts";
 import { CategorisationService, type CategorisationResult } from "./categorisation-service.ts";
 import type { CategoryClassifier, DiscountCategoryStore } from "./ports.ts";
@@ -49,8 +49,8 @@ export function buildDeps(): CategoriseDeps {
   const dbPath = process.env.TEST_DB_PATH ?? "./discount-hunt.db";
   const db = createDb(dbPath);
   const store = new SQLiteDiscountItemRepository(db);
-  const model = resolveCatalogueLlm();
-  const classifier = model ? new AiSdkCategoryClassifier(model) : null;
+  const llm = resolveLlm();
+  const classifier = llm ? new LlmCategoryClassifier(llm) : null;
   return { store, classifier };
 }
 

@@ -9,12 +9,12 @@
  *   FAKE_CATALOGUE_FIXTURE — path to Aldi JSON fixture (required when CATALOGUE_SOURCE=fake)
  *   FAKE_VMARKT_FIXTURE    — path to V-Markt JSON fixture (optional; enables V-Markt scrape)
  *
- *   Catalogue-LLM config (used only when CATALOGUE_SOURCE=live; see
- *   catalogue-llm-config.ts for defaults and resolution rules):
- *     CATALOGUE_LLM_PROVIDER — "anthropic" (default) | "openai-compatible"
- *     CATALOGUE_LLM_MODEL    — model id (default: claude-haiku-4-5-20251001)
- *     CATALOGUE_LLM_BASE_URL — required for openai-compatible
- *     CATALOGUE_LLM_API_KEY  — the key; for anthropic falls back to ANTHROPIC_API_KEY
+ *   LLM config (used only when CATALOGUE_SOURCE=live; see src/llm/resolve-llm.ts
+ *   for the switch and resolution rules):
+ *     LLM_PROVIDER       — "claude-cli" (dev) | "openrouter" (prod); unset = LLM off
+ *     CLAUDE_CLI_MODEL   — optional model id for the local `claude` CLI
+ *     OPENROUTER_API_KEY — required for openrouter
+ *     OPENROUTER_MODEL   — required for openrouter
  *
  * Resilience contract (step 09-01):
  *   - Each store's scrape is isolated in a try/catch. One store failing is
@@ -37,7 +37,7 @@
  *
  * Wire order (live mode):
  *   1. Attempt Aldi Süd (needs no API key)
- *   2. Attempt V-Markt only when a catalogue LLM is configured (resolveCatalogueLlm)
+ *   2. Attempt V-Markt only when an LLM is configured (resolveLlm)
  */
 
 import { createDb } from "../shared/db.ts";
@@ -50,10 +50,15 @@ import { DiscountService } from "../discount/discount-service.ts";
 import { ScrapingService } from "./scraping-service.ts";
 import { AldiSudCatalogueFetcher } from "./adapters/aldi-sud-catalogue-fetcher.ts";
 import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts";
-import { AiSdkCatalogueExtractor } from "./adapters/ai-sdk-catalogue-extractor.ts";
-import { resolveCatalogueLlm } from "./adapters/catalogue-llm-config.ts";
+import { LlmCatalogueExtractor } from "./adapters/llm-catalogue-extractor.ts";
+import { resolveLlm } from "../llm/resolve-llm.ts";
 import { runCategorisation, buildDeps as buildCategoriseDeps } from "../categorisation/categoriser-runner.ts";
 import { ConsoleLogger, type Logger } from "../shared/logger.ts";
+
+// Re-exported so existing importers (e.g. scraper-runner.test.ts) keep the same
+// symbol; the value lives in one place (src/llm/resolve-llm.ts).
+export { LLM_NOT_CONFIGURED } from "../llm/resolve-llm.ts";
+import { LLM_NOT_CONFIGURED } from "../llm/resolve-llm.ts";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -88,7 +93,7 @@ const VMARKT_STORE = "V-Markt";
 /**
  * Runs the live scrape for Aldi Süd and V-Markt.
  *
- * Exported for unit testing. Inject LiveScrapeDeps to stub DB + HTTP + Anthropic.
+ * Exported for unit testing. Inject LiveScrapeDeps to stub DB + HTTP + LLM.
  * Production callers pass no deps (defaults build real collaborators).
  */
 export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreResult[]> {
@@ -101,13 +106,13 @@ export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreRes
   // Aldi Süd needs no API key — always attempts.
   summary.push(await isolatedScrape(runScrape, makeAldiFetcher(), ALDI_STORE, logger));
 
-  // V-Markt requires a configured catalogue LLM. Resolve once; when non-null,
-  // scrape (const-narrowing keeps `model` non-null inside the default factory).
-  // When null, skip with a recorded reason — do NOT construct the LLM-backed fetcher.
-  const model = resolveCatalogueLlm();
-  if (model) {
+  // V-Markt requires a configured LLM. Resolve once; when non-null, scrape
+  // (const-narrowing keeps `llm` non-null inside the default factory). When null,
+  // skip with a recorded reason — do NOT construct the LLM-backed fetcher.
+  const llm = resolveLlm();
+  if (llm) {
     const makeVMarktFetcher =
-      deps.makeVMarktFetcher ?? (() => new VMarktCatalogueFetcher(new AiSdkCatalogueExtractor(model)));
+      deps.makeVMarktFetcher ?? (() => new VMarktCatalogueFetcher(new LlmCatalogueExtractor(llm)));
     summary.push(await isolatedScrape(runScrape, makeVMarktFetcher(), VMARKT_STORE, logger));
   } else {
     logger.log("warn", "scrape.summary", {
@@ -120,9 +125,6 @@ export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreRes
 
   return summary;
 }
-
-/** Recorded reason when the V-Markt leg is skipped due to no usable LLM config. */
-export const LLM_NOT_CONFIGURED = "catalogue LLM not configured";
 
 /** Runs one store's scrape, converting any throw into a recorded failure. */
 async function isolatedScrape(

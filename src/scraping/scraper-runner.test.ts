@@ -14,9 +14,9 @@
  * Approach:
  *   - Inject stub runScrape and stub fetcher factories to keep tests in-process,
  *     free of DB/HTTP/Anthropic dependencies.
- *   - Manage the catalogue-LLM env (ANTHROPIC_API_KEY + CATALOGUE_LLM_*) per-test
- *     (explicit set/delete) with afterEach restore so no state leaks. The default
- *     anthropic provider resolves a model when a key is present, else null.
+ *   - Manage the LLM env (LLM_PROVIDER + provider vars) per-test (explicit
+ *     set/delete) with afterEach restore so no state leaks. resolveLlm resolves an
+ *     adapter when LLM_PROVIDER=claude-cli (no key/spawn), else null.
  *
  * bypass: wiring tests verify composition/summary shape, not invariants —
  * example-based is correct here.
@@ -46,14 +46,13 @@ class SpyLogger implements Logger {
 
 // ── Env save/restore ──────────────────────────────────────────────────────────
 
-// Catalogue-LLM env vars that steer resolveCatalogueLlm — saved once, restored
-// after each test so provider config never leaks between tests or files.
+// LLM env vars that steer resolveLlm — saved once, restored after each test so
+// provider config never leaks between tests or files.
 const LLM_ENV_KEYS = [
-  "ANTHROPIC_API_KEY",
-  "CATALOGUE_LLM_PROVIDER",
-  "CATALOGUE_LLM_MODEL",
-  "CATALOGUE_LLM_BASE_URL",
-  "CATALOGUE_LLM_API_KEY",
+  "LLM_PROVIDER",
+  "CLAUDE_CLI_MODEL",
+  "OPENROUTER_API_KEY",
+  "OPENROUTER_MODEL",
 ] as const;
 
 const ORIGINAL_LLM_ENV: Record<string, string | undefined> = Object.fromEntries(
@@ -88,7 +87,7 @@ function entryFor(summary: Array<{ store: string; ok: boolean; error?: string }>
   return entry;
 }
 
-/** Clears every catalogue-LLM env var so resolveCatalogueLlm returns null. */
+/** Clears every LLM env var so resolveLlm returns null. */
 function clearLlmEnv(): void {
   for (const k of LLM_ENV_KEYS) delete process.env[k];
 }
@@ -99,7 +98,7 @@ describe("runLiveScrape — per-store isolation", () => {
   // bypass: wiring test verifies composition + summary shape, not invariants.
 
   test("attempts both stores and returns an ok summary when both succeed", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
+    process.env.LLM_PROVIDER = "claude-cli";
 
     const scraped: Array<{ fetcherName: string; store: string }> = [];
     const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
@@ -122,7 +121,7 @@ describe("runLiveScrape — per-store isolation", () => {
   });
 
   test("passes the correct fetcher to each store's scrape call", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
+    process.env.LLM_PROVIDER = "claude-cli";
 
     const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
     const vMarktStub = stubFetcher("VMarktCatalogueFetcher");
@@ -143,7 +142,7 @@ describe("runLiveScrape — per-store isolation", () => {
   });
 
   test("V-Markt failure does not abort the run; Aldi still scrapes and both are recorded", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
+    process.env.LLM_PROVIDER = "claude-cli";
 
     const attempted: string[] = [];
 
@@ -166,7 +165,7 @@ describe("runLiveScrape — per-store isolation", () => {
   });
 
   test("Aldi failure does not abort the run; V-Markt still scrapes and both are recorded", async () => {
-    process.env.ANTHROPIC_API_KEY = "dummy-key-for-test";
+    process.env.LLM_PROVIDER = "claude-cli";
 
     const attempted: string[] = [];
 
@@ -285,7 +284,7 @@ describe("exitCodeFor — summary to exit code mapping", () => {
     expect(
       exitCodeFor([
         { store: "Aldi Süd", ok: false, error: "boom" },
-        { store: "V-Markt", ok: false, error: "ANTHROPIC_API_KEY missing" },
+        { store: "V-Markt", ok: false, error: "LLM not configured" },
       ])
     ).toBe(1);
   });
