@@ -29,9 +29,14 @@ interface ClaudeCliJson {
 
 async function defaultRun(args: string[]): Promise<CliResult> {
   const proc = Bun.spawn(["claude", ...args], { stdio: ["ignore", "pipe", "pipe"] });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
-  const exitCode = await proc.exited;
+  // Drain stdout AND stderr concurrently: the `claude` CLI is verbose on stderr,
+  // and reading stdout to completion first would deadlock once the stderr pipe
+  // buffer (~64KB) fills — claude blocks writing stderr, so stdout never ends.
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
   return { stdout, exitCode, stderr };
 }
 
