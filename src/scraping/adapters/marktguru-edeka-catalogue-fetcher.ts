@@ -39,6 +39,11 @@ const USER_AGENT =
 // center = hypermarket, xpress = convenience are different store FORMATS that duplicate the same products, so excluded.
 export const EDEKA_ADVERTISERS = ["edeka"];
 
+// marktguru tags brand-less products with a SENTINEL brand record (a real brand
+// row whose name is this stable stem plus a varying numeric suffix). It is the
+// most common brand value, so it must be treated as NO brand — never leaked into titles.
+export const NO_BRAND_SENTINEL = "thisisnobrand";
+
 /**
  * Curated search terms (SSOT). marktguru's API is search-driven — there is no
  * "list all EDEKA offers" endpoint — so we sweep the everyday grocery vocabulary.
@@ -186,8 +191,9 @@ export class MarktguruEdekaCatalogueFetcher {
   }
 
   private toItem(offer: Offer): CatalogueNormalizerItem {
-    const brandName = offer.brand?.name;
-    const title = brandName ? `${brandName} ${offer.product.name}` : offer.product.name;
+    const rawBrand = offer.brand?.name?.trim() ?? "";
+    const realBrand = rawBrand && !rawBrand.toLowerCase().includes(NO_BRAND_SENTINEL) ? rawBrand : "";
+    const title = realBrand ? `${realBrand} ${offer.product.name}` : offer.product.name;
     const regular = offer.oldPrice ?? offer.price;
     return {
       id: String(offer.id),

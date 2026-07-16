@@ -22,7 +22,7 @@
  */
 
 import { describe, test, expect } from "bun:test";
-import { MarktguruEdekaCatalogueFetcher, EDEKA_ADVERTISERS } from "./marktguru-edeka-catalogue-fetcher.ts";
+import { MarktguruEdekaCatalogueFetcher, EDEKA_ADVERTISERS, NO_BRAND_SENTINEL } from "./marktguru-edeka-catalogue-fetcher.ts";
 import type { LogLevel, Logger } from "../../shared/logger.ts";
 
 // ── Spy logger ────────────────────────────────────────────────────────────────
@@ -412,6 +412,32 @@ describe("MarktguruEdekaCatalogueFetcher — mapping", () => {
     expect(item.price).toBe("1.49");
     expect(item.discountedPrice).toBe("1.49");
     expect(item.price).toBe(item.discountedPrice); // equal-price survives
+  });
+
+  test("sentinel no-brand: brand name is the marktguru no-brand sentinel → title = product name only (sentinel not leaked into title)", async () => {
+    const recorded: RecordedRequest[] = [];
+    const fetchFn = makeFakeFetch({
+      offersByTerm: {
+        hähnchen: [
+          edekaOffer({
+            id: 55,
+            brandName: `${NO_BRAND_SENTINEL}123`, // marktguru sentinel brand for no-brand products
+            productName: "Hähnchen-Schenkel",
+          }),
+        ],
+      },
+      recorded,
+    });
+
+    const fetcher = new MarktguruEdekaCatalogueFetcher({
+      searchTerms: ["hähnchen"],
+      fetchFn,
+      logger: new SpyLogger(),
+    });
+    const result = await fetcher.fetchCurrentWeek();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.title).toBe("Hähnchen-Schenkel");
   });
 
   test("no validityDates → validUntil falls back to currentWeekSunday (full YYYY-MM-DD)", async () => {
