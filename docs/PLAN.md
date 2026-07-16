@@ -51,6 +51,13 @@ All session work is committed (latest `24dc45a`: feed add-to-list toast + overvi
    - Materially heavier than V-Markt (images vs text). Treat as its own slice.
    - Verify (when built): unit tests — a vision-extraction adapter maps a STUBBED multimodal response → products; store→catalog-id resolution unit-tested; idempotent re-run. Acceptance (needs key + a resolved Munich catalog id): a live run writes plausible Edeka `discount_items` for the current week.
 
+## Post-backlog evolution (2026-07-16, user-directed — all shipped to main, not pushed)
+- **LLM layer env-switched** (`a5a89c3`): `src/llm/` — `LlmTextGenerator` port + `ClaudeCliTextGenerator` (dev, local `claude` CLI, free) + `OpenRouterTextGenerator` (prod). `resolveLlm` switches on `LLM_PROVIDER=claude-cli|openrouter` (no fallback). @ai-sdk/anthropic dropped. `.env.example` documents the switch.
+- **Categorisation = LLM classifies everything** (`106f445`): rules removed; food-type-not-temperature; **"Frozen" bucket dropped** (now a tag).
+- **Cross-cutting tags** (`9e2223b`/`38515e1`): `Tag`/`TAGS` SSOT (Frozen/Organic/Vegan/Vegetarian/Alcoholic); `tags` column; feed chips + search-by-name/category/tag. Frozen-vs-type solved (frozen fish = Meat & Fish + [Frozen]).
+- **Dev**: `bun run dev` = hot-reload (`c3eb027`). TS v7.
+- Run categorisation locally: `LLM_PROVIDER=claude-cli bun run src/categorisation/categoriser-runner.ts`. Live V-Markt still needs OpenRouter env (see `.env.example`) then `bun run src/scraping/scraper-runner.ts`.
+
 ## Product direction (the "why" — locked)
 - **Vision** (`docs/product/vision.md`): an *everyday savings / life-hacking companion*; groceries = proven pillar 1; future pillars (subscription/utility savings, price-drop tracking, budgeting, waste reduction) are illustrative bets, unvalidated. Extensibility constraint **C-7**: a new pillar = a new context module + ports/adapters, no rework of grocery code (don't build a speculative multi-pillar framework though).
 - **product-overhaul reframe** (`docs/feature/product-overhaul/` + `docs/product/jobs.yaml`): primary job = **control grocery spend** (JOB-004); meal-planning is supporting; the **shopping list is the central artifact** (persisted selection). Slices: shopping-list core (done) → category filter + price sort → non-discounted add (done via manual add) → recipe inspiration from selection (not built).
