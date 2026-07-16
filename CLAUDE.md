@@ -22,6 +22,10 @@ nightly-delta — CI runs mutation tests nightly on changed modules; per-feature
 
 Type-check with `bun run typecheck` (tsc --noEmit, strict: noUncheckedIndexedAccess + exactOptionalPropertyTypes). It must stay at zero errors. Run it as part of every change's verification (alongside `bun test`) BEFORE committing — not deferred to push. It is gated at pre-push via `bun run hook:push`.
 
+## Bug handling
+
+- When you discover a bug during any task, FIX IT proactively — do not just flag it and wait for approval. Add a regression test, verify (typecheck + tests + browser where relevant), and commit it (its own bundle). Applies to bugs found incidentally, not only the ones you were asked about.
+
 ## Structure
 
 - collocated tests
