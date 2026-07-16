@@ -1,27 +1,24 @@
 /**
- * CategorisationService — domain service orchestrating hybrid categorisation.
+ * CategorisationService — domain service orchestrating categorisation.
  *
- * Flow: rules first (cheap, deterministic) → LLM fallback for the remainder.
- * NULL-only processing makes runs idempotent: already-classified rows are never
- * revisited, so a re-run after a fully-classified pass does zero work.
+ * Flow: the LLM classifier is authoritative for EVERY uncategorised item. NULL-only
+ * processing makes runs idempotent: already-classified rows are never revisited, so
+ * a re-run after a fully-classified pass does zero work (no classifier call).
  *
- * Depends ONLY on port types + the pure RulesClassifier — never on adapters.
+ * Depends ONLY on port types — never on concrete adapters.
  */
 
 import type { CategoryClassifier, DiscountCategoryStore } from "./ports.ts";
-import { RulesClassifier } from "./rules-classifier.ts";
 
-/** Per-run tally. pendingCount = rows left NULL (no classifier, rules missed). */
+/** Per-run tally. pending = rows left NULL (no classifier configured). */
 export interface CategorisationResult {
-  rulesCount: number;
-  llmCount: number;
-  pendingCount: number;
+  classified: number;
+  pending: number;
 }
 
 export class CategorisationService {
   constructor(
     private readonly store: DiscountCategoryStore,
-    private readonly rules: RulesClassifier,
     private readonly classifier: CategoryClassifier | null,
   ) {}
 
@@ -29,39 +26,25 @@ export class CategorisationService {
     // NULL-only → idempotent: classified rows are excluded by the port query.
     const rows = this.store.findUncategorised();
 
-    let rulesCount = 0;
-    const deferred: { id: string; name: string; productType: string }[] = [];
-
-    for (const row of rows) {
-      const bucket = this.rules.classify(row.productType);
-      if (bucket !== null) {
-        this.store.setTaxonomyCategory(row.id, bucket);
-        rulesCount++;
-      } else {
-        deferred.push(row);
-      }
+    if (rows.length === 0) {
+      return { classified: 0, pending: 0 };
     }
 
-    let llmCount = 0;
-
-    // Only call the LLM when there is a classifier AND something to classify
-    // (guard against classify([])).
-    if (this.classifier !== null && deferred.length > 0) {
-      const buckets = await this.classifier.classify(
-        deferred.map((row) => ({ name: row.name, productType: row.productType })),
-      );
-      for (let i = 0; i < deferred.length; i++) {
-        const row = deferred[i]!;
-        // noUncheckedIndexedAccess: buckets[i] is TaxonomyCategory | undefined.
-        const cat = buckets[i] ?? "Other";
-        this.store.setTaxonomyCategory(row.id, cat);
-        llmCount++;
-      }
+    // No classifier → leave rows NULL (never written "Other").
+    if (this.classifier === null) {
+      return { classified: 0, pending: rows.length };
     }
 
-    // No classifier → deferred rows stay NULL (never written "Other").
-    const pendingCount = this.classifier === null ? deferred.length : 0;
+    const cats = await this.classifier.classify(
+      rows.map((row) => ({ name: row.name, productType: row.productType })),
+    );
 
-    return { rulesCount, llmCount, pendingCount };
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i]!;
+      // noUncheckedIndexedAccess: cats[i] is TaxonomyCategory | undefined.
+      this.store.setTaxonomyCategory(row.id, cats[i] ?? "Other");
+    }
+
+    return { classified: rows.length, pending: 0 };
   }
 }

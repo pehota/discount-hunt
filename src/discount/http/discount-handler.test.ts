@@ -534,7 +534,7 @@ describe("DiscountHandler category filter + price-asc sort", () => {
 
     // Absent categories emit NO pill.
     expect(html).not.toContain(`data-category="Bakery"`);
-    expect(html).not.toContain(`data-category="Frozen"`);
+    expect(html).not.toContain(`data-category="Household"`);
 
     // Canonical order: only assert the ORDER of the pills that are present. Scope to the
     // category pill GROUP (cards also carry data-category), extract the pill values

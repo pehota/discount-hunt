@@ -41,21 +41,20 @@ class RecordingLogger implements Logger {
 }
 
 describe("runCategorisation", () => {
-  test("completes, classifies all rows, and logs the summary", async () => {
+  test("completes, classifies all rows via the LLM, and logs the summary", async () => {
     const store = new FakeStore();
-    store.seed("a", "Blattsalat", "Salate - Blattsalate"); // rules → Produce
-    store.seed("c", "Mystery", "unknown"); // LLM → Other
+    store.seed("a", "Blattsalat", "Salate - Blattsalate");
+    store.seed("c", "Mystery", "unknown");
     const logger = new RecordingLogger();
 
     const result = await runCategorisation({ store, classifier: new FakeClassifier(), logger });
 
-    expect(result.rulesCount).toBe(1);
-    expect(result.llmCount).toBe(1);
-    expect(result.pendingCount).toBe(0);
+    expect(result.classified).toBe(2);
+    expect(result.pending).toBe(0);
     expect(store.findUncategorised()).toHaveLength(0);
 
     const summary = logger.events.find((e) => e.event === "categorise.run.done");
     expect(summary).toBeDefined();
-    expect(summary?.fields).toMatchObject({ rulesCount: 1, llmCount: 1, pendingCount: 0 });
+    expect(summary?.fields).toMatchObject({ classified: 2, pending: 0 });
   });
 });

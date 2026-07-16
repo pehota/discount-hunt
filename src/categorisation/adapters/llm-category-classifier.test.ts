@@ -14,7 +14,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { LlmCategoryClassifier, CLASSIFICATION_PROMPT } from "./llm-category-classifier.ts";
-import { isTaxonomyCategory } from "../../shared/types.ts";
+import { TAXONOMY_CATEGORIES, isTaxonomyCategory } from "../../shared/types.ts";
 import type { LlmTextGenerator } from "../../llm/ports/llm-text-generator.ts";
 
 /** A fake generator that records its two run() args and replays a canned string. */
@@ -80,5 +80,13 @@ describe("LlmCategoryClassifier", () => {
     expect(calls).toHaveLength(1);
     expect(calls[0]?.system).toBe(CLASSIFICATION_PROMPT);
     expect(calls[0]?.user).toContain("Cola");
+  });
+
+  test("prompt is built from the SSOT taxonomy and carries the food-type instruction", async () => {
+    // Bucket list is single-sourced from TAXONOMY_CATEGORIES (no copied literals).
+    expect(CLASSIFICATION_PROMPT).toContain(TAXONOMY_CATEGORIES.join(", "));
+    // Categorise by what the food fundamentally IS, not its storage temperature.
+    expect(CLASSIFICATION_PROMPT).toContain("fundamentally");
+    expect(CLASSIFICATION_PROMPT).toContain("frozen fish");
   });
 });

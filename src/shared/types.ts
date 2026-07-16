@@ -36,19 +36,21 @@ export type DietaryTag = "vegetarian" | "vegan" | "contains-meat" | "contains-fi
 
 /**
  * Coarse product taxonomy — the classified shelf/aisle bucket a discount item
- * belongs to. Assigned by the categorisation context (rules + LLM fallback),
- * stored in discount_items.taxonomy_category (nullable = not yet classified).
- * "Other" is the final, unclassifiable bucket (LLM fallback only — rules never emit it).
+ * belongs to. Assigned by the categorisation context (the LLM classifies every
+ * item), stored in discount_items.taxonomy_category (nullable = not yet
+ * classified). Buckets describe what a food fundamentally IS, not its storage
+ * temperature (frozen fish → Meat & Fish, ice cream → Snacks & Sweets).
+ * "Other" is the final, unclassifiable bucket.
  */
 export type TaxonomyCategory =
   | "Produce" | "Meat & Fish" | "Dairy & Cheese" | "Bakery"
-  | "Pantry" | "Snacks & Sweets" | "Drinks" | "Frozen"
+  | "Pantry" | "Snacks & Sweets" | "Drinks"
   | "Household" | "Other";
 
 /** The ONE canonical taxonomy list. Consumers import this — never re-list the literals. */
 export const TAXONOMY_CATEGORIES: readonly TaxonomyCategory[] = [
   "Produce", "Meat & Fish", "Dairy & Cheese", "Bakery",
-  "Pantry", "Snacks & Sweets", "Drinks", "Frozen", "Household", "Other",
+  "Pantry", "Snacks & Sweets", "Drinks", "Household", "Other",
 ];
 
 /**

@@ -2,8 +2,8 @@
  * LlmCategoryClassifier — production adapter implementing CategoryClassifier.
  *
  * Provider-agnostic: delegates to any injected LlmTextGenerator (the concrete
- * provider is selected at wiring time; see src/llm/resolve-llm.ts). Used only as
- * the LLM FALLBACK for products the rules classifier could not place.
+ * provider is selected at wiring time; see src/llm/resolve-llm.ts). The LLM is
+ * authoritative and classifies EVERY product (no keyword rules).
  *
  * Contract: output length ALWAYS equals input length (pad/truncate with "Other").
  * Any parsed bucket outside the taxonomy is coerced to "Other". No JSON array in
@@ -21,6 +21,8 @@ import type { LlmTextGenerator } from "../../llm/ports/llm-text-generator.ts";
 export const CLASSIFICATION_PROMPT =
   "Classify each German supermarket product into exactly ONE of these categories: " +
   `${TAXONOMY_CATEGORIES.join(", ")}. ` +
+  "Categorise by what the food fundamentally IS, NOT its storage temperature: " +
+  "frozen fish → Meat & Fish, ice cream → Snacks & Sweets, frozen vegetables → Produce. " +
   "Return ONLY a JSON array of category strings — one entry per input product, in the " +
   "same order as the inputs. Use \"Other\" when no category fits.";
 

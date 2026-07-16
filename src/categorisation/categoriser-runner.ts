@@ -6,8 +6,8 @@
  * Environment (test seam — same idiom as scraper-runner):
  *   TEST_DB_PATH — SQLite file path; defaults to ./discount-hunt.db
  *   LLM config (see src/llm/resolve-llm.ts): when a usable LLM is configured the
- *   classifier is wired for the LLM fallback; otherwise the run is rules-only and
- *   unmatched rows stay NULL (pending).
+ *   classifier is wired and classifies every item; otherwise unclassified rows
+ *   stay NULL (pending).
  *
  * NULL-only idempotent: only newly-added / still-unclassified items are processed.
  */
@@ -16,7 +16,6 @@ import { createDb } from "../shared/db.ts";
 import { SQLiteDiscountItemRepository } from "../discount/adapters/sqlite-discount-item-repository.ts";
 import { LlmCategoryClassifier } from "./adapters/llm-category-classifier.ts";
 import { resolveLlm } from "../llm/resolve-llm.ts";
-import { RulesClassifier } from "./rules-classifier.ts";
 import { CategorisationService, type CategorisationResult } from "./categorisation-service.ts";
 import type { CategoryClassifier, DiscountCategoryStore } from "./ports.ts";
 import { ConsoleLogger, type Logger } from "../shared/logger.ts";
@@ -34,12 +33,11 @@ export interface CategoriseDeps {
  */
 export async function runCategorisation(deps: CategoriseDeps): Promise<CategorisationResult> {
   const logger = deps.logger ?? new ConsoleLogger();
-  const service = new CategorisationService(deps.store, new RulesClassifier(), deps.classifier);
+  const service = new CategorisationService(deps.store, deps.classifier);
   const result = await service.run();
   logger.log("info", "categorise.run.done", {
-    rulesCount: result.rulesCount,
-    llmCount: result.llmCount,
-    pendingCount: result.pendingCount,
+    classified: result.classified,
+    pending: result.pending,
   });
   return result;
 }
