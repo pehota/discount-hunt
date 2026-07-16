@@ -65,7 +65,10 @@ interface NestedProductOverrides {
   discountedPrice?: string | undefined;
   productType?: string;
   customLabel1?: string;
-  photoUrls?: string[];
+  photoUrls?: Array<{ thumb: string; full: string }>;
+  photoSharingUrl?: string;
+  brand?: string;
+  description?: string;
 }
 
 /** Build a NESTED product (the real shape carried inside entry.products[]). */
@@ -73,12 +76,14 @@ function nestedProduct(overrides: NestedProductOverrides = {}) {
   const base = {
     id: "item-001",
     title: "Zucchini",
+    brand: "Bio Company",
     description: "Frische Zucchini",
     price: "2.99",
     discountedPrice: "1.49" as string | undefined,
     productType: "Gemüse - Zucchini",
     customLabel1: "13.7.",
-    photoUrls: ["https://img/1.jpg"],
+    photoUrls: [{ thumb: "/images?src=zucchini&width=200", full: "/images?src=zucchini" }],
+    photoSharingUrl: "https://aldi-assets.publitas.com/feed-images/zucchini.png",
   };
   const merged = { ...base, ...overrides };
   // Allow explicitly dropping discountedPrice (catalogue listing, no deal).
@@ -166,7 +171,16 @@ describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () =
     const slug = "kw27-26-op-mp";
     // One entry with two nested products: one discounted, one catalogue-only (no deal).
     const entry = productEntry([
-      nestedProduct({ id: "deal-1", price: "0.65", discountedPrice: "0.59", title: "Tomaten" }),
+      nestedProduct({
+        id: "deal-1",
+        price: "0.65",
+        discountedPrice: "0.59",
+        title: "Tomaten",
+        brand: "San Lucar",
+        description: "Rispentomaten aus Spanien",
+        photoUrls: [{ thumb: "/images?src=tomaten&width=200", full: "/images?src=tomaten" }],
+        photoSharingUrl: "https://aldi-assets.publitas.com/feed-images/tomaten.png",
+      }),
       nestedProduct({ id: "listing-1", price: "1.19", discountedPrice: undefined, title: "Gurke" }),
     ]);
 
@@ -187,17 +201,25 @@ describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () =
     const item = result[0] as {
       id: string;
       title: string;
-      brand: string;
+      brand: string | null;
       price: string;
       discountedPrice?: string;
       customLabel1: string;
       productType: string;
       photoUrls: string[];
+      imageUrl: string | null;
+      description: string | null;
       sourceUrl: string;
     };
     expect(item.id).toBe("deal-1");
     expect(item.title).toBe("Tomaten");
-    expect(item.brand).toBe("Aldi Süd");
+    // brand now sourced from the raw PRODUCT brand, not the store label.
+    expect(item.brand).toBe("San Lucar");
+    // imageUrl built from photoUrls[0].thumb (resize-proxy thumbnail on ALDI_SUD_ORIGIN),
+    // NOT photoSharingUrl (the raw ~10MB full-res PNG that never finishes loading).
+    expect(item.imageUrl).toBe("https://prospekt.aldi-sued.de/images?src=tomaten&width=200");
+    expect(item.imageUrl).not.toBeNull();
+    expect(item.description).toBe("Rispentomaten aus Spanien");
     expect(item.price).toBe("0.65");
     expect(item.discountedPrice).toBe("0.59");
     // sourceUrl deep-links to the current-week catalogue slug (reuses ALDI_SUD_ORIGIN).
@@ -207,6 +229,23 @@ describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () =
     expect(item.customLabel1).toBe(expectedValidUntil());
     expect(item.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(item.photoUrls).toEqual([]);
+  });
+
+  test("imageUrl is null when the product carries no photoUrls (regression: no 11MB fallback)", async () => {
+    const slug = "kw27-26-op-mp";
+    const entry = productEntry([
+      nestedProduct({ id: "no-photo", price: "2.00", discountedPrice: "1.00", photoUrls: [] }),
+    ]);
+    globalThis.fetch = (async (url: Parameters<typeof fetch>[0], opts?: RequestInit): Promise<Response> => {
+      if (opts?.method === "HEAD") return makeRedirect(`//prospekt.aldi-sued.de/${slug}/`);
+      if (String(url).includes("/page/1-2/")) return makeResponse(200, [entry]);
+      return makeResponse(404, null);
+    }) as unknown as typeof fetch;
+
+    const fetcher = new AldiSudCatalogueFetcher();
+    const result = await fetcher.fetchCurrentWeek();
+    expect(result).toHaveLength(1);
+    expect((result[0] as { imageUrl: string | null }).imageUrl).toBeNull();
   });
 
   test("Property: only nested products with discountedPrice < price survive, all carrying ISO validUntil", async () => {

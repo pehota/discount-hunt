@@ -25,6 +25,8 @@ function rawItem(overrides: Partial<{
   customLabel1: string;
   productType: string | undefined;
   photoUrls: string[];
+  imageUrl: string | null;
+  description: string | null;
 }> = {}) {
   return {
     id: "item-001",
@@ -132,6 +134,30 @@ describe("CatalogueNormalizer", () => {
   test("defaults sourceUrl to null when absent on the raw item", () => {
     const [result] = normalizer.normalize([rawItem()]);
     expect(result!.sourceUrl).toBeNull();
+  });
+
+  // ── detail fields mapping (imageUrl / brand / description) ─────────────────
+
+  test("maps imageUrl/brand/description through when present on the raw item", () => {
+    const imageUrl = "https://prospekt.aldi-sued.de/img/1.jpg";
+    const brand = "GutBio";
+    const description = "Frische Bio-Zucchini";
+    const [result] = normalizer.normalize([
+      { ...rawItem(), imageUrl, brand, description },
+    ]);
+    expect(result!.imageUrl).toBe(imageUrl);
+    expect(result!.brand).toBe(brand);
+    expect(result!.description).toBe(description);
+  });
+
+  test("defaults imageUrl/brand/description to null when absent on the raw item", () => {
+    // rawItem() always carries brand, so drop it explicitly to exercise the absent case
+    // alongside imageUrl/description (which rawItem never sets).
+    const { brand: _brand, ...withoutBrand } = rawItem();
+    const [result] = normalizer.normalize([withoutBrand]);
+    expect(result!.imageUrl).toBeNull();
+    expect(result!.brand).toBeNull();
+    expect(result!.description).toBeNull();
   });
 
   // ── Property 3: dietary tags per productType ──────────────────────────────

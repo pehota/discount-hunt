@@ -60,6 +60,9 @@ describe("DiscountHandler.handleGet", () => {
         validUntil: "2026-07-14",
         dietaryTags: ["vegan"],
         sourceUrl: null,
+        imageUrl: null,
+        brand: null,
+        description: null,
       },
       "job-001"
     );
@@ -74,6 +77,9 @@ describe("DiscountHandler.handleGet", () => {
         validUntil: "2026-07-14",
         dietaryTags: ["vegan"],
         sourceUrl: null,
+        imageUrl: null,
+        brand: null,
+        description: null,
       },
       "job-001"
     );
@@ -88,6 +94,9 @@ describe("DiscountHandler.handleGet", () => {
         validUntil: "2026-07-14",
         dietaryTags: ["vegan"],
         sourceUrl: null,
+        imageUrl: null,
+        brand: null,
+        description: null,
       },
       "job-001"
     );
@@ -188,6 +197,9 @@ describe("DiscountHandler filter pills", () => {
           validUntil: VU,
           dietaryTags: ["vegan"],
           sourceUrl: null,
+          imageUrl: null,
+          brand: null,
+          description: null,
         },
         jobId,
       );
@@ -306,6 +318,9 @@ describe("DiscountHandler feed enhancements", () => {
           validUntil: VU,
           dietaryTags: ["vegan"],
           sourceUrl: null,
+          imageUrl: null,
+          brand: null,
+          description: null,
         },
         jobId,
       );
@@ -391,6 +406,9 @@ describe("DiscountHandler feed action-hub", () => {
           validUntil: VU,
           dietaryTags: ["vegan"],
           sourceUrl: null,
+          imageUrl: null,
+          brand: null,
+          description: null,
         },
         jobId,
       );
@@ -494,7 +512,7 @@ describe("DiscountHandler category filter + price-asc sort", () => {
   async function seedItem(
     service: DiscountService,
     repo: SQLiteDiscountItemRepository,
-    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string; tags?: Tag[]; sourceUrl?: string | null },
+    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string; tags?: Tag[]; sourceUrl?: string | null; imageUrl?: string | null; brand?: string | null; description?: string | null },
   ): Promise<void> {
     await service.registerDiscountItem(
       {
@@ -507,6 +525,9 @@ describe("DiscountHandler category filter + price-asc sort", () => {
         validUntil: VU,
         dietaryTags: ["vegan"],
         sourceUrl: opts.sourceUrl ?? null,
+        imageUrl: opts.imageUrl ?? null,
+        brand: opts.brand ?? null,
+        description: opts.description ?? null,
       },
       opts.jobId,
     );
@@ -708,7 +729,7 @@ describe("DiscountHandler category filter + price-asc sort", () => {
     expect(label).not.toContain("<a ");
   });
 
-  test("C: when sourceUrl is null, .item-name is plain text with NO anchor", async () => {
+  test("C: when sourceUrl is null, .item-name wraps a modal-trigger button (NO anchor); textContent stays the product name", async () => {
     const db = createDb(":memory:");
     const repo = new SQLiteDiscountItemRepository(db);
     const service = new DiscountService(repo);
@@ -718,9 +739,12 @@ describe("DiscountHandler category filter + price-asc sort", () => {
     const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
 
     const card = html.match(/<div class="card"[^>]*>[\s\S]*?Zucchini[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
-    expect(card).toContain(`<h3 class="item-name">Zucchini</h3>`);
     const itemName = card.match(/<h3 class="item-name">[\s\S]*?<\/h3>/)?.[0] ?? "";
+    // Null case → a <button class="item-name-trigger"> that opens the modal; NO anchor.
+    expect(itemName).toContain(`<button type="button" class="item-name-trigger">`);
     expect(itemName).not.toContain("<a ");
+    // LOAD-BEARING CONTRACT: .item-name textContent === EXACTLY the product name.
+    expect(itemName.replace(/<[^>]*>/g, "").trim()).toBe("Zucchini");
   });
 
   test("D: a non-http sourceUrl (javascript:) is NOT linked — plain text, no anchor", async () => {
@@ -737,5 +761,138 @@ describe("DiscountHandler category filter + price-asc sort", () => {
     expect(itemName).not.toContain("<a ");
     expect(itemName).not.toContain("javascript:");
     expect(itemName.replace(/<[^>]*>/g, "").trim()).toBe("Zucchini");
+  });
+});
+
+/**
+ * Product-details modal — server-rendered scaffolding contract. Clicking a product name
+ * opens a dialog with the item's image + details (client JS, browser-verified by the
+ * orchestrator). Here we assert ONLY the static markup the client JS reads/populates:
+ * the per-card data-* payload (escaped) and the one hidden .product-modal template.
+ */
+describe("DiscountHandler product-details modal", () => {
+  const VU = thisWeekValidUntil();
+
+  async function seedItem(
+    service: DiscountService,
+    repo: SQLiteDiscountItemRepository,
+    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string; sourceUrl?: string | null; imageUrl?: string | null; brand?: string | null; description?: string | null },
+  ): Promise<void> {
+    await service.registerDiscountItem(
+      {
+        externalId: opts.externalId,
+        store: opts.store,
+        name: opts.name,
+        category: "vegetable",
+        regularPrice: opts.salePrice + 100,
+        salePrice: opts.salePrice,
+        validUntil: VU,
+        dietaryTags: ["vegan"],
+        sourceUrl: opts.sourceUrl ?? null,
+        imageUrl: opts.imageUrl ?? null,
+        brand: opts.brand ?? null,
+        description: opts.description ?? null,
+      },
+      opts.jobId,
+    );
+    if (opts.category !== null) {
+      repo.setCategorisation(`${opts.store}:${opts.externalId}`, opts.category, []);
+    }
+  }
+
+  test("each card carries data-image / data-brand / data-desc with the seeded values", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, {
+      store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j",
+      imageUrl: "https://cdn.example.com/zucchini.jpg", brand: "BioAldi", description: "Fresh green zucchini",
+    });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>/)?.[0] ?? "";
+    expect(card).toContain(`data-image="https://cdn.example.com/zucchini.jpg"`);
+    expect(card).toContain(`data-brand="BioAldi"`);
+    expect(card).toContain(`data-desc="Fresh green zucchini"`);
+  });
+
+  test("null image/brand/description render as empty data-* attributes (no 'null' leak)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>/)?.[0] ?? "";
+    expect(card).toContain(`data-image=""`);
+    expect(card).toContain(`data-brand=""`);
+    expect(card).toContain(`data-desc=""`);
+  });
+
+  test("data-* attribute values with quote/angle-bracket chars are HTML-escaped", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    const desc = `Big "quote" & <script>alert(1)</script>`;
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j", description: desc });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>/)?.[0] ?? "";
+    // The attribute holds the fully-escaped form; the raw dangerous chars must NOT appear in it.
+    expect(card).toContain(`data-desc="${escapeHtml(desc)}"`);
+    expect(card).not.toContain(`data-desc="Big "quote"`);
+    expect(card).not.toContain("<script>alert(1)</script>");
+  });
+
+  test("the page renders exactly one hidden .product-modal dialog template", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const modal = html.match(/<div class="product-modal"[^>]*>/)?.[0] ?? "";
+    expect(modal).toContain("product-modal");
+    expect(modal).toContain("hidden");
+    expect(modal).toContain(`role="dialog"`);
+    expect(modal).toContain(`aria-modal="true"`);
+    // Exactly one modal instance (rendered once as a body sibling, not per card).
+    expect(html.match(/class="product-modal"/g)?.length).toBe(1);
+    // Slots the client JS populates + the in-dialog offer link are present.
+    expect(html).toContain(`class="pm-title"`);
+    expect(html).toContain(`class="pm-offer`);
+    expect(html).toContain("View original offer");
+  });
+
+  test("linkable name → <a href> (no-JS offer fallback); non-linkable → item-name-trigger button", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Edeka", externalId: "e1", name: "Bauernbrot", salePrice: 149, category: "Bakery", jobId: "j", sourceUrl: "https://example.com/o/1" });
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j", sourceUrl: null });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    // Scope each name to its own store section (both cards live on the same page).
+    const edekaSection = html.match(/<section class="store-group" data-store="Edeka">[\s\S]*?<\/section>/)?.[0] ?? "";
+    const linkName = edekaSection.match(/<h3 class="item-name">[\s\S]*?<\/h3>/)?.[0] ?? "";
+    expect(linkName).toContain(`<a href="https://example.com/o/1"`);
+    expect(linkName).not.toContain("item-name-trigger");
+    expect(linkName.replace(/<[^>]*>/g, "").trim()).toBe("Bauernbrot");
+
+    const aldiSection = html.match(/<section class="store-group" data-store="Aldi">[\s\S]*?<\/section>/)?.[0] ?? "";
+    const buttonName = aldiSection.match(/<h3 class="item-name">[\s\S]*?<\/h3>/)?.[0] ?? "";
+    expect(buttonName).toContain(`<button type="button" class="item-name-trigger">`);
+    expect(buttonName).not.toContain("<a ");
+    expect(buttonName.replace(/<[^>]*>/g, "").trim()).toBe("Zucchini");
   });
 });

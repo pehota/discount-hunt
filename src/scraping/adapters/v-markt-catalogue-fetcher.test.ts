@@ -269,7 +269,10 @@ describe("VMarktCatalogueFetcher — output shape", () => {
         const r = item as unknown as Record<string, unknown>;
         expect(typeof r.id).toBe("string");
         expect(r.title).toBeDefined();
-        expect(r.brand).toBe("V-Markt");
+        // LLM text extraction yields no product brand/image/description → all null.
+        expect(r.brand).toBeNull();
+        expect(r.imageUrl).toBeNull();
+        expect(r.description).toBeNull();
         expect(typeof r.price).toBe("string");
         expect(typeof r.discountedPrice).toBe("string");
         // validUntil is a full ISO date = end of the current week (SSOT: currentWeekSunday),

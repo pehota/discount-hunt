@@ -22,7 +22,6 @@ import { currentWeekSunday } from "../../shared/week.ts";
 const ALDI_SUD_ORIGIN = "https://prospekt.aldi-sued.de";
 const SLUG_PATTERN = /^\/\/prospekt\.aldi-sued\.de\/([^/]+)\//;
 const PRODUCT_TYPE = "product";
-const ALDI_SUD_BRAND = "Aldi Süd";
 
 /**
  * Exported pure function — parse slug from a 302 Location header value.
@@ -57,7 +56,12 @@ interface NestedProduct {
   discountedPrice?: string;
   productType: string;
   customLabel1: string;
-  photoUrls?: string[];
+  /** Resize-proxy variants on ALDI_SUD_ORIGIN: thumb (~200px) + full (relative paths). */
+  photoUrls?: Array<{ thumb: string; full: string }>;
+  /** Raw full-res PNG on the publitas CDN (~10MB, no resize support) — intentionally unused. */
+  photoSharingUrl?: string;
+  brand?: string;
+  description?: string;
 }
 
 /** A top-level hotspot entry; product entries carry data in a nested products[] array. */
@@ -70,12 +74,14 @@ interface HotspotEntry {
 interface RawAldiItem {
   id: string;
   title: string;
-  brand: string;
+  brand: string | null;
   price: string;
   discountedPrice: string;
   customLabel1: string;
   productType: string;
   photoUrls: string[];
+  imageUrl: string | null;
+  description: string | null;
   sourceUrl: string;
 }
 
@@ -138,15 +144,21 @@ export class AldiSudCatalogueFetcher {
   }
 
   private toRawAldiItem(product: NestedProduct, validUntil: string, slug: string): RawAldiItem {
+    // Use the resize-proxy thumbnail (photoUrls[0].thumb, ~200px, a relative /images? path
+    // on ALDI_SUD_ORIGIN), NOT photoSharingUrl — that is the raw ~10MB full-res PNG on the
+    // publitas CDN which ignores resize params and never finishes loading in the browser.
+    const thumb = product.photoUrls?.[0]?.thumb;
     return {
       id: product.id,
       title: product.title,
-      brand: ALDI_SUD_BRAND,
+      brand: product.brand ?? null,
       price: product.price,
       discountedPrice: product.discountedPrice!,
       customLabel1: validUntil,
       productType: product.productType,
       photoUrls: [],
+      imageUrl: thumb ? `${ALDI_SUD_ORIGIN}${thumb}` : null,
+      description: product.description ?? null,
       sourceUrl: `${ALDI_SUD_ORIGIN}/${slug}/`,
     };
   }

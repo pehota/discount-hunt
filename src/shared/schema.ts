@@ -31,6 +31,9 @@ export const discountItems = sqliteTable("discount_items", {
   tags: text("tags").notNull().default("[]"), // JSON array of Tag
   taxonomyCategory: text("taxonomy_category"), // nullable — assigned by categorisation context; NULL = unclassified
   sourceUrl: text("source_url"), // nullable — deep link to original store offer; NULL when unavailable
+  imageUrl: text("image_url"), // nullable — product image; NULL when the source can't provide it
+  brand: text("brand"), // nullable — product brand; NULL when the source can't provide it
+  description: text("description"), // nullable — product description; NULL when the source can't provide it
   scrapeJobId: text("scrape_job_id").notNull(),
   createdAt: integer("created_at").notNull(), // ms since epoch
 });

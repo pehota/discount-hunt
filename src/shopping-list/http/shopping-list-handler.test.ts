@@ -69,6 +69,9 @@ describe("ShoppingListHandler", () => {
         validUntil: thisWeekValidUntil(),
         dietaryTags: ["vegan"],
         sourceUrl: null,
+        imageUrl: null,
+        brand: null,
+        description: null,
       },
       "job-1",
     );
@@ -208,12 +211,12 @@ describe("ShoppingListHandler", () => {
     // A "Bakery" discount item and a "Produce" discount item; then a manual item ("Other").
     await ds.registerDiscountItem(
       { externalId: "b1", store: "aldi", name: "Baguette", category: "bread",
-        regularPrice: 200, salePrice: 150, validUntil: thisWeekValidUntil(), dietaryTags: ["vegetarian"], sourceUrl: null },
+        regularPrice: 200, salePrice: 150, validUntil: thisWeekValidUntil(), dietaryTags: ["vegetarian"], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-b",
     );
     await ds.registerDiscountItem(
       { externalId: "p1", store: "aldi", name: "Apple", category: "fruit",
-        regularPrice: 120, salePrice: 90, validUntil: thisWeekValidUntil(), dietaryTags: ["vegan"], sourceUrl: null },
+        regularPrice: 120, salePrice: 90, validUntil: thisWeekValidUntil(), dietaryTags: ["vegan"], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-b",
     );
     discountRepo.setCategorisation("aldi:b1", "Bakery", []);

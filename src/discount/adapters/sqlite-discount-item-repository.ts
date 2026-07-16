@@ -33,6 +33,9 @@ export interface StoredDiscountItem {
   tags: Tag[];
   taxonomyCategory: TaxonomyCategory | null;
   sourceUrl: string | null;
+  imageUrl: string | null;
+  brand: string | null;
+  description: string | null;
   scrapeJobId: string;
   createdAt: number;
 }
@@ -68,11 +71,11 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
     // INSERT OR IGNORE — D22 write-once: regular_price not overwritten on conflict
     this.db.run(sql`
       INSERT OR IGNORE INTO discount_items
-        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, source_url, scrape_job_id, created_at)
+        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, source_url, image_url, brand, description, scrape_job_id, created_at)
       VALUES
         (${id}, ${item.store}, ${item.name}, ${item.category},
          ${item.regularPrice}, ${item.salePrice}, ${item.validUntil},
-         ${JSON.stringify(item.dietaryTags)}, ${item.sourceUrl}, ${scrapeJobId}, ${Date.now()})
+         ${JSON.stringify(item.dietaryTags)}, ${item.sourceUrl}, ${item.imageUrl}, ${item.brand}, ${item.description}, ${scrapeJobId}, ${Date.now()})
     `);
   }
 
@@ -87,6 +90,9 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
       validUntil: item.validUntil,
       dietaryTags: item.dietaryTags,
       sourceUrl: item.sourceUrl,
+      imageUrl: item.imageUrl,
+      brand: item.brand,
+      description: item.description,
       scrapeJobId,
     };
     for (const [field, value] of Object.entries(bindings)) {
@@ -117,6 +123,9 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
         tags: this.parseTags(row.tags),
         taxonomyCategory: row.taxonomyCategory as TaxonomyCategory | null,
         sourceUrl: row.sourceUrl,
+        imageUrl: row.imageUrl,
+        brand: row.brand,
+        description: row.description,
         scrapeJobId: row.scrapeJobId,
         createdAt: row.createdAt,
       }));

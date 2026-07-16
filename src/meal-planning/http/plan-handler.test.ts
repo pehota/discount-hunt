@@ -50,7 +50,7 @@ describe("PlanHandler", () => {
 
     // Seed discount items
     await discountService.registerDiscountItem(
-      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null },
+      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001"
     );
 
@@ -65,15 +65,15 @@ describe("PlanHandler", () => {
 
     // Seed discount items: 199-99=100, 249-149=100, 179-89=90 → total 290 cents
     await discountService.registerDiscountItem(
-      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null },
+      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001"
     );
     await discountService.registerDiscountItem(
-      { externalId: "i2", store: "Aldi", name: "Rote Linsen", category: "legume", regularPrice: 249, salePrice: 149, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null },
+      { externalId: "i2", store: "Aldi", name: "Rote Linsen", category: "legume", regularPrice: 249, salePrice: 149, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001"
     );
     await discountService.registerDiscountItem(
-      { externalId: "i3", store: "Aldi", name: "Spinat", category: "veg", regularPrice: 179, salePrice: 89, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null },
+      { externalId: "i3", store: "Aldi", name: "Spinat", category: "veg", regularPrice: 179, salePrice: 89, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001"
     );
 
@@ -94,7 +94,7 @@ describe("PlanHandler", () => {
 
     // Distinctive store name + sale price so we can assert they surface per meal.
     await discountService.registerDiscountItem(
-      { externalId: "i1", store: "Netto Marken", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null },
+      { externalId: "i1", store: "Netto Marken", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001"
     );
 
@@ -113,7 +113,7 @@ describe("PlanHandler", () => {
     const vu = thisWeekValidUntil();
 
     await discountService.registerDiscountItem(
-      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: vu, dietaryTags: [], sourceUrl: null },
+      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: vu, dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001",
     );
 
@@ -146,15 +146,15 @@ describe("PlanHandler", () => {
     const vu = thisWeekValidUntil();
 
     await discountService.registerDiscountItem(
-      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: vu, dietaryTags: [], sourceUrl: null },
+      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: vu, dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001",
     );
     await discountService.registerDiscountItem(
-      { externalId: "i2", store: "Aldi", name: "Rote Linsen", category: "legume", regularPrice: 249, salePrice: 149, validUntil: vu, dietaryTags: [], sourceUrl: null },
+      { externalId: "i2", store: "Aldi", name: "Rote Linsen", category: "legume", regularPrice: 249, salePrice: 149, validUntil: vu, dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001",
     );
     await discountService.registerDiscountItem(
-      { externalId: "i3", store: "Aldi", name: "Spinat", category: "veg", regularPrice: 179, salePrice: 89, validUntil: vu, dietaryTags: [], sourceUrl: null },
+      { externalId: "i3", store: "Aldi", name: "Spinat", category: "veg", regularPrice: 179, salePrice: 89, validUntil: vu, dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001",
     );
 
@@ -182,7 +182,7 @@ describe("PlanHandler", () => {
     const { discountService, planHandler } = buildDeps(db);
 
     await discountService.registerDiscountItem(
-      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null },
+      { externalId: "i1", store: "Aldi", name: "Zucchini", category: "veg", regularPrice: 199, salePrice: 99, validUntil: "2026-07-14", dietaryTags: [], sourceUrl: null, imageUrl: null, brand: null, description: null },
       "job-001"
     );
 

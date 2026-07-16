@@ -60,12 +60,14 @@ const DEFAULT_SEARCH_TERMS = [
 interface CatalogueNormalizerItem {
   id: string;
   title: string;
-  brand: string;
+  brand: string | null;
   price: string;
   discountedPrice: string;
   customLabel1: string;
   productType: string;
   photoUrls: string[];
+  imageUrl: string | null;
+  description: string | null;
   sourceUrl: string;
 }
 
@@ -78,6 +80,8 @@ interface Offer {
   categories?: { name: string }[];
   advertisers: { uniqueName: string; name: string }[];
   validityDates?: { from: string; to: string }[];
+  images?: { count: number };
+  description?: string;
 }
 
 export interface MarktguruEdekaCatalogueFetcherOptions {
@@ -196,15 +200,23 @@ export class MarktguruEdekaCatalogueFetcher {
     const realBrand = rawBrand && !rawBrand.toLowerCase().includes(NO_BRAND_SENTINEL) ? rawBrand : "";
     const title = realBrand ? `${realBrand} ${offer.product.name}` : offer.product.name;
     const regular = offer.oldPrice ?? offer.price;
+    const imageUrl =
+      (offer.images?.count ?? 0) > 0
+        ? `https://cdn.marktguru.de/api/v1/offers/${offer.id}/images/default/0/large.webp`
+        : null;
     return {
       id: String(offer.id),
       title,
-      brand: "EDEKA",
+      // brand is composed into the title above, so it is not stored separately (avoids
+      // duplicate render in the details dialog).
+      brand: null,
       price: String(regular),
       discountedPrice: String(offer.price),
       customLabel1: this.latestValidUntil(offer),
       productType: offer.categories?.[0]?.name ?? "grocery",
       photoUrls: [],
+      imageUrl,
+      description: offer.description ?? null,
       sourceUrl: `https://www.marktguru.de/offers/${offer.id}`,
     };
   }

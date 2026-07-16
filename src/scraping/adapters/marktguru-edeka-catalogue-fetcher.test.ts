@@ -85,6 +85,8 @@ function edekaOffer(overrides: Partial<{
   advertiser: string;
   categoryName: string;
   validTo: string[];
+  imageCount: number;
+  description: string;
 }> = {}) {
   const validTo = overrides.validTo ?? ["2026-07-20T00:00:00Z"];
   const id = overrides.id ?? 1;
@@ -97,6 +99,8 @@ function edekaOffer(overrides: Partial<{
     categories: [{ name: overrides.categoryName ?? "Käse" }],
     advertisers: [{ uniqueName: overrides.advertiser ?? "edeka", name: "EDEKA" }],
     validityDates: validTo.map((to) => ({ from: "2026-07-14T00:00:00Z", to })),
+    ...(overrides.imageCount !== undefined ? { images: { count: overrides.imageCount } } : {}),
+    ...(overrides.description !== undefined ? { description: overrides.description } : {}),
   };
 }
 
@@ -355,6 +359,8 @@ describe("MarktguruEdekaCatalogueFetcher — mapping", () => {
             oldPrice: 2.99,
             categoryName: "Käse",
             validTo: ["2026-07-18T00:00:00Z", "2026-07-22T00:00:00Z", "2026-07-20T00:00:00Z"],
+            imageCount: 3,
+            description: "Junger Gouda am Stück",
           }),
         ],
       },
@@ -372,7 +378,13 @@ describe("MarktguruEdekaCatalogueFetcher — mapping", () => {
     const item = result[0]!;
     expect(item.id).toBe("7");
     expect(item.title).toBe("Milbona Gouda jung");
-    expect(item.brand).toBe("EDEKA");
+    // brand is composed into the title above; not stored separately (avoids duplicate render).
+    expect(item.brand).toBeNull();
+    // imageUrl is CONSTRUCTED from offer.id when images.count > 0 (metadata carries no url).
+    expect(item.imageUrl).toBe(
+      "https://cdn.marktguru.de/api/v1/offers/7/images/default/0/large.webp",
+    );
+    expect(item.description).toBe("Junger Gouda am Stück");
     expect(item.price).toBe("2.99"); // regular = oldPrice
     expect(item.discountedPrice).toBe("1.99"); // sale = price
     expect(item.customLabel1).toBe("2026-07-22"); // latest .to, full date
@@ -440,6 +452,8 @@ describe("MarktguruEdekaCatalogueFetcher — mapping", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.title).toBe("Hähnchen-Schenkel");
+    // sentinel brand is filtered out → item brand is null (not the sentinel, not the store label).
+    expect(result[0]!.brand).toBeNull();
   });
 
   test("no validityDates → validUntil falls back to currentWeekSunday (full YYYY-MM-DD)", async () => {
@@ -459,6 +473,65 @@ describe("MarktguruEdekaCatalogueFetcher — mapping", () => {
 
     expect(result).toHaveLength(1);
     expect(result[0]!.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+// ── 4b. imageUrl construction from images.count ─────────────────────────────────
+
+describe("MarktguruEdekaCatalogueFetcher — imageUrl construction", () => {
+  test("images.count === 0 → imageUrl is null", async () => {
+    const recorded: RecordedRequest[] = [];
+    const fetchFn = makeFakeFetch({
+      offersByTerm: { käse: [edekaOffer({ id: 8, imageCount: 0 })] },
+      recorded,
+    });
+
+    const fetcher = new MarktguruEdekaCatalogueFetcher({
+      searchTerms: ["käse"],
+      fetchFn,
+      logger: new SpyLogger(),
+    });
+    const result = await fetcher.fetchCurrentWeek();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.imageUrl).toBeNull();
+  });
+
+  test("images field absent → imageUrl is null", async () => {
+    const recorded: RecordedRequest[] = [];
+    // edekaOffer without imageCount omits the images field entirely.
+    const fetchFn = makeFakeFetch({
+      offersByTerm: { käse: [edekaOffer({ id: 9 })] },
+      recorded,
+    });
+
+    const fetcher = new MarktguruEdekaCatalogueFetcher({
+      searchTerms: ["käse"],
+      fetchFn,
+      logger: new SpyLogger(),
+    });
+    const result = await fetcher.fetchCurrentWeek();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.imageUrl).toBeNull();
+  });
+
+  test("description absent → description is null", async () => {
+    const recorded: RecordedRequest[] = [];
+    const fetchFn = makeFakeFetch({
+      offersByTerm: { käse: [edekaOffer({ id: 10 })] },
+      recorded,
+    });
+
+    const fetcher = new MarktguruEdekaCatalogueFetcher({
+      searchTerms: ["käse"],
+      fetchFn,
+      logger: new SpyLogger(),
+    });
+    const result = await fetcher.fetchCurrentWeek();
+
+    expect(result).toHaveLength(1);
+    expect(result[0]!.description).toBeNull();
   });
 });
 

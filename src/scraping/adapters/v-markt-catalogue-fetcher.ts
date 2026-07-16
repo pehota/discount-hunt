@@ -47,12 +47,14 @@ const VALID_SLUG_PATTERN = /^\d{4}_VMMUC$/;
 interface CatalogueNormalizerItem {
   id: string;
   title: string;
-  brand: string;
+  brand: string | null;
   price: string;
   discountedPrice: string;
   customLabel1: string;
   productType: string;
   photoUrls: string[];
+  imageUrl: string | null;
+  description: string | null;
   sourceUrl: string;
 }
 
@@ -85,12 +87,15 @@ export class VMarktCatalogueFetcher {
         return {
           id: stableOfferId(name, regularPrice, salePrice, validUntil),
           title: name,
-          brand: "V-Markt",
+          // LLM text extraction yields no product image/brand/description.
+          brand: null,
           price: regularPrice,
           discountedPrice: salePrice,
           customLabel1: validUntil,
           productType: "grocery",
           photoUrls: [],
+          imageUrl: null,
+          description: null,
           sourceUrl: this.pageflipUrl(slug),
         };
       });

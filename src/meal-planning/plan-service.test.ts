@@ -91,6 +91,9 @@ describe("PlanService", () => {
           validUntil: item.validUntil,
           dietaryTags: [],
           sourceUrl: null,
+          imageUrl: null,
+          brand: null,
+          description: null,
         },
         "scrape-job-001"
       );
@@ -116,6 +119,9 @@ describe("PlanService", () => {
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       sourceUrl: row.sourceUrl,
+      imageUrl: row.imageUrl,
+      brand: row.brand,
+      description: row.description,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -144,6 +150,9 @@ describe("PlanService", () => {
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       sourceUrl: row.sourceUrl,
+      imageUrl: row.imageUrl,
+      brand: row.brand,
+      description: row.description,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -172,6 +181,9 @@ describe("PlanService", () => {
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       sourceUrl: row.sourceUrl,
+      imageUrl: row.imageUrl,
+      brand: row.brand,
+      description: row.description,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -238,6 +250,9 @@ describe("PlanService — generate from a user-selected subset", () => {
           validUntil: item.validUntil,
           dietaryTags: [],
           sourceUrl: null,
+          imageUrl: null,
+          brand: null,
+          description: null,
         },
         "scrape-job-001",
       );
@@ -257,6 +272,9 @@ describe("PlanService — generate from a user-selected subset", () => {
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
       sourceUrl: row.sourceUrl,
+      imageUrl: row.imageUrl,
+      brand: row.brand,
+      description: row.description,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -340,6 +358,9 @@ describe("PlanService.generatePlan — 14-meal structure (PBT)", () => {
     tags: fc.constant([]),
     taxonomyCategory: fc.constant(null),
     sourceUrl: fc.constant(null),
+    imageUrl: fc.constant(null),
+    brand: fc.constant(null),
+    description: fc.constant(null),
     scrapeJobId: fc.constant("job-pbt"),
     createdAt: fc.constant(0),
   });

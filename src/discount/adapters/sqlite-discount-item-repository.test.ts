@@ -20,7 +20,12 @@ import type { NormalizedItem } from "../../shared/types.ts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeItem(externalId: string, validUntil: string, sourceUrl: string | null = null) {
+function makeItem(
+  externalId: string,
+  validUntil: string,
+  sourceUrl: string | null = null,
+  details: { imageUrl?: string | null; brand?: string | null; description?: string | null } = {},
+) {
   return {
     externalId,
     store: "test-store",
@@ -31,6 +36,9 @@ function makeItem(externalId: string, validUntil: string, sourceUrl: string | nu
     validUntil,
     dietaryTags: [] as [],
     sourceUrl,
+    imageUrl: details.imageUrl ?? null,
+    brand: details.brand ?? null,
+    description: details.description ?? null,
   };
 }
 
@@ -151,6 +159,60 @@ describe("SQLiteDiscountItemRepository.register", () => {
     expect(stored?.sourceUrl).toBeNull();
   });
 
+  test("detail fields round-trip: imageUrl/brand/description registered are returned by getByWeek", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    const imageUrl = "https://prospekt.aldi-sued.de/img/42.jpg";
+    const brand = "GutBio";
+    const description = "Frische Bio-Zucchini aus der Region";
+    await repo.register(
+      makeItem("with-details", "2026-07-20", null, { imageUrl, brand, description }),
+      "job-1",
+    );
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const stored = results.find((r) => r.id === "test-store:with-details");
+    expect(stored?.imageUrl).toBe(imageUrl);
+    expect(stored?.brand).toBe(brand);
+    expect(stored?.description).toBe(description);
+  });
+
+  test("detail fields null round-trip: null imageUrl/brand/description are returned as null", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("no-details", "2026-07-20"), "job-1");
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const stored = results.find((r) => r.id === "test-store:no-details");
+    expect(stored?.imageUrl).toBeNull();
+    expect(stored?.brand).toBeNull();
+    expect(stored?.description).toBeNull();
+  });
+
+  test("legacy rows (inserted without the detail columns) read back imageUrl/brand/description as null", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    // Simulate a pre-migration row: insert omitting image_url/brand/description entirely
+    // (the idempotent ALTERs left them nullable → legacy rows carry SQL NULL there).
+    db.run(sql`
+      INSERT INTO discount_items
+        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, scrape_job_id, created_at)
+      VALUES
+        (${"test-store:legacy"}, ${"test-store"}, ${"Legacy Item"}, ${"test"},
+         ${200}, ${150}, ${"2026-07-20"}, ${"[]"}, ${"job-legacy"}, ${Date.now()})
+    `);
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const stored = results.find((r) => r.id === "test-store:legacy");
+    expect(stored).toBeDefined();
+    expect(stored?.imageUrl).toBeNull();
+    expect(stored?.brand).toBeNull();
+    expect(stored?.description).toBeNull();
+  });
+
   test("rejects an item with an undefined required field with a named error", async () => {
     // Root cause of the live crash: an undefined interpolation makes Drizzle's
     // `sql` template silently drop the binding, emitting malformed SQL. The
@@ -225,6 +287,9 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
       validUntil: "2026-07-20",
       dietaryTags: [],
       sourceUrl: null,
+      imageUrl: null,
+      brand: null,
+      description: null,
     };
     repo.replaceStore("store-y", [storeYItem], "job-2");
 
@@ -233,6 +298,26 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
     expect(ids).toContain("test-store:x1");
     expect(ids).toContain("test-store:x2");
     expect(ids).toContain("store-y:d");
+  });
+
+  test("detail fields round-trip via replaceStore: imageUrl/brand/description persist through a batch insert", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    const imageUrl = "https://prospekt.aldi-sued.de/img/7.jpg";
+    const brand = "Milbona";
+    const description = "Cremiger Joghurt";
+    repo.replaceStore(
+      "test-store",
+      [makeItem("batch-details", "2026-07-20", null, { imageUrl, brand, description })],
+      "job-1",
+    );
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const stored = results.find((r) => r.id === "test-store:batch-details");
+    expect(stored?.imageUrl).toBe(imageUrl);
+    expect(stored?.brand).toBe(brand);
+    expect(stored?.description).toBe(description);
   });
 
   test("within-run dedup: a batch with two items sharing the same id yields 1 row (INSERT OR IGNORE)", async () => {

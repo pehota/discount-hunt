@@ -107,6 +107,9 @@ export interface NormalizedItem {
   validUntil: string;   // ISO date
   dietaryTags: DietaryTag[];
   sourceUrl: string | null;  // deep link to the original store offer; null when unavailable
+  imageUrl: string | null;  // product image; null when the source can't provide it
+  brand: string | null;  // product brand; null when the source can't provide it
+  description: string | null;  // product description; null when the source can't provide it
 }
 
 /** Meal slot within a day — lunch or dinner. */

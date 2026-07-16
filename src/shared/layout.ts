@@ -434,6 +434,26 @@ const STYLE = `
       margin-left: var(--sp-1);
       font-size: var(--fs-sm);
     }
+    /* Non-linkable name → a <button> that opens the details modal. Reset the global
+       button {} rule (full-width green block) so it reads as a plain text-like name,
+       matching .item-name a. No ::after affordance (there is no external offer). */
+    .card .item-name-trigger {
+      width: auto;
+      margin: 0;
+      padding: 0;
+      background: none;
+      border: none;
+      border-radius: 0;
+      color: var(--accent);
+      font: inherit;
+      text-align: left;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      cursor: pointer;
+    }
+    .card .item-name-trigger:hover,
+    .card .item-name-trigger:focus { text-decoration: underline; }
     .was-price { color: var(--muted); text-decoration: line-through; margin-right: var(--sp-2); }
     .sale-price { color: var(--sale); font-weight: 700; font-size: var(--fs-lg); }
     /* Savings badge (feed) — corner chip using --save */
@@ -699,6 +719,139 @@ const STYLE = `
     }
     a { color: var(--accent); }
 
+    /* ── Product-details modal (feed) ─────────────────────────────────────
+       Fixed full-viewport dialog opened by clicking a product name. [hidden] fully
+       hides it. The overlay dims the page; the centered card scrolls internally
+       (max-height + overflow) so long descriptions never break the 375px viewport.
+       box-sizing:border-box + max-width keep it inside the viewport on mobile and
+       readable on desktop. */
+    .product-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 300;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: var(--sp-4);
+    }
+    .product-modal[hidden] { display: none; }
+    .product-modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(16, 24, 40, 0.55);
+    }
+    .product-modal-card {
+      position: relative;
+      z-index: 1;
+      width: 100%;
+      max-width: 420px;
+      max-height: 85vh;
+      overflow-y: auto;
+      background: var(--surface);
+      border-radius: var(--r-lg);
+      box-shadow: var(--shadow-md);
+      padding: var(--sp-5);
+      box-sizing: border-box;
+    }
+    .product-modal-close {
+      position: absolute;
+      top: var(--sp-2);
+      right: var(--sp-2);
+      width: var(--tap);
+      min-height: var(--tap);
+      padding: 0;
+      background: none;
+      border: none;
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: var(--fs-xl);
+      line-height: 1;
+      cursor: pointer;
+    }
+    .product-modal-media { margin-bottom: var(--sp-4); text-align: center; }
+    .product-modal .pm-image {
+      display: block;
+      width: 100%;
+      /* Fixed box → consistent dimensions regardless of image orientation.
+         object-fit: contain keeps the whole product visible (no crop) and
+         caps height so tall/portrait images can't balloon and force a scroll.
+         MEDIA SLOT HEIGHT: keep 220px in sync with .pm-loader below so the
+         spinner occupies the same box and there's no layout shift on load. */
+      height: 220px;
+      object-fit: contain;
+      background: var(--accent-soft);
+      border-radius: var(--r-md);
+    }
+    .product-modal .pm-loader {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 220px;                      /* matches the .pm-image box (keep in sync) for a stable media slot */
+      background: var(--accent-soft);
+      border-radius: var(--r-md);
+    }
+    .product-modal .pm-spinner {
+      width: 32px;
+      height: 32px;
+      border-radius: 999px;
+      border: 3px solid var(--surface);
+      border-top-color: var(--accent);
+      animation: pm-spin 0.7s linear infinite;
+    }
+    @keyframes pm-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      .product-modal .pm-spinner { animation: none; }
+    }
+    .product-modal .pm-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: var(--sp-2);
+      padding: var(--sp-6) var(--sp-4);
+      background: var(--accent-soft);
+      border-radius: var(--r-md);
+      color: var(--accent);
+    }
+    .product-modal .pm-loader[hidden],
+    .product-modal .pm-placeholder[hidden],
+    .product-modal .pm-image[hidden],
+    .product-modal .pm-brand[hidden],
+    .product-modal .pm-desc[hidden],
+    .product-modal .pm-savings[hidden],
+    .product-modal .pm-offer[hidden] { display: none; }
+    .product-modal .pm-placeholder-glyph { font-size: 3rem; line-height: 1; }
+    .product-modal .pm-title { margin: 0 0 var(--sp-2); font-size: var(--fs-lg); padding-right: var(--tap); }
+    .product-modal .pm-store { margin: 0 0 var(--sp-3); color: var(--muted); font-size: var(--fs-sm); }
+    .product-modal .pm-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--sp-1);
+      margin-bottom: var(--sp-3);
+    }
+    .product-modal .pm-chip {
+      font-size: var(--fs-sm);
+      padding: var(--sp-1) var(--sp-2);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .product-modal .pm-price { margin: 0 0 var(--sp-3); }
+    .product-modal .pm-was { color: var(--muted); text-decoration: line-through; margin-right: var(--sp-2); }
+    .product-modal .pm-now { color: var(--sale); font-weight: 700; font-size: var(--fs-lg); margin-right: var(--sp-2); }
+    .product-modal .pm-savings {
+      background: var(--save-soft);
+      color: var(--save);
+      font-weight: 700;
+      font-size: var(--fs-sm);
+      padding: var(--sp-1) var(--sp-2);
+      border-radius: 999px;
+      white-space: nowrap;
+    }
+    .product-modal .pm-brand { margin: 0 0 var(--sp-2); color: var(--muted); font-size: var(--fs-sm); }
+    .product-modal .pm-desc { margin: 0 0 var(--sp-4); overflow-wrap: anywhere; }
+
     /* ── Desktop (>=768px) ────────────────────────────────────────────────*/
     @media (min-width: 768px) {
       .site-nav {
@@ -788,6 +941,9 @@ const STYLE = `
         max-width: 420px;
         width: max-content;
       }
+
+      /* Roomier modal card on desktop for readability. */
+      .product-modal-card { max-width: 520px; }
     }
 `;
 

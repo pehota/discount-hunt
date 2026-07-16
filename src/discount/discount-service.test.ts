@@ -33,6 +33,9 @@ describe("DiscountService.replaceStoreItems", () => {
         validUntil: "2026-07-20",
         dietaryTags: [],
         sourceUrl: null,
+        imageUrl: null,
+        brand: null,
+        description: null,
       },
     ];
 

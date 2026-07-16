@@ -16,13 +16,15 @@ const CENTS_PER_EURO = 100;
 interface RawAldiItem {
   id: string;
   title: string;
-  brand: string;
+  brand?: string | null;
   price: string;
   discountedPrice?: string;
   customLabel1: string;
   productType?: string;
   photoUrls: string[];
   sourceUrl?: string | null;
+  imageUrl?: string | null;
+  description?: string | null;
 }
 
 export class CatalogueNormalizer {
@@ -53,6 +55,9 @@ export class CatalogueNormalizer {
       dietaryTags: this.classifyDietaryTags(category),
       // ALWAYS set — default null when absent so register() never sees undefined.
       sourceUrl: item.sourceUrl ?? null,
+      imageUrl: item.imageUrl ?? null,
+      brand: item.brand ?? null,
+      description: item.description ?? null,
     };
   }
 

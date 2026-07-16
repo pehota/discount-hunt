@@ -286,11 +286,236 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // ── Product-details modal ────────────────────────────────────────────────
+  // Clicking a product name (either the offer <a> or the .item-name-trigger button)
+  // opens a dialog with the item's details INSTEAD of navigating. The offer link moves
+  // INSIDE the dialog. No-JS: the name stays a real <a href> (or inert button).
+  var modal = document.querySelector('.product-modal');
+  var pmImage = modal ? modal.querySelector('.pm-image') : null;
+  var pmLoader = modal ? modal.querySelector('.pm-loader') : null;
+  var pmPlaceholder = modal ? modal.querySelector('.pm-placeholder') : null;
+  var pmPlaceholderStore = modal ? modal.querySelector('.pm-placeholder-store') : null;
+  var pmTitle = modal ? modal.querySelector('.pm-title') : null;
+  var pmStore = modal ? modal.querySelector('.pm-store') : null;
+  var pmChips = modal ? modal.querySelector('.pm-chips') : null;
+  var pmWas = modal ? modal.querySelector('.pm-was') : null;
+  var pmNow = modal ? modal.querySelector('.pm-now') : null;
+  var pmSavings = modal ? modal.querySelector('.pm-savings') : null;
+  var pmBrand = modal ? modal.querySelector('.pm-brand') : null;
+  var pmDesc = modal ? modal.querySelector('.pm-desc') : null;
+  var pmOffer = modal ? modal.querySelector('.pm-offer') : null;
+  var pmClose = modal ? modal.querySelector('[data-pm-close]') : null;
+  var pmOverlay = modal ? modal.querySelector('[data-pm-overlay]') : null;
+  var pmLastFocus = null;
+
+  function pmSetChip(container, label) {
+    if (!label) return;
+    var chip = document.createElement('span');
+    chip.className = 'pm-chip';
+    chip.textContent = label;
+    container.appendChild(chip);
+  }
+
+  function openModal(card) {
+    if (!modal || !card) return;
+    var nameNode = card.querySelector('.item-name');
+    var name = nameNode ? nameNode.textContent : '';
+    var image = card.getAttribute('data-image') || '';
+    var brand = card.getAttribute('data-brand') || '';
+    var desc = card.getAttribute('data-desc') || '';
+    var category = card.getAttribute('data-category') || '';
+    var tags = card.getAttribute('data-tags') || '';
+    var group = card.closest('.store-group[data-store]');
+    var store = group ? (group.getAttribute('data-store') || '') : '';
+    var priceNode = card.querySelector('.item-price');
+    var wasText = priceNode ? (priceNode.querySelector('.was-price') || {}).textContent || '' : '';
+    var nowText = priceNode ? (priceNode.querySelector('.sale-price') || {}).textContent || '' : '';
+    var anchor = nameNode ? nameNode.querySelector('a') : null;
+    var sourceUrl = anchor ? anchor.getAttribute('href') : '';
+
+    if (pmTitle) { pmTitle.textContent = name; }
+    if (pmStore) { pmStore.textContent = store; }
+
+    // Image vs 🛒 placeholder (with store name), toggled by data-image presence.
+    if (image) {
+      // Show the spinner and keep the image hidden until its load event fires
+      // (remote CDN fetch means a visible delay), then the load handler reveals it.
+      if (pmPlaceholder) { pmPlaceholder.hidden = true; }
+      if (pmImage) {
+        pmImage.hidden = true;
+        pmImage.alt = name;
+        pmImage.src = image;
+      }
+      if (pmLoader) { pmLoader.hidden = false; }
+      // Cached image: load may not re-fire, so reveal immediately if already complete.
+      if (pmImage && pmImage.complete && pmImage.naturalWidth > 0) {
+        pmImage.hidden = false;
+        if (pmLoader) { pmLoader.hidden = true; }
+      }
+    } else {
+      if (pmImage) { pmImage.hidden = true; pmImage.removeAttribute('src'); }
+      if (pmLoader) { pmLoader.hidden = true; }
+      if (pmPlaceholder) { pmPlaceholder.hidden = false; }
+      if (pmPlaceholderStore) { pmPlaceholderStore.textContent = store; }
+    }
+
+    // Category + tag chips (textContent → no escaping needed with DOM APIs).
+    if (pmChips) {
+      pmChips.textContent = '';
+      if (category) { pmSetChip(pmChips, category); }
+      if (tags) {
+        var parts = tags.split(' ');
+        for (var i = 0; i < parts.length; i++) { pmSetChip(pmChips, parts[i]); }
+      }
+    }
+
+    // Prices + savings %. Single source of truth: read the server-computed badge text
+    // off the card's .savings-badge (rendered only when pct>0, absent otherwise) instead
+    // of re-deriving the percentage on the client.
+    if (pmWas) { pmWas.textContent = wasText; }
+    if (pmNow) { pmNow.textContent = nowText; }
+    if (pmSavings) {
+      var badgeNode = card.querySelector('.savings-badge');
+      var savingsText = badgeNode ? (badgeNode.textContent || '') : '';
+      if (savingsText) {
+        pmSavings.textContent = savingsText;
+        pmSavings.hidden = false;
+      } else {
+        pmSavings.textContent = '';
+        pmSavings.hidden = true;
+      }
+    }
+
+    // Brand row + description block — shown only when present.
+    if (pmBrand) {
+      if (brand) { pmBrand.textContent = brand; pmBrand.hidden = false; }
+      else { pmBrand.textContent = ''; pmBrand.hidden = true; }
+    }
+    if (pmDesc) {
+      if (desc) { pmDesc.textContent = desc; pmDesc.hidden = false; }
+      else { pmDesc.textContent = ''; pmDesc.hidden = true; }
+    }
+
+    // Offer link — only when a real http(s) URL is present (linkable name).
+    if (pmOffer) {
+      if (sourceUrl) { pmOffer.href = sourceUrl; pmOffer.hidden = false; }
+      else { pmOffer.removeAttribute('href'); pmOffer.hidden = true; }
+    }
+
+    pmLastFocus = document.activeElement;
+    modal.hidden = false;
+    modal.setAttribute('aria-hidden', 'false');
+    if (pmClose) { pmClose.focus(); }
+  }
+
+  function closeModal() {
+    if (!modal) return;
+    modal.hidden = true;
+    modal.setAttribute('aria-hidden', 'true');
+    if (pmLastFocus && typeof pmLastFocus.focus === 'function') { pmLastFocus.focus(); }
+    pmLastFocus = null;
+  }
+
+  if (modal) {
+    // Delegate name clicks (offer anchor OR trigger button) → open modal, suppress nav.
+    document.addEventListener('click', function (e) {
+      var trigger = e.target.closest('.item-name a, .item-name-trigger');
+      if (!trigger) return;
+      var card = trigger.closest('.card[data-item-card]');
+      if (!card) return;
+      e.preventDefault();
+      openModal(card);
+    });
+    if (pmClose) { pmClose.addEventListener('click', closeModal); }
+    if (pmOverlay) { pmOverlay.addEventListener('click', closeModal); }
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && !modal.hidden) { closeModal(); return; }
+      // Focus trap: keep Tab / Shift+Tab cycling inside the open dialog so keyboard
+      // users cannot reach the obscured background. Only the VISIBLE focusables count
+      // (the offer link and image can be hidden), so filter out hidden/disabled nodes.
+      if (e.key === 'Tab' && !modal.hidden) {
+        var card = modal.querySelector('.product-modal-card');
+        if (!card) return;
+        var all = card.querySelectorAll('a[href], button, input, [tabindex]:not([tabindex="-1"])');
+        var focusable = [];
+        for (var i = 0; i < all.length; i++) {
+          var node = all[i];
+          if (!node.hidden && !node.disabled) { focusable.push(node); }
+        }
+        if (focusable.length === 0) return;
+        var first = focusable[0];
+        var last = focusable[focusable.length - 1];
+        var active = document.activeElement;
+        if (e.shiftKey) {
+          if (active === first || focusable.indexOf(active) === -1) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else if (active === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    });
+    // Loaded image → hide the spinner, reveal the img.
+    // Broken image → hide the spinner + img, reveal the 🛒 placeholder.
+    if (pmImage) {
+      pmImage.addEventListener('load', function () {
+        if (pmLoader) { pmLoader.hidden = true; }
+        pmImage.hidden = false;
+        if (pmPlaceholder) { pmPlaceholder.hidden = true; }
+      });
+      pmImage.addEventListener('error', function () {
+        if (pmLoader) { pmLoader.hidden = true; }
+        pmImage.hidden = true;
+        if (pmPlaceholder) {
+          pmPlaceholder.hidden = false;
+          if (pmPlaceholderStore && pmStore) { pmPlaceholderStore.textContent = pmStore.textContent; }
+        }
+      });
+    }
+  }
+
   refreshSelection();
   updateCategoryCounts();
   applyFilters();
 });
 `;
+
+/**
+ * Product-details modal — ONE hidden dialog rendered once per page as a body sibling.
+ * The FILTER_SCRIPT populates every .pm-* slot via textContent / attribute setters when a
+ * product name is clicked; nothing is server-interpolated here (no per-item data), so no
+ * escaping is needed in this static template. Hidden by default (progressive enhancement:
+ * without JS it never appears and the name stays a real link/inert button).
+ */
+const PRODUCT_MODAL = `<div class="product-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+    <div class="product-modal-overlay" data-pm-overlay></div>
+    <div class="product-modal-card" role="document">
+      <button type="button" class="product-modal-close" data-pm-close aria-label="Close">×</button>
+      <div class="product-modal-media">
+        <div class="pm-loader" hidden aria-hidden="true"><span class="pm-spinner"></span></div>
+        <!-- NOT loading="lazy": the modal img is display:none (hidden) until it loads, and a
+             lazy image that is display:none is never fetched → the loader would spin forever. -->
+        <img class="pm-image" alt="" hidden>
+        <div class="pm-placeholder" hidden>
+          <span class="pm-placeholder-glyph" aria-hidden="true">🛒</span>
+          <span class="pm-placeholder-store"></span>
+        </div>
+      </div>
+      <h2 class="pm-title" id="pm-title"></h2>
+      <p class="pm-store"></p>
+      <div class="pm-chips"></div>
+      <p class="pm-price">
+        <span class="pm-was"></span>
+        <span class="pm-now"></span>
+        <span class="pm-savings"></span>
+      </p>
+      <p class="pm-brand" hidden></p>
+      <p class="pm-desc" hidden></p>
+      <a class="pm-offer btn-primary" target="_blank" rel="noopener noreferrer" hidden>View original offer ↗</a>
+    </div>
+  </div>`;
 
 const STALENESS_THRESHOLD_HOURS = 48;
 const STALENESS_THRESHOLD_MS = STALENESS_THRESHOLD_HOURS * 60 * 60 * 1000;
@@ -352,7 +577,8 @@ export class DiscountHandler {
       <button type="submit" formaction="/list/add">Add to Shopping List</button>
     </section>
   </form>
-  <div class="feed-toast" role="status" aria-live="polite" hidden></div>`;
+  <div class="feed-toast" role="status" aria-live="polite" hidden></div>
+  ${PRODUCT_MODAL}`;
 
     const html = renderPage({
       title: "Discount Hunt — Weekly Deals",
@@ -579,11 +805,21 @@ export class DiscountHandler {
         // querySelector('.item-name').textContent === product name for search + selection.
         const url = item.sourceUrl;
         const isLinkable = url !== null && (url.startsWith("http://") || url.startsWith("https://"));
+        // Product-details modal (client JS): clicking the name opens a dialog instead of
+        // navigating. NO-JS fallback: when a real offer URL exists the name stays a real
+        // <a href> to the offer (JS intercepts to open the modal); otherwise it is a
+        // <button.item-name-trigger>. EITHER child's textContent === the product name, so
+        // the search (line ~82) + selection-overview (line ~136) contract holds.
         const itemName = isLinkable
           ? `<h3 class="item-name"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.name)}</a></h3>`
-          : `<h3 class="item-name">${escapeHtml(item.name)}</h3>`;
+          : `<h3 class="item-name"><button type="button" class="item-name-trigger">${escapeHtml(item.name)}</button></h3>`;
+        // Detail payload for the modal — escaped for BOTH text and attribute context via
+        // escapeHtml. Sits on .card (mirrors data-category/data-tags), NEVER in .item-name.
+        const dataImage = escapeHtml(item.imageUrl ?? "");
+        const dataBrand = escapeHtml(item.brand ?? "");
+        const dataDesc = escapeHtml(item.description ?? "");
         return `
-      <div class="card" data-item-card data-category="${category}" data-tags="${dataTags}">
+      <div class="card" data-item-card data-category="${category}" data-tags="${dataTags}" data-image="${dataImage}" data-brand="${dataBrand}" data-desc="${dataDesc}">
         ${badge}
         ${selection}
         <article class="discount-item">
