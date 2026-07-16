@@ -9,6 +9,11 @@
  * { category, tags }: a bucket outside the taxonomy is coerced to "Other"; tags
  * are filtered to known Tag values (unknowns dropped). No JSON array in the
  * response / parse fail / length mismatch → every entry { category:"Other", tags:[] }.
+ *
+ * Scaling: items are split into fixed-size chunks (CLASSIFY_CHUNK_SIZE) and each
+ * chunk is a SEPARATE, SEQUENTIAL run() call (each backing subprocess is heavy).
+ * Parse/coerce and the "all Other" fallback are applied PER CHUNK, so a single
+ * malformed chunk response cannot silently turn the whole batch into "Other".
  */
 
 import type { CategoryClassifier } from "../ports.ts";
@@ -30,18 +35,42 @@ export const CLASSIFICATION_PROMPT =
   "Return ONLY a JSON array of objects like {\"category\":\"...\",\"tags\":[\"...\"]} — " +
   "one per input product, same order.";
 
+/**
+ * Max products sent to the LLM in a single run() call. Larger batches produced
+ * misaligned / unparseable responses at scale (a 108-item batch parsed as one
+ * blob failed entirely). Chunking bounds each call and each fallback's blast
+ * radius. Exported so tests derive chunk boundaries from it (no copied literal).
+ */
+export const CLASSIFY_CHUNK_SIZE = 25;
+
+type Classification = { category: TaxonomyCategory; tags: Tag[] };
+
 export class LlmCategoryClassifier implements CategoryClassifier {
   constructor(private readonly llm: LlmTextGenerator) {}
 
-  async classify(items: { name: string; productType: string }[]): Promise<{ category: TaxonomyCategory; tags: Tag[] }[]> {
-    const userContent = items
+  async classify(items: { name: string; productType: string }[]): Promise<Classification[]> {
+    const results: Classification[] = [];
+    // Sequential, one run() per chunk — the backing subprocess is heavy, so we
+    // must NOT fire chunks concurrently.
+    for (let start = 0; start < items.length; start += CLASSIFY_CHUNK_SIZE) {
+      const chunk = items.slice(start, start + CLASSIFY_CHUNK_SIZE);
+      results.push(...(await this.classifyChunk(chunk)));
+    }
+    return results;
+  }
+
+  /** Classify ONE chunk. Always returns exactly chunk.length entries. */
+  private async classifyChunk(chunk: { name: string; productType: string }[]): Promise<Classification[]> {
+    const userContent = chunk
       .map((item, i) => `${i + 1}. name="${item.name}" productType="${item.productType}"`)
       .join("\n");
 
     const text = await this.llm.run(CLASSIFICATION_PROMPT, userContent);
 
-    const fallback = (): { category: TaxonomyCategory; tags: Tag[] }[] =>
-      items.map(() => ({ category: "Other" as TaxonomyCategory, tags: [] as Tag[] }));
+    // Fallback is scoped to THIS chunk only — bounds the blast radius of a bad
+    // response so one malformed chunk can't turn the whole batch into "Other".
+    const fallback = (): Classification[] =>
+      chunk.map(() => ({ category: "Other" as TaxonomyCategory, tags: [] as Tag[] }));
 
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
@@ -55,7 +84,7 @@ export class LlmCategoryClassifier implements CategoryClassifier {
       return fallback();
     }
 
-    if (!Array.isArray(parsed) || parsed.length !== items.length) {
+    if (!Array.isArray(parsed) || parsed.length !== chunk.length) {
       return fallback();
     }
 
