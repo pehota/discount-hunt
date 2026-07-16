@@ -13,7 +13,9 @@ import { describe, test, expect } from "bun:test";
 import fc from "fast-check";
 import { sql } from "drizzle-orm";
 import { createDb } from "../../shared/db.ts";
+import { offerHistory } from "../../shared/schema.ts";
 import { SQLiteDiscountItemRepository } from "./sqlite-discount-item-repository.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
 import type { NormalizedItem } from "../../shared/types.ts";
 
 // ---------------------------------------------------------------------------
@@ -419,5 +421,75 @@ describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
     const after = await repo.getByWeek("2026-07-14", "none");
     const stored = after.find((r) => r.id === "test-store:broken");
     expect(stored?.tags).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// offer_history — archive-on-replace (IDEA-005 Part A)
+// ---------------------------------------------------------------------------
+
+describe("offer_history archive-on-replace", () => {
+  test("first replace on an empty table archives nothing", async () => {
+    const { db, repo } = newRepo();
+
+    repo.replaceStore(
+      "test-store",
+      [makeItem("a", "2026-07-20"), makeItem("b", "2026-07-20")],
+      "job-1",
+    );
+
+    const archived = db.select().from(offerHistory).all();
+    expect(archived.length).toBe(0);
+
+    const live = await repo.getByWeek("2026-07-14", "none");
+    expect(new Set(live.map((r) => r.id))).toEqual(new Set(["test-store:a", "test-store:b"]));
+  });
+
+  test("second replace archives the first batch; live rows are only the second batch", async () => {
+    const { db, repo } = newRepo();
+
+    const batchA = [makeItem("a", "2026-07-20"), makeItem("b", "2026-07-20")];
+    repo.replaceStore("test-store", batchA, "job-1");
+
+    const batchB = [makeItem("c", "2026-07-20"), makeItem("d", "2026-07-20"), makeItem("e", "2026-07-20")];
+    repo.replaceStore("test-store", batchB, "job-2");
+
+    const archived = db.select().from(offerHistory).all();
+    // Archive holds EXACTLY batch A's rows.
+    expect(archived.length).toBe(batchA.length);
+    expect(new Set(archived.map((r) => r.itemId))).toEqual(
+      new Set(["test-store:a", "test-store:b"]),
+    );
+
+    // A known item from A is present with correct sale_price + archive metadata.
+    const archivedA = archived.find((r) => r.itemId === "test-store:a");
+    expect(archivedA).toBeDefined();
+    expect(archivedA?.salePrice).toBe(150); // makeItem's salePrice
+    expect(archivedA?.archivedAt).toBeGreaterThan(0);
+    expect(archivedA?.weekStart).toBe(currentWeekMonday());
+
+    // Live discount_items for the store contains only batch B (not A).
+    const live = await repo.getByWeek("2026-07-14", "none");
+    expect(new Set(live.map((r) => r.id))).toEqual(
+      new Set(["test-store:c", "test-store:d", "test-store:e"]),
+    );
+  });
+
+  test("per-store isolation: replacing store X does not archive store Y's rows", async () => {
+    const { db, repo } = newRepo();
+
+    // Seed live rows for store Y (first replace archives nothing).
+    repo.replaceStore("store-y", [makeItem("y1", "2026-07-20")], "job-1");
+    // Seed live rows for store X, then replace X again — only X's first batch archives.
+    repo.replaceStore("test-store", [makeItem("x1", "2026-07-20")], "job-1");
+    repo.replaceStore("test-store", [makeItem("x2", "2026-07-20")], "job-2");
+
+    const archived = db.select().from(offerHistory).all();
+    // Archive holds ONLY store X's first batch — store Y was never re-replaced.
+    expect(archived.length).toBe(1);
+    expect(archived[0]!.itemId).toBe("test-store:x1");
+    // Every archived row belongs to store X's store_id (not Y's).
+    const storeXId = archived[0]!.storeId;
+    expect(archived.every((r) => r.storeId === storeXId)).toBe(true);
   });
 });

@@ -61,6 +61,30 @@ const CREATE_DISCOUNT_ITEMS = `
   )
 `;
 
+const CREATE_OFFER_HISTORY = `
+  CREATE TABLE IF NOT EXISTS offer_history (
+    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_id TEXT NOT NULL,
+    store_id INTEGER NOT NULL REFERENCES stores(id),
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    regular_price INTEGER NOT NULL,
+    sale_price INTEGER NOT NULL,
+    valid_until TEXT NOT NULL,
+    dietary_tags TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]',
+    taxonomy_category TEXT,
+    source_url TEXT,
+    image_url TEXT,
+    brand TEXT,
+    description TEXT,
+    scrape_job_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    archived_at INTEGER NOT NULL,
+    week_start TEXT NOT NULL
+  )
+`;
+
 const CREATE_MEAL_PLANS = `
   CREATE TABLE IF NOT EXISTS meal_plans (
     id TEXT PRIMARY KEY,
@@ -269,6 +293,9 @@ export function createDb(dbPath: string): DbClient {
   sqlite.exec(CREATE_SAVINGS_LOG);
   sqlite.exec(CREATE_RECIPES);
   sqlite.exec(CREATE_SHOPPING_LIST_ITEMS);
+  // offer_history references stores(id) (created + seeded above) and is
+  // independent of the discount_items rebuild, so it is safe to create here.
+  sqlite.exec(CREATE_OFFER_HISTORY);
 
   // Idempotent migration: add taxonomy_category (nullable) to shopping_list_items if the table pre-dates it
   try {
@@ -285,6 +312,8 @@ export function createDb(dbPath: string): DbClient {
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_scrape_jobs_store_status_completed ON scrape_jobs(store_id, status, completed_at)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_shopping_list_items_week_start ON shopping_list_items(week_start)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_savings_log_week_start ON savings_log(week_start)");
+  sqlite.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_store_id ON offer_history(store_id)");
+  sqlite.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_item_id ON offer_history(item_id)");
 
   // Turn FK enforcement ON for normal operation (all rebuilds are done).
   sqlite.exec("PRAGMA foreign_keys=ON");

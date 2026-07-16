@@ -4,7 +4,7 @@
  * All secondary adapters import from here.
  * Only src/{context}/adapters/sqlite-*.ts files may import this module (enforced by dependency-cruiser D34).
  *
- * Tables: stores, discount_items, meal_plans, savings_log, scrape_jobs, shopping_list_items
+ * Tables: stores, discount_items, offer_history, meal_plans, savings_log, scrape_jobs, shopping_list_items
  */
 
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
@@ -43,6 +43,28 @@ export const discountItems = sqliteTable("discount_items", {
   description: text("description"), // nullable — product description; NULL when the source can't provide it
   scrapeJobId: text("scrape_job_id").notNull(), // soft ref → scrape_jobs.id (append-only; not FK-enforced — would force a job row before every insert with no delete-integrity gain)
   createdAt: integer("created_at").notNull(), // ms since epoch
+});
+
+export const offerHistory = sqliteTable("offer_history", {
+  historyId: integer("history_id").primaryKey({ autoIncrement: true }),
+  itemId: text("item_id").notNull(),              // original discount_items.id (price-history-per-product)
+  storeId: integer("store_id").notNull().references(() => stores.id),
+  name: text("name").notNull(),
+  category: text("category").notNull(),
+  regularPrice: integer("regular_price").notNull(),
+  salePrice: integer("sale_price").notNull(),
+  validUntil: text("valid_until").notNull(),
+  dietaryTags: text("dietary_tags").notNull().default("[]"),
+  tags: text("tags").notNull().default("[]"),
+  taxonomyCategory: text("taxonomy_category"),
+  sourceUrl: text("source_url"),
+  imageUrl: text("image_url"),
+  brand: text("brand"),
+  description: text("description"),
+  scrapeJobId: text("scrape_job_id").notNull(),
+  createdAt: integer("created_at").notNull(),      // original row's created_at (first-insert time)
+  archivedAt: integer("archived_at").notNull(),    // ms when this replace archived the row
+  weekStart: text("week_start").notNull(),         // ISO Monday of the archive (currentWeekMonday())
 });
 
 export const mealPlans = sqliteTable("meal_plans", {

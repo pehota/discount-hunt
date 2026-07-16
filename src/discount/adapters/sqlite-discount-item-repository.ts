@@ -17,6 +17,7 @@ import { sql, gte, isNull, eq } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { discountItems, stores } from "../../shared/schema.ts";
 import { getOrCreateStoreId } from "../../shared/store-registry.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
 import { isCompatible } from "../../shared/dietary.ts";
 import type { NormalizedItem, WeekStart, DietaryRestriction, DietaryTag, TaxonomyCategory, Tag } from "../../shared/types.ts";
 import { isTag } from "../../shared/types.ts";
@@ -63,6 +64,24 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
   ): void {
     const storeId = getOrCreateStoreId(this.db, store);
     this.db.transaction(() => {
+      // Archive-before-delete: copy the store's current rows into offer_history
+      // FIRST, in the SAME transaction as the DELETE + fresh insert, so
+      // archive+replace is atomic (a crash leaves either the old rows live OR the
+      // new rows live + old archived — never a half-archived/half-deleted state).
+      // scrape_job_id + created_at come from the SELECT (the OLD row's values) —
+      // NOT the new job — so the archive preserves first-insert provenance.
+      const archivedAt = Date.now();
+      const weekStart = currentWeekMonday();
+      this.db.run(sql`
+        INSERT INTO offer_history
+          (item_id, store_id, name, category, regular_price, sale_price, valid_until,
+           dietary_tags, tags, taxonomy_category, source_url, image_url, brand, description,
+           scrape_job_id, created_at, archived_at, week_start)
+        SELECT id, store_id, name, category, regular_price, sale_price, valid_until,
+           dietary_tags, tags, taxonomy_category, source_url, image_url, brand, description,
+           scrape_job_id, created_at, ${archivedAt}, ${weekStart}
+        FROM discount_items WHERE store_id = ${storeId}
+      `);
       this.db.run(sql`DELETE FROM discount_items WHERE store_id = ${storeId}`);
       for (let i = 0; i < items.length; i++) {
         this.insertRow(items[i]!, scrapeJobId, storeId, classifications?.[i]);
