@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "start": "bun run src/server.ts",
+    "dev": "bun --hot run src/server.ts",
     "scrape": "bun run src/scraping/scraper-runner.ts",
     "test": "bun test",
     "test:acceptance": "bun test tests/acceptance",

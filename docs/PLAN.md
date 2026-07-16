@@ -9,7 +9,7 @@ _Last updated: 2026-07-15 (end of session). This is the "pick up tomorrow" file.
 - **Verify UI in a real browser** (Chrome DevTools), not just tests — client-JS/interaction bugs and wiring regressions hide from a green suite. Measure `scrollWidth - clientWidth` at 375px; exercise real clicks.
 
 ## Run / verify
-- App: `bun run src/server.ts` → http://localhost:3000 (default DB `./discount-hunt.db`, real Aldi Süd data). Bun does NOT hot-reload — restart to pick up code changes.
+- App: `bun run dev` → http://localhost:3000 (hot-reload via `bun --hot`; picks up source edits with no restart — verified). `bun run start` / `bun run src/server.ts` for a plain non-reloading run (default DB `./discount-hunt.db`, real Aldi Süd data).
 - Scrape: `bun run src/scraping/scraper-runner.ts` (live mode needs network + a model key; see backlog #2).
 - Multi-store demo DB: `TEST_DB_PATH=/tmp/dh-multistore.db bun run scripts/dev/seed-multistore.ts` then run the server with the same env var (NOTE: that temp DB predates the shopping-list table — reseed/recreate if reused).
 
