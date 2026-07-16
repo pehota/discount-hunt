@@ -42,6 +42,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createDb } from "../../../src/shared/db.ts";
 import { savingsLog, scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { storeIdFor } from "../support/test-db.ts";
 import { currentWeekMonday } from "../../../src/shared/week.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -407,7 +408,7 @@ describe("@driving_port — store names in the discount feed are HTML-escaped (s
 
     db.insert(scrapeJobs).values({
       id: jobId,
-      store: MALICIOUS_STORE,
+      storeId: storeIdFor(db, MALICIOUS_STORE),
       status: "completed",
       startedAt: now - 3600 * 1000,
       completedAt: now - 1800 * 1000, // fresh → no staleness warning
@@ -416,7 +417,7 @@ describe("@driving_port — store names in the discount feed are HTML-escaped (s
 
     db.insert(discountItems).values({
       id: "xss-item-001",
-      store: MALICIOUS_STORE,
+      storeId: storeIdFor(db, MALICIOUS_STORE),
       name: "Brokkoli",
       category: "vegetable",
       regularPrice: 199,

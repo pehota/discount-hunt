@@ -42,14 +42,33 @@ function makeItem(
   };
 }
 
+/**
+ * Fresh in-memory db + repo, with parent scrape_jobs rows seeded for the jobId
+ * literals the tests use. (scrape_job_id is a soft ref, not an enforced FK, so
+ * this seed is for realism rather than a constraint.) createDb seeds the canonical
+ * stores; store_id references one of them. NB: drizzle raw `db.get` returns a
+ * positional array, so the id is at index [0].
+ */
+function newRepo(): { db: ReturnType<typeof createDb>; repo: SQLiteDiscountItemRepository } {
+  const db = createDb(":memory:");
+  const repo = new SQLiteDiscountItemRepository(db);
+  const store = db.get(sql`SELECT id FROM stores LIMIT 1`) as [number];
+  for (const jobId of ["job-1", "job-2", "job-legacy"]) {
+    db.run(sql`
+      INSERT OR IGNORE INTO scrape_jobs (id, store_id, status, started_at, item_count)
+      VALUES (${jobId}, ${store[0]}, ${"completed"}, ${Date.now()}, ${0})
+    `);
+  }
+  return { db, repo };
+}
+
 // ---------------------------------------------------------------------------
 // Single-example integration test: RED before fix (returns both rows)
 // ---------------------------------------------------------------------------
 
 describe("SQLiteDiscountItemRepository.getByWeek", () => {
   test("excludes items from prior week and includes items valid during current week", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     const weekStart = "2026-07-14";
 
@@ -127,8 +146,7 @@ describe("SQLiteDiscountItemRepository.getByWeek", () => {
 
 describe("SQLiteDiscountItemRepository.register", () => {
   test("persists a complete NormalizedItem as a row", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("complete", "2026-07-20"), "job-1");
 
@@ -137,8 +155,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
   });
 
   test("source_url round-trips: a URL registered is returned by getByWeek", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     const url = "https://prospekt.aldi-sued.de/kw27-26-op-mp/";
     await repo.register(makeItem("with-url", "2026-07-20", url), "job-1");
@@ -149,8 +166,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
   });
 
   test("source_url null round-trips: a null sourceUrl is returned as null (covers legacy rows)", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("no-url", "2026-07-20", null), "job-1");
 
@@ -160,8 +176,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
   });
 
   test("detail fields round-trip: imageUrl/brand/description registered are returned by getByWeek", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     const imageUrl = "https://prospekt.aldi-sued.de/img/42.jpg";
     const brand = "GutBio";
@@ -179,8 +194,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
   });
 
   test("detail fields null round-trip: null imageUrl/brand/description are returned as null", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("no-details", "2026-07-20"), "job-1");
 
@@ -192,16 +206,17 @@ describe("SQLiteDiscountItemRepository.register", () => {
   });
 
   test("legacy rows (inserted without the detail columns) read back imageUrl/brand/description as null", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     // Simulate a pre-migration row: insert omitting image_url/brand/description entirely
     // (the idempotent ALTERs left them nullable → legacy rows carry SQL NULL there).
+    // store_id references a seeded store (name-at-boundary); job-legacy is seeded by newRepo.
+    const legacyStore = db.get(sql`SELECT id FROM stores LIMIT 1`) as [number];
     db.run(sql`
       INSERT INTO discount_items
-        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, scrape_job_id, created_at)
+        (id, store_id, name, category, regular_price, sale_price, valid_until, dietary_tags, scrape_job_id, created_at)
       VALUES
-        (${"test-store:legacy"}, ${"test-store"}, ${"Legacy Item"}, ${"test"},
+        (${"test-store:legacy"}, ${legacyStore[0]}, ${"Legacy Item"}, ${"test"},
          ${200}, ${150}, ${"2026-07-20"}, ${"[]"}, ${"job-legacy"}, ${Date.now()})
     `);
 
@@ -217,8 +232,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
     // Root cause of the live crash: an undefined interpolation makes Drizzle's
     // `sql` template silently drop the binding, emitting malformed SQL. The
     // guard must fail LOUDLY naming the offending field instead.
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     const badItem = { ...makeItem("bad", "2026-07-20"), category: undefined } as unknown as NormalizedItem;
 
@@ -234,8 +248,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
 
 describe("SQLiteDiscountItemRepository.replaceStore", () => {
   test("registers a store batch [a,b]; getByWeek shows exactly a,b", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     repo.replaceStore(
       "test-store",
@@ -250,8 +263,7 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
   });
 
   test("replaces the store's rows — after [a,b] then [b',c], store has EXACTLY b,c (a gone, no accumulation)", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     repo.replaceStore(
       "test-store",
@@ -271,8 +283,7 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
   });
 
   test("replaceStore for store Y does NOT affect store X's rows", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("x1", "2026-07-20"), "job-1");
     await repo.register(makeItem("x2", "2026-07-20"), "job-1");
@@ -301,8 +312,7 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
   });
 
   test("detail fields round-trip via replaceStore: imageUrl/brand/description persist through a batch insert", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     const imageUrl = "https://prospekt.aldi-sued.de/img/7.jpg";
     const brand = "Milbona";
@@ -321,8 +331,7 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
   });
 
   test("within-run dedup: a batch with two items sharing the same id yields 1 row (INSERT OR IGNORE)", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     repo.replaceStore(
       "test-store",
@@ -343,8 +352,7 @@ describe("SQLiteDiscountItemRepository.replaceStore", () => {
 
 describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
   test("fresh item is uncategorised (null via getByWeek); findUncategorised surfaces it with the raw category as productType; setCategorisation persists and removes it from the uncategorised set", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     // makeItem sets category: "test" — that raw German-source category becomes productType.
     await repo.register(makeItem("prod", "2026-07-20"), "job-1");
@@ -370,8 +378,7 @@ describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
   });
 
   test("fresh row defaults tags to [] via getByWeek (schema '[]' default)", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("fresh", "2026-07-20"), "job-1");
 
@@ -380,8 +387,7 @@ describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
   });
 
   test("setCategorisation writes BOTH taxonomy_category AND tags; tags round-trip as Tag[]", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("fish", "2026-07-20"), "job-1");
     repo.setCategorisation("test-store:fish", "Meat & Fish", ["Frozen", "Organic"]);
@@ -393,8 +399,7 @@ describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
   });
 
   test("garbage / unknown tag values are filtered out on read", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("dirty", "2026-07-20"), "job-1");
     // Inject raw malformed tags JSON via the underlying db handle (register() never touches tags).
@@ -406,8 +411,7 @@ describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
   });
 
   test("non-array / unparseable tags JSON defaults to []", async () => {
-    const db = createDb(":memory:");
-    const repo = new SQLiteDiscountItemRepository(db);
+    const { db, repo } = newRepo();
 
     await repo.register(makeItem("broken", "2026-07-20"), "job-1");
     db.run(sql`UPDATE discount_items SET tags = 'not-json' WHERE id = ${"test-store:broken"}`);

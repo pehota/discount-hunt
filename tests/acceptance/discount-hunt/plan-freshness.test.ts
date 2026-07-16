@@ -22,6 +22,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { sql } from "drizzle-orm";
 import { createDb, type DbClient } from "../../../src/shared/db.ts";
 import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { storeIdFor } from "../support/test-db.ts";
 import { currentWeekMonday } from "../../../src/shared/week.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -60,7 +61,7 @@ function seedDiscountItem(
   const now = Date.now();
   db.insert(discountItems).values({
     id,
-    store: STORE,
+    storeId: storeIdFor(db, STORE),
     name,
     category: "vegetable",
     regularPrice: 149,
@@ -87,7 +88,7 @@ function seedCompletedJob(db: DbClient): string {
   const jobId = randomUUID();
   db.insert(scrapeJobs).values({
     id: jobId,
-    store: STORE,
+    storeId: storeIdFor(db, STORE),
     status: "completed",
     startedAt: now - 3600 * 1000,
     completedAt: now - 1800 * 1000,

@@ -19,6 +19,7 @@ import fc from "fast-check";
 import { randomUUID } from "node:crypto";
 import { createDb } from "../../../src/shared/db.ts";
 import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { storeIdFor } from "../support/test-db.ts";
 import { isStale } from "../../../src/discount/http/discount-handler.ts";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -242,7 +243,7 @@ describe("staleness warning", () => {
     // Stale row: 72h ago (beyond 48h threshold)
     db.insert(scrapeJobs).values({
       id: randomUUID(),
-      store: STALE_STORE,
+      storeId: storeIdFor(db, STALE_STORE),
       status: "completed",
       startedAt: now - 72 * 3600 * 1000 - 5000,
       completedAt: now - 72 * 3600 * 1000,
@@ -252,7 +253,7 @@ describe("staleness warning", () => {
     // Fresh row: 24h ago (within 48h threshold)
     db.insert(scrapeJobs).values({
       id: randomUUID(),
-      store: FRESH_STORE,
+      storeId: storeIdFor(db, FRESH_STORE),
       status: "completed",
       startedAt: now - 24 * 3600 * 1000 - 5000,
       completedAt: now - 24 * 3600 * 1000,
@@ -338,7 +339,7 @@ describe("prior-week filter — past items must not appear in GET /", () => {
     // Insert a scrape_jobs row so knownStores is non-empty → per-store rendering path
     db.insert(scrapeJobs).values({
       id: jobId,
-      store: "Aldi Süd",
+      storeId: storeIdFor(db, "Aldi Süd"),
       status: "completed",
       startedAt: now - 3600 * 1000,
       completedAt: now - 1800 * 1000,
@@ -351,7 +352,7 @@ describe("prior-week filter — past items must not appear in GET /", () => {
     // Past item (must NOT appear in GET /)
     db.insert(discountItems).values({
       id: "test-past-001",
-      store: "Aldi Süd",
+      storeId: storeIdFor(db, "Aldi Süd"),
       name: "StaleItem",
       category: "vegetable",
       regularPrice: 199,
@@ -365,7 +366,7 @@ describe("prior-week filter — past items must not appear in GET /", () => {
     // Current item (must appear in GET /)
     db.insert(discountItems).values({
       id: "test-current-001",
-      store: "Aldi Süd",
+      storeId: storeIdFor(db, "Aldi Süd"),
       name: "FreshItem",
       category: "vegetable",
       regularPrice: 299,

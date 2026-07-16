@@ -19,6 +19,7 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { randomUUID } from "node:crypto";
 import { createDb } from "../../../src/shared/db.ts";
 import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { storeIdFor } from "../support/test-db.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -46,7 +47,7 @@ describe("@driving_port — shared shell on all routes; feed uses cards", () => 
     // A completed scrape job so the feed renders the per-store path and the item shows.
     db.insert(scrapeJobs).values({
       id: jobId,
-      store: "Aldi Süd",
+      storeId: storeIdFor(db, "Aldi Süd"),
       status: "completed",
       startedAt: now - 3600 * 1000,
       completedAt: now - 1800 * 1000,
@@ -56,7 +57,7 @@ describe("@driving_port — shared shell on all routes; feed uses cards", () => 
     // One current-week discount item so GET / has an item to render as a card.
     db.insert(discountItems).values({
       id: "ui-shell-item-001",
-      store: "Aldi Süd",
+      storeId: storeIdFor(db, "Aldi Süd"),
       name: SEEDED_ITEM,
       category: "vegetable",
       regularPrice: 199,

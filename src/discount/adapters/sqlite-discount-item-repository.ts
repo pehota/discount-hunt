@@ -15,7 +15,8 @@
 
 import { sql, gte, isNull, eq } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
-import { discountItems } from "../../shared/schema.ts";
+import { discountItems, stores } from "../../shared/schema.ts";
+import { getOrCreateStoreId } from "../../shared/store-registry.ts";
 import { isCompatible } from "../../shared/dietary.ts";
 import type { NormalizedItem, WeekStart, DietaryRestriction, DietaryTag, TaxonomyCategory, Tag } from "../../shared/types.ts";
 import { isTag } from "../../shared/types.ts";
@@ -44,7 +45,8 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
   constructor(private readonly db: DbClient) {}
 
   async register(item: NormalizedItem, scrapeJobId: string): Promise<void> {
-    this.insertRow(item, scrapeJobId);
+    const storeId = getOrCreateStoreId(this.db, item.store);
+    this.insertRow(item, scrapeJobId, storeId);
   }
 
   /**
@@ -54,14 +56,18 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
    * skip rollback. Delete binds the passed `store` param, not item.store.
    */
   replaceStore(store: string, items: NormalizedItem[], scrapeJobId: string): void {
+    const storeId = getOrCreateStoreId(this.db, store);
     this.db.transaction(() => {
-      this.db.run(sql`DELETE FROM discount_items WHERE store = ${store}`);
-      for (const item of items) this.insertRow(item, scrapeJobId);
+      this.db.run(sql`DELETE FROM discount_items WHERE store_id = ${storeId}`);
+      for (const item of items) this.insertRow(item, scrapeJobId, storeId);
     });
   }
 
-  /** Single writer of the discount_items INSERT — shared by register + replaceStore. */
-  private insertRow(item: NormalizedItem, scrapeJobId: string): void {
+  /**
+   * Single writer of the discount_items INSERT — shared by register + replaceStore.
+   * `storeId` is resolved once by the caller (name-at-boundary) and bound to the FK.
+   */
+  private insertRow(item: NormalizedItem, scrapeJobId: string, storeId: number): void {
     // Defense-in-depth: an undefined interpolation makes Drizzle's `sql`
     // template silently drop the binding, emitting malformed SQL. Fail loudly
     // with the offending field name so future schema drift is diagnosable.
@@ -71,9 +77,9 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
     // INSERT OR IGNORE — D22 write-once: regular_price not overwritten on conflict
     this.db.run(sql`
       INSERT OR IGNORE INTO discount_items
-        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, source_url, image_url, brand, description, scrape_job_id, created_at)
+        (id, store_id, name, category, regular_price, sale_price, valid_until, dietary_tags, source_url, image_url, brand, description, scrape_job_id, created_at)
       VALUES
-        (${id}, ${item.store}, ${item.name}, ${item.category},
+        (${id}, ${storeId}, ${item.name}, ${item.category},
          ${item.regularPrice}, ${item.salePrice}, ${item.validUntil},
          ${JSON.stringify(item.dietaryTags)}, ${item.sourceUrl}, ${item.imageUrl}, ${item.brand}, ${item.description}, ${scrapeJobId}, ${Date.now()})
     `);
@@ -103,7 +109,29 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
   }
 
   async getByWeek(weekStart: WeekStart, restriction: DietaryRestriction): Promise<StoredDiscountItem[]> {
-    const rows = this.db.select().from(discountItems)
+    // JOIN stores to surface stores.name as the `store` field (name-at-boundary).
+    // innerJoin (store_id is a NOT NULL FK) keeps `store` non-null for the domain type.
+    const rows = this.db
+      .select({
+        id: discountItems.id,
+        store: stores.name,
+        name: discountItems.name,
+        category: discountItems.category,
+        regularPrice: discountItems.regularPrice,
+        salePrice: discountItems.salePrice,
+        validUntil: discountItems.validUntil,
+        dietaryTags: discountItems.dietaryTags,
+        tags: discountItems.tags,
+        taxonomyCategory: discountItems.taxonomyCategory,
+        sourceUrl: discountItems.sourceUrl,
+        imageUrl: discountItems.imageUrl,
+        brand: discountItems.brand,
+        description: discountItems.description,
+        scrapeJobId: discountItems.scrapeJobId,
+        createdAt: discountItems.createdAt,
+      })
+      .from(discountItems)
+      .innerJoin(stores, eq(discountItems.storeId, stores.id))
       .where(gte(discountItems.validUntil, weekStart))
       .all();
     return rows

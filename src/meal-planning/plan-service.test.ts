@@ -12,9 +12,9 @@
 
 import { describe, test, expect, beforeEach } from "bun:test";
 import * as fc from "fast-check";
-import { eq } from "drizzle-orm";
+import { eq, getTableColumns } from "drizzle-orm";
 import { createDb } from "../shared/db.ts";
-import { discountItems, mealPlans, savingsLog } from "../shared/schema.ts";
+import { discountItems, stores, mealPlans, savingsLog } from "../shared/schema.ts";
 import { SQLiteMealPlanRepository } from "./adapters/sqlite-meal-plan-repository.ts";
 import { SQLiteSavingsRepository } from "../savings/adapters/sqlite-savings-repository.ts";
 import { SavingsService } from "../savings/savings-service.ts";
@@ -71,6 +71,19 @@ function buildServices(db: ReturnType<typeof createDb>) {
   return { discountService, planService, mealPlanRepo, savingsRepo };
 }
 
+/**
+ * Raw discount_items rows with the store NAME re-joined in (name-at-boundary):
+ * the schema stores a store_id FK, so `.store` no longer lives on the row.
+ * innerJoin(stores) surfaces stores.name as `store`, matching StoredDiscountItem.
+ */
+function selectDiscountRows(db: ReturnType<typeof createDb>) {
+  return db
+    .select({ ...getTableColumns(discountItems), store: stores.name })
+    .from(discountItems)
+    .innerJoin(stores, eq(discountItems.storeId, stores.id))
+    .all();
+}
+
 describe("PlanService", () => {
   let db: ReturnType<typeof createDb>;
 
@@ -106,7 +119,7 @@ describe("PlanService", () => {
     const planService = new PlanService(discountService, mealPlanRepo, savingsService, db);
 
     // bypass: pure function test, single return value
-    const items = db.select().from(discountItems).all();
+    const items = selectDiscountRows(db);
     const storedItems = items.map((row) => ({
       id: row.id,
       store: row.store,
@@ -137,7 +150,7 @@ describe("PlanService", () => {
 
   test("savePlan writes meal_plans row in DB", async () => {
     const { planService } = buildServices(db);
-    const items = db.select().from(discountItems).all();
+    const items = selectDiscountRows(db);
     const storedItems = items.map((row) => ({
       id: row.id,
       store: row.store,
@@ -168,7 +181,7 @@ describe("PlanService", () => {
 
   test("D23 invariant: meal_plans.estimated_savings equals savings_log.saved_amount (written in one transaction)", async () => {
     const { planService } = buildServices(db);
-    const items = db.select().from(discountItems).all();
+    const items = selectDiscountRows(db);
     const storedItems = items.map((row) => ({
       id: row.id,
       store: row.store,
@@ -260,7 +273,7 @@ describe("PlanService — generate from a user-selected subset", () => {
   });
 
   function storedItems() {
-    return db.select().from(discountItems).all().map((row) => ({
+    return selectDiscountRows(db).map((row) => ({
       id: row.id,
       store: row.store,
       name: row.name,

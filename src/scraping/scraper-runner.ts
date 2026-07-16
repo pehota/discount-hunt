@@ -45,6 +45,7 @@
  */
 
 import { createDb } from "../shared/db.ts";
+import { STORES } from "../shared/stores.ts";
 import { FakeAldiCatalogueAdapter } from "../../tests/acceptance/support/fake-aldi-catalogue-adapter.ts";
 import { FakeVMarktCatalogueAdapter } from "../../tests/acceptance/support/fake-v-markt-catalogue-adapter.ts";
 import { CatalogueNormalizer } from "./adapters/catalogue-normalizer.ts";
@@ -91,9 +92,9 @@ export interface LiveScrapeDeps {
   logger?: Logger;
 }
 
-const ALDI_STORE = "Aldi Süd";
-const VMARKT_STORE = "V-Markt";
-const EDEKA_STORE = "EDEKA";
+const ALDI_STORE = STORES.find((s) => s.slug === "aldi-sued")!.name;
+const VMARKT_STORE = STORES.find((s) => s.slug === "v-markt")!.name;
+const EDEKA_STORE = STORES.find((s) => s.slug === "edeka")!.name;
 
 // ── Testable factory ──────────────────────────────────────────────────────────
 

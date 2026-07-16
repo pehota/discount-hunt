@@ -45,6 +45,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createDb } from "../../../src/shared/db.ts";
 import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { storeIdFor } from "../support/test-db.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -84,7 +85,7 @@ function seedTwoNinetyNineCentItems(dbPath: string): void {
 
   db.insert(scrapeJobs).values({
     id: jobId,
-    store: STORE,
+    storeId: storeIdFor(db, STORE),
     status: "completed",
     startedAt: now - 3600 * 1000,
     completedAt: now - 1800 * 1000,
@@ -99,7 +100,7 @@ function seedTwoNinetyNineCentItems(dbPath: string): void {
   for (const r of rows) {
     db.insert(discountItems).values({
       id: r.id,
-      store: STORE,
+      storeId: storeIdFor(db, STORE),
       name: r.name,
       category: "food",
       regularPrice: 199,

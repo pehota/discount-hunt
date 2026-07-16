@@ -4,14 +4,21 @@
  * All secondary adapters import from here.
  * Only src/{context}/adapters/sqlite-*.ts files may import this module (enforced by dependency-cruiser D34).
  *
- * Tables: discount_items, meal_plans, savings_log, scrape_jobs, shopping_list_items
+ * Tables: stores, discount_items, meal_plans, savings_log, scrape_jobs, shopping_list_items
  */
 
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
 
+export const stores = sqliteTable("stores", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  slug: text("slug").notNull().unique(),
+  createdAt: integer("created_at").notNull(), // ms since epoch
+});
+
 export const scrapeJobs = sqliteTable("scrape_jobs", {
   id: text("id").primaryKey(),
-  store: text("store").notNull(),
+  storeId: integer("store_id").notNull().references(() => stores.id),
   status: text("status").notNull(), // 'running' | 'completed' | 'failed'
   startedAt: integer("started_at").notNull(), // ms since epoch
   completedAt: integer("completed_at"), // nullable
@@ -21,7 +28,7 @@ export const scrapeJobs = sqliteTable("scrape_jobs", {
 
 export const discountItems = sqliteTable("discount_items", {
   id: text("id").primaryKey(),
-  store: text("store").notNull(),
+  storeId: integer("store_id").notNull().references(() => stores.id),
   name: text("name").notNull(),
   category: text("category").notNull(),
   regularPrice: integer("regular_price").notNull(), // cents — D22 write-once
@@ -34,7 +41,7 @@ export const discountItems = sqliteTable("discount_items", {
   imageUrl: text("image_url"), // nullable — product image; NULL when the source can't provide it
   brand: text("brand"), // nullable — product brand; NULL when the source can't provide it
   description: text("description"), // nullable — product description; NULL when the source can't provide it
-  scrapeJobId: text("scrape_job_id").notNull(),
+  scrapeJobId: text("scrape_job_id").notNull(), // soft ref → scrape_jobs.id (append-only; not FK-enforced — would force a job row before every insert with no delete-integrity gain)
   createdAt: integer("created_at").notNull(), // ms since epoch
 });
 
@@ -80,14 +87,14 @@ export const shoppingListItems = sqliteTable("shopping_list_items", {
   store: text("store"), // nullable — manual rows have no store
   salePriceCents: integer("sale_price_cents"), // nullable — cents snapshot
   regularPriceCents: integer("regular_price_cents"), // nullable — cents snapshot
-  discountItemId: text("discount_item_id"), // nullable — null for manual rows
+  discountItemId: text("discount_item_id"), // nullable — null for manual rows; SOFT REF by design (snapshot dedup key, no FK)
   taxonomyCategory: text("taxonomy_category"), // nullable in DB (legacy rows); coalesced → "Other" on read
   addedAt: integer("added_at").notNull(), // ms since epoch
 });
 
 export const savingsLog = sqliteTable("savings_log", {
   id: text("id").primaryKey(),
-  planId: text("plan_id").notNull(),
+  planId: text("plan_id").notNull(), // SOFT REF by design (independently weekly-deleted event log, no FK)
   weekStart: text("week_start").notNull(),
   savedAmount: integer("saved_amount").notNull(), // cents — D23: must equal estimated_savings
   totalSalePrice: integer("total_sale_price").notNull(),

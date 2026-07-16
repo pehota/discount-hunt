@@ -53,6 +53,7 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createDb } from "../../../src/shared/db.ts";
 import { scrapeJobs, discountItems } from "../../../src/shared/schema.ts";
+import { storeIdFor } from "../support/test-db.ts";
 import { buildRecipeQuery, type RecipeQueryPreferences } from "../../../src/recipe/recipe-query.ts";
 import type { MealSlot } from "../../../src/shared/types.ts";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -142,7 +143,7 @@ function seedDiscountItems(dbPath: string, items: Array<{ id: string; name: stri
 
   db.insert(scrapeJobs).values({
     id: jobId,
-    store: STORE,
+    storeId: storeIdFor(db, STORE),
     status: "completed",
     startedAt: now - 3600 * 1000,
     completedAt: now - 1800 * 1000,
@@ -152,7 +153,7 @@ function seedDiscountItems(dbPath: string, items: Array<{ id: string; name: stri
   for (const it of items) {
     db.insert(discountItems).values({
       id: it.id,
-      store: STORE,
+      storeId: storeIdFor(db, STORE),
       name: it.name,
       category: "food",
       regularPrice: it.sale + 100,

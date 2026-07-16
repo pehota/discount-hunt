@@ -11,16 +11,18 @@
 
 import { and, eq, max } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
-import { scrapeJobs } from "../../shared/schema.ts";
+import { scrapeJobs, stores } from "../../shared/schema.ts";
+import { getOrCreateStoreId, findStoreId } from "../../shared/store-registry.ts";
 
 export class SQLiteScrapeJobRepository {
   constructor(private readonly db: DbClient) {}
 
   async startJob(store: string): Promise<string> {
     const id = crypto.randomUUID();
+    const storeId = getOrCreateStoreId(this.db, store);
     this.db.insert(scrapeJobs).values({
       id,
-      store,
+      storeId,
       status: "running",
       startedAt: Date.now(),
       itemCount: 0,
@@ -45,18 +47,21 @@ export class SQLiteScrapeJobRepository {
   }
 
   getLastSuccessfulRunByStore(store: string): number | null {
+    const storeId = findStoreId(this.db, store);
+    if (storeId === null) return null;
     const result = this.db
       .select({ completedAt: max(scrapeJobs.completedAt) })
       .from(scrapeJobs)
-      .where(and(eq(scrapeJobs.store, store), eq(scrapeJobs.status, "completed")))
+      .where(and(eq(scrapeJobs.storeId, storeId), eq(scrapeJobs.status, "completed")))
       .get();
     return result?.completedAt ?? null;
   }
 
   getStoresWithJobs(): string[] {
     const rows = this.db
-      .selectDistinct({ store: scrapeJobs.store })
+      .selectDistinct({ store: stores.name })
       .from(scrapeJobs)
+      .innerJoin(stores, eq(scrapeJobs.storeId, stores.id))
       .all();
     return rows.map((row) => row.store);
   }
