@@ -22,6 +22,7 @@ interface RawAldiItem {
   customLabel1: string;
   productType?: string;
   photoUrls: string[];
+  sourceUrl?: string | null;
 }
 
 export class CatalogueNormalizer {
@@ -50,6 +51,8 @@ export class CatalogueNormalizer {
       salePrice: Math.round(parseFloat(item.discountedPrice!) * CENTS_PER_EURO),
       validUntil: item.customLabel1,
       dietaryTags: this.classifyDietaryTags(category),
+      // ALWAYS set — default null when absent so register() never sees undefined.
+      sourceUrl: item.sourceUrl ?? null,
     };
   }
 

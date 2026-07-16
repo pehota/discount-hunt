@@ -30,6 +30,7 @@ interface CatalogueNormalizerItem {
   customLabel1: string;
   productType: string;
   photoUrls: string[];
+  sourceUrl: string;
 }
 
 export class VMarktCatalogueFetcher {
@@ -65,6 +66,7 @@ export class VMarktCatalogueFetcher {
         customLabel1: currentWeekSunday(),
         productType: "grocery",
         photoUrls: [],
+        sourceUrl: this.pageflipUrl(slug),
       }));
 
     this.logger.log("info", "scrape.vmarkt.extracted", {
@@ -104,8 +106,13 @@ export class VMarktCatalogueFetcher {
     return slugs;
   }
 
+  /** Build the pageflip catalogue URL for a slug (SSOT for both fetch + item sourceUrl). */
+  private pageflipUrl(slug: string): string {
+    return `https://www.pageflip.v-markt.de/muenchen/${slug}/`;
+  }
+
   private async fetchParagraphs(slug: string): Promise<string[]> {
-    const url = `https://www.pageflip.v-markt.de/muenchen/${slug}/`;
+    const url = this.pageflipUrl(slug);
     const response = await this.fetchFn(url);
     const html = await response.text();
     return this.extractParagraphTexts(html);

@@ -404,7 +404,36 @@ const STYLE = `
     }
     /* Selected card highlight (client controller toggles .selected). */
     .card.selected { border-color: var(--accent); background: var(--accent-soft); }
+    /* In-card store chip — reuses the .store-name pill look (accent-soft bg + accent text,
+       rounded), but sized DOWN so it reads as a small in-card "store" tag, visually distinct
+       from the grey .card-tag. Sits in normal flow at the article's top-left, so it never
+       collides with the absolute .savings-badge (top-right corner). */
+    .card-store {
+      display: inline-block;
+      margin: 0 0 var(--sp-2);
+      padding: 0 var(--sp-2);
+      background: var(--accent-soft);
+      color: var(--accent);
+      border-radius: 999px;
+      font-size: var(--fs-sm);
+    }
     .card .item-name { margin: 0 0 var(--sp-2); font-size: var(--fs-base); padding-right: 4.5rem; }
+    /* Feed name → original offer link. Accent colour + external-link affordance via ::after
+       (never as DOM text, so .item-name textContent stays the clean product name). */
+    .card .item-name a {
+      color: var(--accent);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+    }
+    .card .item-name a:hover,
+    .card .item-name a:focus { text-decoration: underline; }
+    .card .item-name a::after {
+      content: "↗";
+      margin-left: var(--sp-1);
+      font-size: var(--fs-sm);
+    }
     .was-price { color: var(--muted); text-decoration: line-through; margin-right: var(--sp-2); }
     .sale-price { color: var(--sale); font-weight: 700; font-size: var(--fs-lg); }
     /* Savings badge (feed) — corner chip using --save */

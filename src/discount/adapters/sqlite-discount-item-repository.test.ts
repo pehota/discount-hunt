@@ -20,7 +20,7 @@ import type { NormalizedItem } from "../../shared/types.ts";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeItem(externalId: string, validUntil: string) {
+function makeItem(externalId: string, validUntil: string, sourceUrl: string | null = null) {
   return {
     externalId,
     store: "test-store",
@@ -30,6 +30,7 @@ function makeItem(externalId: string, validUntil: string) {
     salePrice: 150,
     validUntil,
     dietaryTags: [] as [],
+    sourceUrl,
   };
 }
 
@@ -125,6 +126,29 @@ describe("SQLiteDiscountItemRepository.register", () => {
 
     const results = await repo.getByWeek("2026-07-14", "none");
     expect(results.map((r) => r.id)).toContain("test-store:complete");
+  });
+
+  test("source_url round-trips: a URL registered is returned by getByWeek", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    const url = "https://prospekt.aldi-sued.de/kw27-26-op-mp/";
+    await repo.register(makeItem("with-url", "2026-07-20", url), "job-1");
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const stored = results.find((r) => r.id === "test-store:with-url");
+    expect(stored?.sourceUrl).toBe(url);
+  });
+
+  test("source_url null round-trips: a null sourceUrl is returned as null (covers legacy rows)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("no-url", "2026-07-20", null), "job-1");
+
+    const results = await repo.getByWeek("2026-07-14", "none");
+    const stored = results.find((r) => r.id === "test-store:no-url");
+    expect(stored?.sourceUrl).toBeNull();
   });
 
   test("rejects an item with an undefined required field with a named error", async () => {

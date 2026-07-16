@@ -30,6 +30,7 @@ export const discountItems = sqliteTable("discount_items", {
   dietaryTags: text("dietary_tags").notNull().default("[]"), // JSON array
   tags: text("tags").notNull().default("[]"), // JSON array of Tag
   taxonomyCategory: text("taxonomy_category"), // nullable — assigned by categorisation context; NULL = unclassified
+  sourceUrl: text("source_url"), // nullable — deep link to original store offer; NULL when unavailable
   scrapeJobId: text("scrape_job_id").notNull(),
   createdAt: integer("created_at").notNull(), // ms since epoch
 });

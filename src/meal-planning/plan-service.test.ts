@@ -90,6 +90,7 @@ describe("PlanService", () => {
           salePrice: item.salePrice,
           validUntil: item.validUntil,
           dietaryTags: [],
+          sourceUrl: null,
         },
         "scrape-job-001"
       );
@@ -114,6 +115,7 @@ describe("PlanService", () => {
       dietaryTags: JSON.parse(row.dietaryTags),
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
+      sourceUrl: row.sourceUrl,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -141,6 +143,7 @@ describe("PlanService", () => {
       dietaryTags: JSON.parse(row.dietaryTags),
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
+      sourceUrl: row.sourceUrl,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -168,6 +171,7 @@ describe("PlanService", () => {
       dietaryTags: JSON.parse(row.dietaryTags),
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
+      sourceUrl: row.sourceUrl,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -233,6 +237,7 @@ describe("PlanService — generate from a user-selected subset", () => {
           salePrice: item.salePrice,
           validUntil: item.validUntil,
           dietaryTags: [],
+          sourceUrl: null,
         },
         "scrape-job-001",
       );
@@ -251,6 +256,7 @@ describe("PlanService — generate from a user-selected subset", () => {
       dietaryTags: JSON.parse(row.dietaryTags),
       tags: [],
       taxonomyCategory: row.taxonomyCategory as StoredDiscountItem["taxonomyCategory"],
+      sourceUrl: row.sourceUrl,
       scrapeJobId: row.scrapeJobId,
       createdAt: row.createdAt,
     }));
@@ -333,6 +339,7 @@ describe("PlanService.generatePlan — 14-meal structure (PBT)", () => {
     dietaryTags: fc.constant([]),
     tags: fc.constant([]),
     taxonomyCategory: fc.constant(null),
+    sourceUrl: fc.constant(null),
     scrapeJobId: fc.constant("job-pbt"),
     createdAt: fc.constant(0),
   });

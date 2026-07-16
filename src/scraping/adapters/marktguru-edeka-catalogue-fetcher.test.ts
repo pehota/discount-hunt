@@ -379,6 +379,8 @@ describe("MarktguruEdekaCatalogueFetcher — mapping", () => {
     expect(item.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(item.productType).toBe("Käse");
     expect(item.photoUrls).toEqual([]);
+    // sourceUrl is a per-offer deep link built from the offer id.
+    expect(item.sourceUrl).toBe("https://www.marktguru.de/offers/7");
   });
 
   test("equal-price survival: oldPrice null → regular==sale AND item present (no drop filter)", async () => {

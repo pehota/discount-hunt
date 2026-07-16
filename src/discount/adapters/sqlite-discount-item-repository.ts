@@ -32,6 +32,7 @@ export interface StoredDiscountItem {
   dietaryTags: DietaryTag[];
   tags: Tag[];
   taxonomyCategory: TaxonomyCategory | null;
+  sourceUrl: string | null;
   scrapeJobId: string;
   createdAt: number;
 }
@@ -49,11 +50,11 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
     // INSERT OR IGNORE — D22 write-once: regular_price not overwritten on conflict
     this.db.run(sql`
       INSERT OR IGNORE INTO discount_items
-        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, scrape_job_id, created_at)
+        (id, store, name, category, regular_price, sale_price, valid_until, dietary_tags, source_url, scrape_job_id, created_at)
       VALUES
         (${id}, ${item.store}, ${item.name}, ${item.category},
          ${item.regularPrice}, ${item.salePrice}, ${item.validUntil},
-         ${JSON.stringify(item.dietaryTags)}, ${scrapeJobId}, ${Date.now()})
+         ${JSON.stringify(item.dietaryTags)}, ${item.sourceUrl}, ${scrapeJobId}, ${Date.now()})
     `);
   }
 
@@ -67,6 +68,7 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
       salePrice: item.salePrice,
       validUntil: item.validUntil,
       dietaryTags: item.dietaryTags,
+      sourceUrl: item.sourceUrl,
       scrapeJobId,
     };
     for (const [field, value] of Object.entries(bindings)) {
@@ -96,6 +98,7 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
         dietaryTags: JSON.parse(row.dietaryTags) as DietaryTag[],
         tags: this.parseTags(row.tags),
         taxonomyCategory: row.taxonomyCategory as TaxonomyCategory | null,
+        sourceUrl: row.sourceUrl,
         scrapeJobId: row.scrapeJobId,
         createdAt: row.createdAt,
       }));

@@ -66,6 +66,7 @@ interface CatalogueNormalizerItem {
   customLabel1: string;
   productType: string;
   photoUrls: string[];
+  sourceUrl: string;
 }
 
 interface Offer {
@@ -204,6 +205,7 @@ export class MarktguruEdekaCatalogueFetcher {
       customLabel1: this.latestValidUntil(offer),
       productType: offer.categories?.[0]?.name ?? "grocery",
       photoUrls: [],
+      sourceUrl: `https://www.marktguru.de/offers/${offer.id}`,
     };
   }
 

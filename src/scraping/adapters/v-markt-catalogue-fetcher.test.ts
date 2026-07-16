@@ -278,6 +278,8 @@ describe("VMarktCatalogueFetcher — output shape", () => {
         expect(r.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         expect(r.productType).toBe("grocery");
         expect(Array.isArray(r.photoUrls)).toBe(true);
+        // sourceUrl deep-links to the pageflip catalogue for the selected slug.
+        expect(r.sourceUrl).toBe("https://www.pageflip.v-markt.de/muenchen/2408_VMMUC/");
       }
     }
   );

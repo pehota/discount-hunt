@@ -59,6 +59,7 @@ describe("DiscountHandler.handleGet", () => {
         salePrice: 99,     // cents
         validUntil: "2026-07-14",
         dietaryTags: ["vegan"],
+        sourceUrl: null,
       },
       "job-001"
     );
@@ -72,6 +73,7 @@ describe("DiscountHandler.handleGet", () => {
         salePrice: 149,
         validUntil: "2026-07-14",
         dietaryTags: ["vegan"],
+        sourceUrl: null,
       },
       "job-001"
     );
@@ -85,6 +87,7 @@ describe("DiscountHandler.handleGet", () => {
         salePrice: 89,
         validUntil: "2026-07-14",
         dietaryTags: ["vegan"],
+        sourceUrl: null,
       },
       "job-001"
     );
@@ -184,6 +187,7 @@ describe("DiscountHandler filter pills", () => {
           salePrice: 100 + i,
           validUntil: VU,
           dietaryTags: ["vegan"],
+          sourceUrl: null,
         },
         jobId,
       );
@@ -301,6 +305,7 @@ describe("DiscountHandler feed enhancements", () => {
           salePrice: 100 + i,
           validUntil: VU,
           dietaryTags: ["vegan"],
+          sourceUrl: null,
         },
         jobId,
       );
@@ -385,6 +390,7 @@ describe("DiscountHandler feed action-hub", () => {
           salePrice: 100 + i,
           validUntil: VU,
           dietaryTags: ["vegan"],
+          sourceUrl: null,
         },
         jobId,
       );
@@ -488,7 +494,7 @@ describe("DiscountHandler category filter + price-asc sort", () => {
   async function seedItem(
     service: DiscountService,
     repo: SQLiteDiscountItemRepository,
-    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string; tags?: Tag[] },
+    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string; tags?: Tag[]; sourceUrl?: string | null },
   ): Promise<void> {
     await service.registerDiscountItem(
       {
@@ -500,6 +506,7 @@ describe("DiscountHandler category filter + price-asc sort", () => {
         salePrice: opts.salePrice,
         validUntil: VU,
         dietaryTags: ["vegan"],
+        sourceUrl: opts.sourceUrl ?? null,
       },
       opts.jobId,
     );
@@ -652,5 +659,83 @@ describe("DiscountHandler category filter + price-asc sort", () => {
     const card = html.match(/<div class="card"[^>]*>[\s\S]*?Apple[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
     expect(card).toContain(`data-tags=""`);
     expect(card).not.toContain("card-tag");
+  });
+
+  // ── Feature A: in-card store chip ─────────────────────────────────────────
+
+  test("A: each card renders a .card-store chip with the store name, distinct from .card-tag and OUTSIDE .item-name", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>[\s\S]*?Zucchini[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
+    // The chip carries the store name and its own distinct class (not .card-tag).
+    expect(card).toContain(`<span class="card-store">Aldi</span>`);
+    // The store chip must NOT be inside .item-name (would pollute the searchable product name).
+    expect(card).not.toMatch(/<h3 class="item-name">[^<]*card-store/);
+  });
+
+  // ── Feature B: product name links to the original offer in a new tab ──────
+
+  test("B: name links to sourceUrl in a new tab; anchor is inside .item-name but OUTSIDE the label; textContent stays the product name", async () => {
+    const url = "https://www.marktguru.de/offers/42";
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Edeka", externalId: "e1", name: "Bauernbrot", salePrice: 149, category: "Bakery", jobId: "j", sourceUrl: url });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>[\s\S]*?Bauernbrot[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
+
+    // The item-name is an <h3 class="item-name"> wrapping an anchor to the escaped sourceUrl.
+    const itemName = card.match(/<h3 class="item-name">[\s\S]*?<\/h3>/)?.[0] ?? "";
+    expect(itemName).toContain(`href="${url}"`);
+    expect(itemName).toContain(`target="_blank"`);
+    expect(itemName).toContain(`rel="noopener`);
+    // textContent of .item-name is EXACTLY the product name — no affordance leaked into the DOM text.
+    const innerText = itemName.replace(/<[^>]*>/g, "").trim();
+    expect(innerText).toBe("Bauernbrot");
+    expect(innerText).not.toContain("↗");
+
+    // The anchor lives OUTSIDE the .card-select label (label must not wrap the link).
+    const label = card.match(/<label class="card-select"[\s\S]*?<\/label>/)?.[0] ?? "";
+    expect(label).not.toContain("<a ");
+  });
+
+  test("C: when sourceUrl is null, .item-name is plain text with NO anchor", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j", sourceUrl: null });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>[\s\S]*?Zucchini[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
+    expect(card).toContain(`<h3 class="item-name">Zucchini</h3>`);
+    const itemName = card.match(/<h3 class="item-name">[\s\S]*?<\/h3>/)?.[0] ?? "";
+    expect(itemName).not.toContain("<a ");
+  });
+
+  test("D: a non-http sourceUrl (javascript:) is NOT linked — plain text, no anchor", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, { store: "Aldi", externalId: "a1", name: "Zucchini", salePrice: 100, category: "Produce", jobId: "j", sourceUrl: "javascript:alert(1)" });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>[\s\S]*?Zucchini[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
+    const itemName = card.match(/<h3 class="item-name">[\s\S]*?<\/h3>/)?.[0] ?? "";
+    expect(itemName).not.toContain("<a ");
+    expect(itemName).not.toContain("javascript:");
+    expect(itemName.replace(/<[^>]*>/g, "").trim()).toBe("Zucchini");
   });
 });

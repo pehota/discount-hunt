@@ -569,12 +569,26 @@ export class DiscountHandler {
         const tagChips = tags.length > 0
           ? `<div class="card-tags">${tags.map((t) => `<span class="card-tag">${escapeHtml(t)}</span>`).join("")}</div>`
           : "";
+        // In-card store chip (Feature A): the section param IS the store for this group.
+        // Sits at article top, OUTSIDE .item-name so it never pollutes the searchable name.
+        const storeChip = `<span class="card-store">${escapeHtml(storeName)}</span>`;
+        // Feed name → original offer link (Feature B). Link ONLY for genuine http(s) URLs;
+        // any other value (null, javascript:, ftp:) renders plain text. The anchor is the
+        // ONLY child of .item-name and its text is EXACTLY the product name — no affordance
+        // text in the DOM (the affordance "↗" is a CSS ::after on .item-name a). This keeps
+        // querySelector('.item-name').textContent === product name for search + selection.
+        const url = item.sourceUrl;
+        const isLinkable = url !== null && (url.startsWith("http://") || url.startsWith("https://"));
+        const itemName = isLinkable
+          ? `<h3 class="item-name"><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.name)}</a></h3>`
+          : `<h3 class="item-name">${escapeHtml(item.name)}</h3>`;
         return `
       <div class="card" data-item-card data-category="${category}" data-tags="${dataTags}">
         ${badge}
         ${selection}
         <article class="discount-item">
-        <h3 class="item-name">${escapeHtml(item.name)}</h3>
+        ${storeChip}
+        ${itemName}
         <p class="item-price">
           <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
           <span class="sale-price">€${centsToEuros(item.salePrice)}</span>

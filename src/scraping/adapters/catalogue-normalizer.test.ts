@@ -121,6 +121,19 @@ describe("CatalogueNormalizer", () => {
     expect(result!.dietaryTags).toEqual([]);
   });
 
+  // ── sourceUrl mapping (Feature B) ─────────────────────────────────────────
+
+  test("maps sourceUrl through when present on the raw item", () => {
+    const url = "https://prospekt.aldi-sued.de/kw27-26-op-mp/";
+    const [result] = normalizer.normalize([{ ...rawItem(), sourceUrl: url }]);
+    expect(result!.sourceUrl).toBe(url);
+  });
+
+  test("defaults sourceUrl to null when absent on the raw item", () => {
+    const [result] = normalizer.normalize([rawItem()]);
+    expect(result!.sourceUrl).toBeNull();
+  });
+
   // ── Property 3: dietary tags per productType ──────────────────────────────
 
   test("Property: dietary tags applied correctly per productType", () => {

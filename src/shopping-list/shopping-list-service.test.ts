@@ -54,6 +54,7 @@ describe("ShoppingListService", () => {
         salePrice: 99,
         validUntil: thisWeekValidUntil(),
         dietaryTags: ["vegan"],
+        sourceUrl: null,
       },
       "job-1",
     );
@@ -67,6 +68,7 @@ describe("ShoppingListService", () => {
         salePrice: 180,
         validUntil: thisWeekValidUntil(),
         dietaryTags: ["vegan"],
+        sourceUrl: null,
       },
       "job-1",
     );
@@ -142,6 +144,7 @@ describe("ShoppingListService", () => {
       {
         externalId: "c1", store: "aldi", name: "Carrot", category: "vegetable",
         regularPrice: 120, salePrice: 80, validUntil: thisWeekValidUntil(), dietaryTags: ["vegan"],
+        sourceUrl: null,
       },
       "job-c",
     );

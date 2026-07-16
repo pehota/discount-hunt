@@ -76,6 +76,7 @@ interface RawAldiItem {
   customLabel1: string;
   productType: string;
   photoUrls: string[];
+  sourceUrl: string;
 }
 
 export class AldiSudCatalogueFetcher {
@@ -90,7 +91,7 @@ export class AldiSudCatalogueFetcher {
     const validUntil = currentWeekSunday();
     const kept = nestedProducts
       .filter((product) => this.isGenuineDeal(product))
-      .map((product) => this.toRawAldiItem(product, validUntil));
+      .map((product) => this.toRawAldiItem(product, validUntil, slug));
 
     const rawTotal = nestedProducts.length;
     this.logger.log("info", "scrape.aldi.fetched", { rawTotal, kept: kept.length });
@@ -136,7 +137,7 @@ export class AldiSudCatalogueFetcher {
     return parseFloat(product.discountedPrice) < parseFloat(product.price);
   }
 
-  private toRawAldiItem(product: NestedProduct, validUntil: string): RawAldiItem {
+  private toRawAldiItem(product: NestedProduct, validUntil: string, slug: string): RawAldiItem {
     return {
       id: product.id,
       title: product.title,
@@ -146,6 +147,7 @@ export class AldiSudCatalogueFetcher {
       customLabel1: validUntil,
       productType: product.productType,
       photoUrls: [],
+      sourceUrl: `${ALDI_SUD_ORIGIN}/${slug}/`,
     };
   }
 

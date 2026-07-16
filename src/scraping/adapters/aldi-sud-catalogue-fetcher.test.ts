@@ -193,12 +193,16 @@ describe("AldiSudCatalogueFetcher — nested extraction + discount filter", () =
       customLabel1: string;
       productType: string;
       photoUrls: string[];
+      sourceUrl: string;
     };
     expect(item.id).toBe("deal-1");
     expect(item.title).toBe("Tomaten");
     expect(item.brand).toBe("Aldi Süd");
     expect(item.price).toBe("0.65");
     expect(item.discountedPrice).toBe("0.59");
+    // sourceUrl deep-links to the current-week catalogue slug (reuses ALDI_SUD_ORIGIN).
+    expect(item.sourceUrl).toBe(`https://prospekt.aldi-sued.de/${slug}/`);
+    expect(item.sourceUrl.startsWith("https://prospekt.aldi-sued.de/")).toBe(true);
     // ISO validUntil (end-of-week), NOT the raw German "d.m." start date.
     expect(item.customLabel1).toBe(expectedValidUntil());
     expect(item.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
