@@ -145,7 +145,7 @@ describe("ShoppingListService", () => {
       },
       "job-c",
     );
-    discountRepo.setTaxonomyCategory("aldi:c1", "Produce");
+    discountRepo.setCategorisation("aldi:c1", "Produce", []);
 
     await svc.addFromDiscountSelection(["aldi:c1"]);
     expect(svc.getCurrentList().items[0]!.taxonomyCategory).toBe("Produce");

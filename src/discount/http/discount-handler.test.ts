@@ -21,7 +21,7 @@ import { SQLiteShoppingListRepository } from "../../shopping-list/adapters/sqlit
 import { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
 import { TAXONOMY_CATEGORIES } from "../../shared/types.ts";
-import type { TaxonomyCategory } from "../../shared/types.ts";
+import type { TaxonomyCategory, Tag } from "../../shared/types.ts";
 import { escapeHtml } from "../../shared/html.ts";
 
 /** A validUntil comfortably inside the current week so getByWeek (validUntil >= Monday) keeps it. */
@@ -482,13 +482,13 @@ describe("DiscountHandler category filter + price-asc sort", () => {
 
   /**
    * Seed one item and persist its taxonomy_category via the repo's single-writer port
-   * (setTaxonomyCategory). id is derived as `${store}:${externalId}`. category=null seeds
+   * (setCategorisation). id is derived as `${store}:${externalId}`. category=null seeds
    * an uncategorised (pending) row → renders under the "Other" bucket.
    */
   async function seedItem(
     service: DiscountService,
     repo: SQLiteDiscountItemRepository,
-    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string },
+    opts: { store: string; externalId: string; name: string; salePrice: number; category: TaxonomyCategory | null; jobId: string; tags?: Tag[] },
   ): Promise<void> {
     await service.registerDiscountItem(
       {
@@ -504,7 +504,7 @@ describe("DiscountHandler category filter + price-asc sort", () => {
       opts.jobId,
     );
     if (opts.category !== null) {
-      repo.setTaxonomyCategory(`${opts.store}:${opts.externalId}`, opts.category);
+      repo.setCategorisation(`${opts.store}:${opts.externalId}`, opts.category, opts.tags ?? []);
     }
   }
 
@@ -613,5 +613,44 @@ describe("DiscountHandler category filter + price-asc sort", () => {
 
     // Aldi store pill still counts both items.
     expect(html).toMatch(/data-filter="Aldi"[^>]*>Aldi\s*<span class="pill-count">2<\/span>/);
+  });
+
+  test("a card WITH tags carries lowercased data-tags and one .card-tag chip per tag (original casing)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, {
+      store: "Aldi", externalId: "a1", name: "Bio Lachs TK", salePrice: 500,
+      category: "Meat & Fish", jobId: "j", tags: ["Frozen", "Organic"],
+    });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>[\s\S]*?Bio Lachs TK[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
+    // data-tags: lowercased, space-joined, on the .card element.
+    expect(card).toContain(`data-tags="frozen organic"`);
+    // One chip per tag, ORIGINAL casing, inside a .card-tags container.
+    expect(card).toContain(`<span class="card-tag">Frozen</span>`);
+    expect(card).toContain(`<span class="card-tag">Organic</span>`);
+    expect(card).toContain(`class="card-tags"`);
+    // Chips are OUTSIDE .item-name (search reads the attribute, not chip text).
+    expect(card).not.toMatch(/<h3 class="item-name">[^<]*card-tag/);
+  });
+
+  test("a card with NO tags has empty data-tags and NO .card-tag elements", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+    const service = new DiscountService(repo);
+    await seedItem(service, repo, {
+      store: "Aldi", externalId: "a1", name: "Apple", salePrice: 100, category: "Produce", jobId: "j",
+    });
+
+    const handler = new DiscountHandler(service);
+    const html = await (await handler.handleGet(new Request("http://localhost/"))).text();
+
+    const card = html.match(/<div class="card"[^>]*>[\s\S]*?Apple[\s\S]*?<\/div>\s*<\/div>/)?.[0] ?? "";
+    expect(card).toContain(`data-tags=""`);
+    expect(card).not.toContain("card-tag");
   });
 });

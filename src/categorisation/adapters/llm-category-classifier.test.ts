@@ -14,7 +14,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { LlmCategoryClassifier, CLASSIFICATION_PROMPT } from "./llm-category-classifier.ts";
-import { TAXONOMY_CATEGORIES, isTaxonomyCategory } from "../../shared/types.ts";
+import { TAXONOMY_CATEGORIES, TAGS, isTaxonomyCategory } from "../../shared/types.ts";
 import type { LlmTextGenerator } from "../../llm/ports/llm-text-generator.ts";
 
 /** A fake generator that records its two run() args and replays a canned string. */
@@ -35,44 +35,62 @@ const TWO_INPUTS = [
 ];
 
 describe("LlmCategoryClassifier", () => {
-  test("returns a clean array of valid buckets as-is", async () => {
-    const classifier = new LlmCategoryClassifier(fakeLlm('["Meat & Fish","Drinks"]').llm);
+  test("maps a clean array of {category,tags} objects as-is", async () => {
+    const classifier = new LlmCategoryClassifier(
+      fakeLlm('[{"category":"Meat & Fish","tags":["Frozen"]},{"category":"Drinks","tags":["Alcoholic"]}]').llm,
+    );
 
     const result = await classifier.classify(TWO_INPUTS);
 
-    expect(result).toEqual(["Meat & Fish", "Drinks"]);
-    for (const bucket of result) {
-      expect(isTaxonomyCategory(bucket)).toBe(true);
+    expect(result).toEqual([
+      { category: "Meat & Fish", tags: ["Frozen"] },
+      { category: "Drinks", tags: ["Alcoholic"] },
+    ]);
+    for (const entry of result) {
+      expect(isTaxonomyCategory(entry.category)).toBe(true);
     }
   });
 
   test("coerces a bogus bucket to 'Other' and keeps valid siblings", async () => {
-    const classifier = new LlmCategoryClassifier(fakeLlm('["Groceries","Drinks"]').llm);
+    const classifier = new LlmCategoryClassifier(
+      fakeLlm('[{"category":"Groceries","tags":[]},{"category":"Drinks","tags":[]}]').llm,
+    );
 
     const result = await classifier.classify(TWO_INPUTS);
 
-    expect(result).toEqual(["Other", "Drinks"]);
-    for (const bucket of result) {
-      expect(isTaxonomyCategory(bucket)).toBe(true);
-    }
+    expect(result).toEqual([
+      { category: "Other", tags: [] },
+      { category: "Drinks", tags: [] },
+    ]);
   });
 
-  test("returns all 'Other' of the correct length when no JSON array is present", async () => {
+  test("drops invalid tag values, keeps valid ones", async () => {
+    const classifier = new LlmCategoryClassifier(
+      fakeLlm('[{"category":"Produce","tags":["Organic","Bogus",123]},{"category":"Drinks","tags":[]}]').llm,
+    );
+
+    const result = await classifier.classify(TWO_INPUTS);
+
+    expect(result[0]).toEqual({ category: "Produce", tags: ["Organic"] });
+    expect(result[1]).toEqual({ category: "Drinks", tags: [] });
+  });
+
+  test("returns all {category:'Other',tags:[]} of the correct length when no JSON array is present", async () => {
     const classifier = new LlmCategoryClassifier(
       fakeLlm("I could not classify these products.").llm,
     );
 
     const result = await classifier.classify(TWO_INPUTS);
 
-    expect(result).toEqual(["Other", "Other"]);
+    expect(result).toEqual([
+      { category: "Other", tags: [] },
+      { category: "Other", tags: [] },
+    ]);
     expect(result).toHaveLength(TWO_INPUTS.length);
-    for (const bucket of result) {
-      expect(isTaxonomyCategory(bucket)).toBe(true);
-    }
   });
 
   test("passes the classification prompt and inputs to the generator", async () => {
-    const { calls, llm } = fakeLlm('["Other","Other"]');
+    const { calls, llm } = fakeLlm('[{"category":"Other","tags":[]},{"category":"Other","tags":[]}]');
     const classifier = new LlmCategoryClassifier(llm);
 
     await classifier.classify(TWO_INPUTS);
@@ -82,9 +100,10 @@ describe("LlmCategoryClassifier", () => {
     expect(calls[0]?.user).toContain("Cola");
   });
 
-  test("prompt is built from the SSOT taxonomy and carries the food-type instruction", async () => {
-    // Bucket list is single-sourced from TAXONOMY_CATEGORIES (no copied literals).
+  test("prompt is built from the SSOT taxonomy + tags and carries the food-type instruction", async () => {
+    // Category + tag lists are single-sourced from the SSOTs (no copied literals).
     expect(CLASSIFICATION_PROMPT).toContain(TAXONOMY_CATEGORIES.join(", "));
+    expect(CLASSIFICATION_PROMPT).toContain(TAGS.join(", "));
     // Categorise by what the food fundamentally IS, not its storage temperature.
     expect(CLASSIFICATION_PROMPT).toContain("fundamentally");
     expect(CLASSIFICATION_PROMPT).toContain("frozen fish");

@@ -215,8 +215,8 @@ describe("ShoppingListHandler", () => {
         regularPrice: 120, salePrice: 90, validUntil: thisWeekValidUntil(), dietaryTags: ["vegan"] },
       "job-b",
     );
-    discountRepo.setTaxonomyCategory("aldi:b1", "Bakery");
-    discountRepo.setTaxonomyCategory("aldi:p1", "Produce");
+    discountRepo.setCategorisation("aldi:b1", "Bakery", []);
+    discountRepo.setCategorisation("aldi:p1", "Produce", []);
     await svc.addFromDiscountSelection(["aldi:b1", "aldi:p1"]);
     svc.addManualItem("Notebook", null);
 

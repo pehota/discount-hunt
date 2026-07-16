@@ -80,9 +80,11 @@ document.addEventListener('DOMContentLoaded', function () {
         var card = cards[c];
         var nameNode = card.querySelector('.item-name');
         var cardName = nameNode ? nameNode.textContent.toLowerCase() : '';
-        var nameMatch = query === '' || cardName.indexOf(query) !== -1;
+        var cardCategory = (card.getAttribute('data-category') || '').toLowerCase();
+        var cardTags = (card.getAttribute('data-tags') || '');
+        var textMatch = query === '' || cardName.indexOf(query) !== -1 || cardCategory.indexOf(query) !== -1 || cardTags.indexOf(query) !== -1;
         var categoryMatch = activeCategory === '__all__' || card.getAttribute('data-category') === activeCategory;
-        var show = storeMatch && nameMatch && categoryMatch;
+        var show = storeMatch && textMatch && categoryMatch;
         card.hidden = !show;
         if (show) { visibleInSection++; anyVisible = true; }
       }
@@ -532,8 +534,16 @@ export class DiscountHandler {
         // NULL/pending taxonomy → the "Other" bucket. Escaped: 3 canonical categories
         // contain "&" (e.g. "Meat & Fish") → data-category="Meat &amp; Fish".
         const category = escapeHtml(item.taxonomyCategory ?? "Other");
+        // Cross-cutting tags: data-tags is lowercased + space-joined for client search
+        // (read as an attribute, NEVER from chip text). Chips display ORIGINAL casing and
+        // sit OUTSIDE .item-name so the search / selection-overview read a clean product name.
+        const tags = item.tags ?? [];
+        const dataTags = escapeHtml(tags.map((t) => t.toLowerCase()).join(" "));
+        const tagChips = tags.length > 0
+          ? `<div class="card-tags">${tags.map((t) => `<span class="card-tag">${escapeHtml(t)}</span>`).join("")}</div>`
+          : "";
         return `
-      <div class="card" data-item-card data-category="${category}">
+      <div class="card" data-item-card data-category="${category}" data-tags="${dataTags}">
         ${badge}
         ${selection}
         <article class="discount-item">
@@ -542,6 +552,7 @@ export class DiscountHandler {
           <span class="was-price">was €${centsToEuros(item.regularPrice)}</span>
           <span class="sale-price">€${centsToEuros(item.salePrice)}</span>
         </p>
+        ${tagChips}
       </article>
       </div>`;
       })

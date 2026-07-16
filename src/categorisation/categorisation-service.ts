@@ -35,14 +35,15 @@ export class CategorisationService {
       return { classified: 0, pending: rows.length };
     }
 
-    const cats = await this.classifier.classify(
+    const results = await this.classifier.classify(
       rows.map((row) => ({ name: row.name, productType: row.productType })),
     );
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i]!;
-      // noUncheckedIndexedAccess: cats[i] is TaxonomyCategory | undefined.
-      this.store.setTaxonomyCategory(row.id, cats[i] ?? "Other");
+      // noUncheckedIndexedAccess: results[i] is possibly undefined — guard BOTH fields.
+      const r = results[i];
+      this.store.setCategorisation(row.id, r?.category ?? "Other", r?.tags ?? []);
     }
 
     return { classified: rows.length, pending: 0 };

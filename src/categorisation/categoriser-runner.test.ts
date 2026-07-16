@@ -8,28 +8,28 @@
 import { describe, test, expect } from "bun:test";
 import { runCategorisation } from "./categoriser-runner.ts";
 import type { CategoryClassifier, DiscountCategoryStore } from "./ports.ts";
-import type { TaxonomyCategory } from "../shared/types.ts";
+import type { TaxonomyCategory, Tag } from "../shared/types.ts";
 import type { LogLevel, Logger } from "../shared/logger.ts";
 
 class FakeStore implements DiscountCategoryStore {
-  private readonly rows = new Map<string, { name: string; productType: string; cat: TaxonomyCategory | null }>();
+  private readonly rows = new Map<string, { name: string; productType: string; cat: TaxonomyCategory | null; tags: Tag[] }>();
   seed(id: string, name: string, productType: string): void {
-    this.rows.set(id, { name, productType, cat: null });
+    this.rows.set(id, { name, productType, cat: null, tags: [] });
   }
   findUncategorised(): { id: string; name: string; productType: string }[] {
     return [...this.rows.entries()]
       .filter(([, r]) => r.cat === null)
       .map(([id, r]) => ({ id, name: r.name, productType: r.productType }));
   }
-  setTaxonomyCategory(id: string, cat: TaxonomyCategory): void {
+  setCategorisation(id: string, category: TaxonomyCategory, tags: Tag[]): void {
     const r = this.rows.get(id);
-    if (r) r.cat = cat;
+    if (r) { r.cat = category; r.tags = tags; }
   }
 }
 
 class FakeClassifier implements CategoryClassifier {
-  async classify(items: { name: string; productType: string }[]): Promise<TaxonomyCategory[]> {
-    return items.map(() => "Other");
+  async classify(items: { name: string; productType: string }[]): Promise<{ category: TaxonomyCategory; tags: Tag[] }[]> {
+    return items.map(() => ({ category: "Other", tags: [] }));
   }
 }
 

@@ -11,6 +11,7 @@
 
 import { describe, test, expect } from "bun:test";
 import fc from "fast-check";
+import { sql } from "drizzle-orm";
 import { createDb } from "../../shared/db.ts";
 import { SQLiteDiscountItemRepository } from "./sqlite-discount-item-repository.ts";
 import type { NormalizedItem } from "../../shared/types.ts";
@@ -146,7 +147,7 @@ describe("SQLiteDiscountItemRepository.register", () => {
 // ---------------------------------------------------------------------------
 
 describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
-  test("fresh item is uncategorised (null via getByWeek); findUncategorised surfaces it with the raw category as productType; setTaxonomyCategory persists and removes it from the uncategorised set", async () => {
+  test("fresh item is uncategorised (null via getByWeek); findUncategorised surfaces it with the raw category as productType; setCategorisation persists and removes it from the uncategorised set", async () => {
     const db = createDb(":memory:");
     const repo = new SQLiteDiscountItemRepository(db);
 
@@ -164,12 +165,60 @@ describe("SQLiteDiscountItemRepository — DiscountCategoryStore port", () => {
     expect(target).toBeDefined();
     expect(target?.productType).toBe("test"); // raw category, NOT taxonomy_category
 
-    // 3. After setTaxonomyCategory: no longer uncategorised; getByWeek shows the new value.
-    repo.setTaxonomyCategory("test-store:prod", "Produce");
+    // 3. After setCategorisation: no longer uncategorised; getByWeek shows the new value.
+    repo.setCategorisation("test-store:prod", "Produce", []);
     expect(repo.findUncategorised().map((r) => r.id)).not.toContain("test-store:prod");
 
     const after = await repo.getByWeek("2026-07-14", "none");
     const storedAfter = after.find((r) => r.id === "test-store:prod");
     expect(storedAfter?.taxonomyCategory).toBe("Produce");
+  });
+
+  test("fresh row defaults tags to [] via getByWeek (schema '[]' default)", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("fresh", "2026-07-20"), "job-1");
+
+    const [stored] = await repo.getByWeek("2026-07-14", "none");
+    expect(stored?.tags).toEqual([]);
+  });
+
+  test("setCategorisation writes BOTH taxonomy_category AND tags; tags round-trip as Tag[]", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("fish", "2026-07-20"), "job-1");
+    repo.setCategorisation("test-store:fish", "Meat & Fish", ["Frozen", "Organic"]);
+
+    const after = await repo.getByWeek("2026-07-14", "none");
+    const stored = after.find((r) => r.id === "test-store:fish");
+    expect(stored?.taxonomyCategory).toBe("Meat & Fish");
+    expect(stored?.tags).toEqual(["Frozen", "Organic"]);
+  });
+
+  test("garbage / unknown tag values are filtered out on read", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("dirty", "2026-07-20"), "job-1");
+    // Inject raw malformed tags JSON via the underlying db handle (register() never touches tags).
+    db.run(sql`UPDATE discount_items SET tags = '["Frozen","Bogus",123]' WHERE id = ${"test-store:dirty"}`);
+
+    const after = await repo.getByWeek("2026-07-14", "none");
+    const stored = after.find((r) => r.id === "test-store:dirty");
+    expect(stored?.tags).toEqual(["Frozen"]);
+  });
+
+  test("non-array / unparseable tags JSON defaults to []", async () => {
+    const db = createDb(":memory:");
+    const repo = new SQLiteDiscountItemRepository(db);
+
+    await repo.register(makeItem("broken", "2026-07-20"), "job-1");
+    db.run(sql`UPDATE discount_items SET tags = 'not-json' WHERE id = ${"test-store:broken"}`);
+
+    const after = await repo.getByWeek("2026-07-14", "none");
+    const stored = after.find((r) => r.id === "test-store:broken");
+    expect(stored?.tags).toEqual([]);
   });
 });

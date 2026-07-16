@@ -5,56 +5,75 @@
  * provider is selected at wiring time; see src/llm/resolve-llm.ts). The LLM is
  * authoritative and classifies EVERY product (no keyword rules).
  *
- * Contract: output length ALWAYS equals input length (pad/truncate with "Other").
- * Any parsed bucket outside the taxonomy is coerced to "Other". No JSON array in
- * the response → all "Other".
+ * Contract: output length ALWAYS equals input length. Each entry is
+ * { category, tags }: a bucket outside the taxonomy is coerced to "Other"; tags
+ * are filtered to known Tag values (unknowns dropped). No JSON array in the
+ * response / parse fail / length mismatch → every entry { category:"Other", tags:[] }.
  */
 
 import type { CategoryClassifier } from "../ports.ts";
-import { TAXONOMY_CATEGORIES, isTaxonomyCategory, type TaxonomyCategory } from "../../shared/types.ts";
+import { TAXONOMY_CATEGORIES, isTaxonomyCategory, TAGS, isTag, type TaxonomyCategory, type Tag } from "../../shared/types.ts";
 import type { LlmTextGenerator } from "../../llm/ports/llm-text-generator.ts";
 
 /**
- * Single source of truth for the classification prompt. The bucket list is built
- * from TAXONOMY_CATEGORIES (never a second hardcoded copy).
+ * Single source of truth for the classification prompt. The category + tag lists
+ * are built from TAXONOMY_CATEGORIES / TAGS (never a second hardcoded copy).
  */
 export const CLASSIFICATION_PROMPT =
   "Classify each German supermarket product into exactly ONE of these categories: " +
   `${TAXONOMY_CATEGORIES.join(", ")}. ` +
   "Categorise by what the food fundamentally IS, NOT its storage temperature: " +
   "frozen fish → Meat & Fish, ice cream → Snacks & Sweets, frozen vegetables → Produce. " +
-  "Return ONLY a JSON array of category strings — one entry per input product, in the " +
-  "same order as the inputs. Use \"Other\" when no category fits.";
+  `For each product ALSO list any of these tags that apply: ${TAGS.join(", ")}; ` +
+  "frozen items get \"Frozen\", organic/Bio items \"Organic\", alcoholic drinks \"Alcoholic\", etc.; " +
+  "use an empty array if none apply. " +
+  "Return ONLY a JSON array of objects like {\"category\":\"...\",\"tags\":[\"...\"]} — " +
+  "one per input product, same order.";
 
 export class LlmCategoryClassifier implements CategoryClassifier {
   constructor(private readonly llm: LlmTextGenerator) {}
 
-  async classify(items: { name: string; productType: string }[]): Promise<TaxonomyCategory[]> {
+  async classify(items: { name: string; productType: string }[]): Promise<{ category: TaxonomyCategory; tags: Tag[] }[]> {
     const userContent = items
       .map((item, i) => `${i + 1}. name="${item.name}" productType="${item.productType}"`)
       .join("\n");
 
     const text = await this.llm.run(CLASSIFICATION_PROMPT, userContent);
 
+    const fallback = (): { category: TaxonomyCategory; tags: Tag[] }[] =>
+      items.map(() => ({ category: "Other" as TaxonomyCategory, tags: [] as Tag[] }));
+
     const jsonMatch = text.match(/\[[\s\S]*\]/);
     if (!jsonMatch) {
-      return items.map(() => "Other");
+      return fallback();
     }
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(jsonMatch[0]);
     } catch {
-      return items.map(() => "Other");
+      return fallback();
     }
 
     if (!Array.isArray(parsed) || parsed.length !== items.length) {
-      return items.map(() => "Other");
+      return fallback();
     }
 
-    // Coerce each entry: valid bucket kept, anything else → "Other".
-    return parsed.map((value) =>
-      typeof value === "string" && isTaxonomyCategory(value) ? value : "Other",
-    );
+    // Coerce each entry: valid bucket kept, anything else → "Other"; tags filtered
+    // to known Tag values. Non-object / null entries → { "Other", [] }.
+    return parsed.map((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return { category: "Other" as TaxonomyCategory, tags: [] as Tag[] };
+      }
+      const record = entry as { category?: unknown; tags?: unknown };
+      const category: TaxonomyCategory =
+        typeof record.category === "string" && isTaxonomyCategory(record.category)
+          ? record.category
+          : "Other";
+      const tags: Tag[] = Array.isArray(record.tags)
+        ? record.tags.filter((t): t is Tag => typeof t === "string" && isTag(t))
+        : [];
+      return { category, tags };
+    });
   }
 }

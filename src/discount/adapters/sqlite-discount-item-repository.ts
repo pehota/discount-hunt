@@ -17,7 +17,8 @@ import { sql, gte, isNull, eq } from "drizzle-orm";
 import type { DbClient } from "../../shared/db.ts";
 import { discountItems } from "../../shared/schema.ts";
 import { isCompatible } from "../../shared/dietary.ts";
-import type { NormalizedItem, WeekStart, DietaryRestriction, DietaryTag, TaxonomyCategory } from "../../shared/types.ts";
+import type { NormalizedItem, WeekStart, DietaryRestriction, DietaryTag, TaxonomyCategory, Tag } from "../../shared/types.ts";
+import { isTag } from "../../shared/types.ts";
 import type { DiscountCategoryStore } from "../../categorisation/ports.ts";
 
 export interface StoredDiscountItem {
@@ -29,6 +30,7 @@ export interface StoredDiscountItem {
   salePrice: number;
   validUntil: string;
   dietaryTags: DietaryTag[];
+  tags: Tag[];
   taxonomyCategory: TaxonomyCategory | null;
   scrapeJobId: string;
   createdAt: number;
@@ -92,6 +94,7 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
         salePrice: row.salePrice,
         validUntil: row.validUntil,
         dietaryTags: JSON.parse(row.dietaryTags) as DietaryTag[],
+        tags: this.parseTags(row.tags),
         taxonomyCategory: row.taxonomyCategory as TaxonomyCategory | null,
         scrapeJobId: row.scrapeJobId,
         createdAt: row.createdAt,
@@ -118,11 +121,28 @@ export class SQLiteDiscountItemRepository implements DiscountCategoryStore {
     return rows;
   }
 
-  /** Persist the classified bucket for one item. */
-  setTaxonomyCategory(id: string, cat: TaxonomyCategory): void {
+  /** Persist the classified bucket AND cross-cutting tags for one item. */
+  setCategorisation(id: string, category: TaxonomyCategory, tags: Tag[]): void {
     this.db.update(discountItems)
-      .set({ taxonomyCategory: cat })
+      .set({ taxonomyCategory: category, tags: JSON.stringify(tags) })
       .where(eq(discountItems.id, id))
       .run();
+  }
+
+  /**
+   * Parse the stored tags JSON into a validated Tag[]. Defaults to [] on any
+   * parse error / non-array, and filters out anything that is not a known Tag.
+   */
+  private parseTags(raw: string): Tag[] {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed.filter((v): v is Tag => typeof v === "string" && isTag(v));
   }
 }

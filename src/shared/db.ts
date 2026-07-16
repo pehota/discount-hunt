@@ -40,6 +40,7 @@ const CREATE_DISCOUNT_ITEMS = `
     sale_price INTEGER NOT NULL,
     valid_until TEXT NOT NULL,
     dietary_tags TEXT NOT NULL DEFAULT '[]',
+    tags TEXT NOT NULL DEFAULT '[]',
     taxonomy_category TEXT,
     scrape_job_id TEXT NOT NULL,
     created_at INTEGER NOT NULL
@@ -184,6 +185,13 @@ export function createDb(dbPath: string): DbClient {
   // Idempotent migration: add taxonomy_category (nullable) to discount_items if the table pre-dates it
   try {
     sqlite.exec("ALTER TABLE discount_items ADD COLUMN taxonomy_category TEXT");
+  } catch {
+    // Column already exists — expected for fresh databases created with the current schema
+  }
+
+  // Idempotent migration: add tags column to discount_items if the table pre-dates it
+  try {
+    sqlite.exec("ALTER TABLE discount_items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'");
   } catch {
     // Column already exists — expected for fresh databases created with the current schema
   }

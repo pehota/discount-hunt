@@ -6,25 +6,26 @@
  * them at wiring time.
  */
 
-import type { TaxonomyCategory } from "../shared/types.ts";
+import type { TaxonomyCategory, Tag } from "../shared/types.ts";
 
 /**
- * Driven port — an LLM (or any) classifier that maps products to buckets.
- * Output is order-aligned with input and MUST have the same length.
+ * Driven port — an LLM (or any) classifier that maps products to a single
+ * food-type bucket PLUS zero-or-more cross-cutting tags, in ONE call. Output is
+ * order-aligned with input and MUST have the same length.
  */
 export interface CategoryClassifier {
-  classify(items: { name: string; productType: string }[]): Promise<TaxonomyCategory[]>;
+  classify(items: { name: string; productType: string }[]): Promise<{ category: TaxonomyCategory; tags: Tag[] }[]>;
 }
 
 /**
  * Driven port — the persistence side the service reads uncategorised rows from
- * and writes classified buckets back to. Implemented by the discount_items repo
- * (single writer of that table).
+ * and writes classified buckets + tags back to. Implemented by the discount_items
+ * repo (single writer of that table).
  *
  * `productType` is the raw German source category (DB `category` column), used
- * as classifier INPUT. `setTaxonomyCategory` writes the OUTPUT bucket.
+ * as classifier INPUT. `setCategorisation` writes the OUTPUT bucket + tags.
  */
 export interface DiscountCategoryStore {
   findUncategorised(): { id: string; name: string; productType: string }[];
-  setTaxonomyCategory(id: string, cat: TaxonomyCategory): void;
+  setCategorisation(id: string, category: TaxonomyCategory, tags: Tag[]): void;
 }

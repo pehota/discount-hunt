@@ -420,6 +420,22 @@ const STYLE = `
       border-radius: 999px;
       white-space: nowrap;
     }
+    /* Cross-cutting tag chips (feed cards) — additive to the taxonomy category.
+       Wrap so a card with several chips never overflows the 375px viewport. */
+    .card-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--sp-1);
+      margin-top: var(--sp-2);
+    }
+    .card-tag {
+      font-size: var(--fs-sm);
+      padding: var(--sp-1) var(--sp-2);
+      border-radius: 999px;
+      background: var(--bg);
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
 
     /* ── Savings hero (savings + plan) ────────────────────────────────────*/
     .savings-hero {

@@ -11,20 +11,21 @@
 import { describe, test, expect } from "bun:test";
 import { CategorisationService } from "./categorisation-service.ts";
 import type { CategoryClassifier, DiscountCategoryStore } from "./ports.ts";
-import { TAXONOMY_CATEGORIES, type TaxonomyCategory } from "../shared/types.ts";
+import { TAXONOMY_CATEGORIES, type TaxonomyCategory, type Tag } from "../shared/types.ts";
 
 interface Row {
   name: string;
   productType: string;
   taxonomyCategory: TaxonomyCategory | null;
+  tags: Tag[];
 }
 
-/** In-memory store. Mutates ONLY taxonomyCategory; productType is source-of-input. */
+/** In-memory store. Mutates ONLY taxonomyCategory + tags; productType is source-of-input. */
 class FakeStore implements DiscountCategoryStore {
   private readonly rows = new Map<string, Row>();
 
   seed(id: string, name: string, productType: string): void {
-    this.rows.set(id, { name, productType, taxonomyCategory: null });
+    this.rows.set(id, { name, productType, taxonomyCategory: null, tags: [] });
   }
 
   get(id: string): Row | undefined {
@@ -37,27 +38,31 @@ class FakeStore implements DiscountCategoryStore {
       .map(([id, row]) => ({ id, name: row.name, productType: row.productType }));
   }
 
-  setTaxonomyCategory(id: string, cat: TaxonomyCategory): void {
+  setCategorisation(id: string, category: TaxonomyCategory, tags: Tag[]): void {
     const row = this.rows.get(id);
     if (row) {
-      row.taxonomyCategory = cat;
+      row.taxonomyCategory = category;
+      row.tags = tags;
     }
   }
 }
 
-/** Records every classify call; returns a fixed bucket per input. */
+/** Records every classify call; returns a fixed bucket + tags per input. */
 class FakeClassifier implements CategoryClassifier {
   callCount = 0;
   writeCount = 0;
   lastInput: { name: string; productType: string }[] = [];
 
-  constructor(private readonly bucket: TaxonomyCategory = "Other") {}
+  constructor(
+    private readonly bucket: TaxonomyCategory = "Other",
+    private readonly tags: Tag[] = [],
+  ) {}
 
-  async classify(items: { name: string; productType: string }[]): Promise<TaxonomyCategory[]> {
+  async classify(items: { name: string; productType: string }[]): Promise<{ category: TaxonomyCategory; tags: Tag[] }[]> {
     this.callCount++;
     this.lastInput = items;
     this.writeCount += items.length;
-    return items.map(() => this.bucket);
+    return items.map(() => ({ category: this.bucket, tags: this.tags }));
   }
 }
 
@@ -90,6 +95,22 @@ describe("CategorisationService.run", () => {
     expect(store.get("b")?.taxonomyCategory).toBe(bucket);
     expect(store.get("c")?.taxonomyCategory).toBe(bucket);
     expect(store.findUncategorised()).toHaveLength(0);
+  });
+
+  test("writes category AND tags for every uncategorised row via setCategorisation", async () => {
+    const store = new FakeStore();
+    store.seed("a", "Bio Lachs TK", "Fisch");
+    store.seed("b", "Bio Lachs TK 2", "Fisch");
+    const bucket: TaxonomyCategory = "Meat & Fish";
+    const tags: Tag[] = ["Frozen", "Organic"];
+    const service = new CategorisationService(store, new FakeClassifier(bucket, tags));
+
+    await service.run();
+
+    expect(store.get("a")?.taxonomyCategory).toBe(bucket);
+    expect(store.get("a")?.tags).toEqual(tags);
+    expect(store.get("b")?.taxonomyCategory).toBe(bucket);
+    expect(store.get("b")?.tags).toEqual(tags);
   });
 
   test("idempotency: a 2nd run after a fully-classified pass makes 0 classifier calls + 0 writes", async () => {
@@ -158,7 +179,7 @@ describe("CategorisationService.run", () => {
     expect(classifier.callCount).toBe(0);
   });
 
-  test("coalesces a missing (undefined) classifier result to 'Other'", async () => {
+  test("coalesces a missing (undefined) classifier result to 'Other' + empty tags", async () => {
     const store = new FakeStore();
     store.seed("a", "Mystery box", "unknown");
 
@@ -172,5 +193,6 @@ describe("CategorisationService.run", () => {
 
     expect(result.classified).toBe(1);
     expect(store.get("a")?.taxonomyCategory).toBe("Other");
+    expect(store.get("a")?.tags).toEqual([]);
   });
 });
