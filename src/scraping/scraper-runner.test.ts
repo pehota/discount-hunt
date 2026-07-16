@@ -97,16 +97,18 @@ function clearLlmEnv(): void {
 describe("runLiveScrape — per-store isolation", () => {
   // bypass: wiring test verifies composition + summary shape, not invariants.
 
-  test("attempts both stores and returns an ok summary when both succeed", async () => {
+  test("attempts all stores and returns an ok summary when all succeed", async () => {
     process.env.LLM_PROVIDER = "claude-cli";
 
     const scraped: Array<{ fetcherName: string; store: string }> = [];
     const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
     const vMarktStub = stubFetcher("VMarktCatalogueFetcher");
+    const edekaStub = stubFetcher("MarktguruEdekaCatalogueFetcher");
 
     const summary = await runLiveScrape({
       makeAldiFetcher: () => aldiStub,
       makeVMarktFetcher: () => vMarktStub,
+      makeEdekaFetcher: () => edekaStub,
       runScrape: async (fetcher, store) => {
         scraped.push({ fetcherName: (fetcher as typeof aldiStub).name, store });
       },
@@ -114,10 +116,12 @@ describe("runLiveScrape — per-store isolation", () => {
 
     expect(scraped.map((s) => s.store)).toContain("Aldi Süd");
     expect(scraped.map((s) => s.store)).toContain("V-Markt");
-    expect(scraped).toHaveLength(2);
+    expect(scraped.map((s) => s.store)).toContain("EDEKA");
+    expect(scraped).toHaveLength(3);
 
     expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
     expect(entryFor(summary, "V-Markt").ok).toBe(true);
+    expect(entryFor(summary, "EDEKA").ok).toBe(true);
   });
 
   test("passes the correct fetcher to each store's scrape call", async () => {
@@ -125,12 +129,14 @@ describe("runLiveScrape — per-store isolation", () => {
 
     const aldiStub = stubFetcher("AldiSudCatalogueFetcher");
     const vMarktStub = stubFetcher("VMarktCatalogueFetcher");
+    const edekaStub = stubFetcher("MarktguruEdekaCatalogueFetcher");
     let aldiRunWith: unknown = null;
     let vMarktRunWith: unknown = null;
 
     await runLiveScrape({
       makeAldiFetcher: () => aldiStub,
       makeVMarktFetcher: () => vMarktStub,
+      makeEdekaFetcher: () => edekaStub,
       runScrape: async (fetcher, store) => {
         if (store === "Aldi Süd") aldiRunWith = fetcher;
         if (store === "V-Markt") vMarktRunWith = fetcher;
@@ -149,6 +155,7 @@ describe("runLiveScrape — per-store isolation", () => {
     const summary = await runLiveScrape({
       makeAldiFetcher: () => stubFetcher("Aldi"),
       makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      makeEdekaFetcher: () => stubFetcher("Edeka"),
       runScrape: async (_fetcher, store) => {
         attempted.push(store);
         if (store === "V-Markt") throw new Error("VMarktCatalogueFetcher failed");
@@ -157,8 +164,10 @@ describe("runLiveScrape — per-store isolation", () => {
 
     expect(attempted).toContain("Aldi Süd");
     expect(attempted).toContain("V-Markt");
+    expect(attempted).toContain("EDEKA");
 
     expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
+    expect(entryFor(summary, "EDEKA").ok).toBe(true);
     const vMarkt = entryFor(summary, "V-Markt");
     expect(vMarkt.ok).toBe(false);
     expect(vMarkt.error).toContain("VMarktCatalogueFetcher failed");
@@ -172,6 +181,7 @@ describe("runLiveScrape — per-store isolation", () => {
     const summary = await runLiveScrape({
       makeAldiFetcher: () => stubFetcher("Aldi"),
       makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      makeEdekaFetcher: () => stubFetcher("Edeka"),
       runScrape: async (_fetcher, store) => {
         attempted.push(store);
         if (store === "Aldi Süd") throw new Error("AldiSudCatalogueFetcher failed");
@@ -180,11 +190,13 @@ describe("runLiveScrape — per-store isolation", () => {
 
     expect(attempted).toContain("Aldi Süd");
     expect(attempted).toContain("V-Markt");
+    expect(attempted).toContain("EDEKA");
 
     const aldi = entryFor(summary, "Aldi Süd");
     expect(aldi.ok).toBe(false);
     expect(aldi.error).toContain("AldiSudCatalogueFetcher failed");
     expect(entryFor(summary, "V-Markt").ok).toBe(true);
+    expect(entryFor(summary, "EDEKA").ok).toBe(true);
   });
 });
 
@@ -205,18 +217,22 @@ describe("runLiveScrape — catalogue-LLM decoupling", () => {
         vMarktFetcherConstructions += 1;
         return stubFetcher("VMarkt");
       },
+      makeEdekaFetcher: () => stubFetcher("Edeka"),
       runScrape: async (_fetcher, store) => {
         attempted.push(store);
       },
     });
 
-    // Aldi is attempted; V-Markt is not run (fetcher never constructed).
+    // Aldi AND EDEKA are attempted (neither needs an LLM); V-Markt is not run
+    // (fetcher never constructed).
     expect(attempted).toContain("Aldi Süd");
+    expect(attempted).toContain("EDEKA");
     expect(attempted).not.toContain("V-Markt");
     expect(vMarktFetcherConstructions).toBe(0);
 
-    // Summary records Aldi success and V-Markt skip-with-reason.
+    // Summary records Aldi + EDEKA success and V-Markt skip-with-reason.
     expect(entryFor(summary, "Aldi Süd").ok).toBe(true);
+    expect(entryFor(summary, "EDEKA").ok).toBe(true);
     const vMarkt = entryFor(summary, "V-Markt");
     expect(vMarkt.ok).toBe(false);
     expect(vMarkt.error).toBe(LLM_NOT_CONFIGURED);
@@ -229,9 +245,29 @@ describe("runLiveScrape — catalogue-LLM decoupling", () => {
       runLiveScrape({
         makeAldiFetcher: () => stubFetcher("Aldi"),
         makeVMarktFetcher: () => stubFetcher("VMarkt"),
+        makeEdekaFetcher: () => stubFetcher("Edeka"),
         runScrape: async () => {},
       })
     ).resolves.toBeDefined();
+  });
+
+  test("EDEKA is always-attempt: with no LLM configured it still attempts and is ok (mirrors Aldi)", async () => {
+    clearLlmEnv();
+
+    const attempted: string[] = [];
+    const summary = await runLiveScrape({
+      makeAldiFetcher: () => stubFetcher("Aldi"),
+      makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      makeEdekaFetcher: () => stubFetcher("Edeka"),
+      runScrape: async (_fetcher, store) => {
+        attempted.push(store);
+      },
+    });
+
+    // No LLM: EDEKA attempts (like Aldi), V-Markt is skipped.
+    expect(attempted).toContain("EDEKA");
+    expect(attempted).not.toContain("V-Markt");
+    expect(entryFor(summary, "EDEKA").ok).toBe(true);
   });
 });
 
@@ -247,6 +283,7 @@ describe("runLiveScrape — structured logging", () => {
     await runLiveScrape({
       makeAldiFetcher: () => stubFetcher("Aldi"),
       makeVMarktFetcher: () => stubFetcher("VMarkt"),
+      makeEdekaFetcher: () => stubFetcher("Edeka"),
       runScrape: async () => {},
       logger: spy,
     });

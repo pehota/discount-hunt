@@ -16,6 +16,9 @@
  *     OPENROUTER_API_KEY — required for openrouter
  *     OPENROUTER_MODEL   — required for openrouter
  *
+ *   EDEKA_PLZ            — postal code for the marktguru EDEKA scrape (default 80331);
+ *                          EDEKA always attempts (no LLM required, like Aldi Süd).
+ *
  * Resilience contract (step 09-01):
  *   - Each store's scrape is isolated in a try/catch. One store failing is
  *     recorded (console.error "health.scrape.store_failed") and skipped; the run
@@ -37,7 +40,8 @@
  *
  * Wire order (live mode):
  *   1. Attempt Aldi Süd (needs no API key)
- *   2. Attempt V-Markt only when an LLM is configured (resolveLlm)
+ *   2. Attempt EDEKA (marktguru API — always attempts, no LLM required)
+ *   3. Attempt V-Markt only when an LLM is configured (resolveLlm)
  */
 
 import { createDb } from "../shared/db.ts";
@@ -50,6 +54,7 @@ import { DiscountService } from "../discount/discount-service.ts";
 import { ScrapingService } from "./scraping-service.ts";
 import { AldiSudCatalogueFetcher } from "./adapters/aldi-sud-catalogue-fetcher.ts";
 import { VMarktCatalogueFetcher } from "./adapters/v-markt-catalogue-fetcher.ts";
+import { MarktguruEdekaCatalogueFetcher, DEFAULT_PLZ } from "./adapters/marktguru-edeka-catalogue-fetcher.ts";
 import { LlmCatalogueExtractor } from "./adapters/llm-catalogue-extractor.ts";
 import { resolveLlm } from "../llm/resolve-llm.ts";
 import { runCategorisation, buildDeps as buildCategoriseDeps } from "../categorisation/categoriser-runner.ts";
@@ -81,17 +86,19 @@ export interface StoreResult {
 export interface LiveScrapeDeps {
   makeAldiFetcher?: () => CatalogueFetcher;
   makeVMarktFetcher?: () => CatalogueFetcher;
+  makeEdekaFetcher?: () => CatalogueFetcher;
   runScrape?: (fetcher: CatalogueFetcher, store: string) => Promise<void>;
   logger?: Logger;
 }
 
 const ALDI_STORE = "Aldi Süd";
 const VMARKT_STORE = "V-Markt";
+const EDEKA_STORE = "EDEKA";
 
 // ── Testable factory ──────────────────────────────────────────────────────────
 
 /**
- * Runs the live scrape for Aldi Süd and V-Markt.
+ * Runs the live scrape for Aldi Süd, EDEKA, and V-Markt.
  *
  * Exported for unit testing. Inject LiveScrapeDeps to stub DB + HTTP + LLM.
  * Production callers pass no deps (defaults build real collaborators).
@@ -100,11 +107,17 @@ export async function runLiveScrape(deps: LiveScrapeDeps = {}): Promise<StoreRes
   const runScrape = deps.runScrape ?? makeProdRunScrape();
   const logger = deps.logger ?? new ConsoleLogger();
   const makeAldiFetcher = deps.makeAldiFetcher ?? (() => new AldiSudCatalogueFetcher());
+  const makeEdekaFetcher =
+    deps.makeEdekaFetcher ??
+    (() => new MarktguruEdekaCatalogueFetcher({ plz: process.env.EDEKA_PLZ ?? DEFAULT_PLZ }));
 
   const summary: StoreResult[] = [];
 
   // Aldi Süd needs no API key — always attempts.
   summary.push(await isolatedScrape(runScrape, makeAldiFetcher(), ALDI_STORE, logger));
+
+  // EDEKA (marktguru API) needs no LLM — always attempts, like Aldi.
+  summary.push(await isolatedScrape(runScrape, makeEdekaFetcher(), EDEKA_STORE, logger));
 
   // V-Markt requires a configured LLM. Resolve once; when non-null, scrape
   // (const-narrowing keeps `llm` non-null inside the default factory). When null,
