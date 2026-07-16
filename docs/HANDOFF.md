@@ -19,7 +19,7 @@ The working tree has a complete, gates-green (`typecheck` 0, **418 tests pass / 
 ## DB state (needs the clean re-scrape in step 3)
 `Aldi 32 · EDEKA 201 · V-Markt 167(has dupes) · image_url populated: 0`. The re-scrape (replace-per-store) resets V-Markt cleanly and fills image_url/brand/description for Aldi+Edeka (V-Markt stays null). Then run categorisation (it runs post-scrape when `LLM_PROVIDER` is set; else `bun run src/categorisation/categoriser-runner.ts` with `LLM_PROVIDER=claude-cli`).
 
-## Then: IDEA-004 (queued next, in IDEAS.md) — offer history + usage statistics
+## Then: IDEA-005 (queued next, in IDEAS.md) — offer history + usage statistics
 Owner-requested, AFTER the dialog. Offer-history table (archive rows in `replaceStore`'s txn BEFORE delete) + a phased usage-stats design. Full design in `docs/feature/discount-hunt/IDEAS.md`.
 
 ## Commands

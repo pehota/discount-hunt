@@ -52,7 +52,24 @@ The supporting part is helping with deciding on meal plans.
 
 ---
 
-## IDEA-004: Offer history + usage statistics
+## IDEA-004: Categorise before swapping in new discounts (staged replace)
+
+**Captured**: 2026-07-16 (owner request). **Priority**: before IDEA-005 (offer history).
+
+**Problem**: today `replaceStore` DELETEs a store's old rows and INSERTs the fresh batch in one txn, and categorisation runs *after* the whole scrape completes. Between the swap and the end of categorisation, the freshly-inserted items carry NULL `taxonomy_category` → the feed shows them all in "Other" with no category chips/filters. Every re-scrape briefly loses the categorised view. (Observed 2026-07-16: 342 items sat uncategorised until the LLM pass finished.)
+
+**Want**: keep the OLD, already-categorised discounts live until the NEW batch is fully categorised, then swap atomically — no "Other"-everything window.
+
+**Sketch**:
+- Scrape into a staging area (a `pending`/`draft` flag on the new rows, or a separate staging table) — NOT directly over the live rows.
+- Categorise the staged batch.
+- Only once the staged batch is fully categorised (0 NULL taxonomy) does an atomic promote replace the live store rows with the staged batch (one txn) — mirroring today's replace-per-store atomicity.
+- If categorisation fails or is partial, keep the old live rows (graceful — never downgrade the live feed).
+- Composes with IDEA-005: the archive-on-replace step happens at the atomic promote, not at scrape time.
+
+---
+
+## IDEA-005: Offer history + usage statistics
 
 **Captured**: 2026-07-16 (owner request). **Priority**: NEXT after the product-details dialog.
 
