@@ -23,3 +23,16 @@ export function currentWeekMonday(): WeekStart {
   monday.setUTCDate(now.getUTCDate() + offsetToMonday);
   return monday.toISOString().slice(0, 10); // "YYYY-MM-DD"
 }
+
+const DAYS_MONDAY_TO_SUNDAY = 6;
+
+/**
+ * Returns the ISO date string ("YYYY-MM-DD") for the Sunday (end) of the current
+ * UTC week — Monday + 6 days. Single source of truth for "end of the current week",
+ * used by weekly-catalogue fetchers to stamp validUntil.
+ */
+export function currentWeekSunday(): WeekStart {
+  const sunday = new Date(`${currentWeekMonday()}T00:00:00Z`);
+  sunday.setUTCDate(sunday.getUTCDate() + DAYS_MONDAY_TO_SUNDAY);
+  return sunday.toISOString().slice(0, 10); // "YYYY-MM-DD"
+}

@@ -14,6 +14,7 @@
 
 import type { CatalogueExtractor } from "./catalogue-extractor.ts";
 import { ConsoleLogger, type Logger } from "../../shared/logger.ts";
+import { currentWeekSunday } from "../../shared/week.ts";
 
 const DISCOVERY_URL = "https://www.v-markt.de/angebote/muenchen";
 /** Source string for slug extraction — used to build a fresh regex per call (g-flag is stateful). */
@@ -57,7 +58,11 @@ export class VMarktCatalogueFetcher {
         brand: "V-Markt",
         price: regularPrice,
         discountedPrice: salePrice,
-        customLabel1: new Date().toISOString().slice(5, 10),
+        // The true per-catalogue valid-until isn't reliably present in the paragraph
+        // text, so we fall back to weekly validity (end of the current week). This
+        // keeps items in the feed all week (validUntil >= weekStartMonday) and matches
+        // Aldi's end-of-week semantics. Extracting the real date is a future improvement.
+        customLabel1: currentWeekSunday(),
         productType: "grocery",
         photoUrls: [],
       }));

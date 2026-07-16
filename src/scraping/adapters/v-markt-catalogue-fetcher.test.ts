@@ -15,6 +15,7 @@ import fc from "fast-check";
 import { VMarktCatalogueFetcher } from "./v-markt-catalogue-fetcher.ts";
 import { FakeCatalogueExtractor } from "../../../tests/acceptance/support/fake-catalogue-extractor.ts";
 import type { LogLevel, Logger } from "../../shared/logger.ts";
+import { currentWeekSunday } from "../../shared/week.ts";
 
 // ── Spy logger for stage-event assertions ─────────────────────────────────────
 
@@ -271,7 +272,10 @@ describe("VMarktCatalogueFetcher — output shape", () => {
         expect(r.brand).toBe("V-Markt");
         expect(typeof r.price).toBe("string");
         expect(typeof r.discountedPrice).toBe("string");
-        expect(typeof r.customLabel1).toBe("string");
+        // validUntil is a full ISO date = end of the current week (SSOT: currentWeekSunday),
+        // NOT a malformed "MM-DD" — otherwise the feed's string compare drops every item.
+        expect(r.customLabel1).toBe(currentWeekSunday());
+        expect(r.customLabel1).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         expect(r.productType).toBe("grocery");
         expect(Array.isArray(r.photoUrls)).toBe(true);
       }

@@ -17,13 +17,12 @@
  */
 
 import { ConsoleLogger, type Logger } from "../../shared/logger.ts";
-import { currentWeekMonday } from "../../shared/week.ts";
+import { currentWeekSunday } from "../../shared/week.ts";
 
 const ALDI_SUD_ORIGIN = "https://prospekt.aldi-sued.de";
 const SLUG_PATTERN = /^\/\/prospekt\.aldi-sued\.de\/([^/]+)\//;
 const PRODUCT_TYPE = "product";
 const ALDI_SUD_BRAND = "Aldi Süd";
-const DAYS_TO_END_OF_WEEK = 6;
 
 /**
  * Exported pure function — parse slug from a 302 Location header value.
@@ -88,7 +87,7 @@ export class AldiSudCatalogueFetcher {
 
     const nestedProducts = await this.collectNestedProducts(slug);
 
-    const validUntil = this.endOfCurrentWeekIso();
+    const validUntil = currentWeekSunday();
     const kept = nestedProducts
       .filter((product) => this.isGenuineDeal(product))
       .map((product) => this.toRawAldiItem(product, validUntil));
@@ -148,13 +147,6 @@ export class AldiSudCatalogueFetcher {
       productType: product.productType,
       photoUrls: [],
     };
-  }
-
-  /** ISO "YYYY-MM-DD" end-of-current-week = Monday + 6 days (UTC). */
-  private endOfCurrentWeekIso(): string {
-    const endOfWeek = new Date(`${currentWeekMonday()}T00:00:00Z`);
-    endOfWeek.setUTCDate(endOfWeek.getUTCDate() + DAYS_TO_END_OF_WEEK);
-    return endOfWeek.toISOString().slice(0, 10);
   }
 
   private async discoverSlug(): Promise<string> {
