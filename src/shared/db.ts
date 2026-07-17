@@ -13,149 +13,14 @@
  */
 
 import { Database } from "bun:sqlite";
+import { is } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { getTableConfig, SQLiteTable } from "drizzle-orm/sqlite-core";
 import * as schema from "./schema.ts";
+import { generateCreateTableSql, generateMissingColumnAlters } from "./schema-ddl.ts";
 import { STORES, slugify } from "./stores.ts";
 
 export type DbClient = ReturnType<typeof drizzle<typeof schema>>;
-
-const CREATE_STORES = `
-  CREATE TABLE IF NOT EXISTS stores (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    slug TEXT NOT NULL UNIQUE,
-    created_at INTEGER NOT NULL
-  )
-`;
-
-const CREATE_SCRAPE_JOBS = `
-  CREATE TABLE IF NOT EXISTS scrape_jobs (
-    id TEXT PRIMARY KEY,
-    store_id INTEGER NOT NULL REFERENCES stores(id),
-    status TEXT NOT NULL,
-    started_at INTEGER NOT NULL,
-    completed_at INTEGER,
-    item_count INTEGER NOT NULL DEFAULT 0,
-    error_message TEXT
-  )
-`;
-
-const CREATE_DISCOUNT_ITEMS = `
-  CREATE TABLE IF NOT EXISTS discount_items (
-    id TEXT PRIMARY KEY,
-    store_id INTEGER NOT NULL REFERENCES stores(id),
-    name TEXT NOT NULL,
-    category TEXT NOT NULL,
-    regular_price INTEGER NOT NULL,
-    sale_price INTEGER NOT NULL,
-    valid_until TEXT NOT NULL,
-    dietary_tags TEXT NOT NULL DEFAULT '[]',
-    tags TEXT NOT NULL DEFAULT '[]',
-    taxonomy_category TEXT,
-    source_url TEXT,
-    image_url TEXT,
-    brand TEXT,
-    description TEXT,
-    scrape_job_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  )
-`;
-
-const CREATE_OFFER_HISTORY = `
-  CREATE TABLE IF NOT EXISTS offer_history (
-    history_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    item_id TEXT NOT NULL,
-    store_id INTEGER NOT NULL REFERENCES stores(id),
-    name TEXT NOT NULL,
-    category TEXT NOT NULL,
-    regular_price INTEGER NOT NULL,
-    sale_price INTEGER NOT NULL,
-    valid_until TEXT NOT NULL,
-    dietary_tags TEXT NOT NULL DEFAULT '[]',
-    tags TEXT NOT NULL DEFAULT '[]',
-    taxonomy_category TEXT,
-    source_url TEXT,
-    image_url TEXT,
-    brand TEXT,
-    description TEXT,
-    scrape_job_id TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    archived_at INTEGER NOT NULL,
-    week_start TEXT NOT NULL
-  )
-`;
-
-const CREATE_MEAL_PLANS = `
-  CREATE TABLE IF NOT EXISTS meal_plans (
-    id TEXT PRIMARY KEY,
-    week_start TEXT NOT NULL,
-    item_ids TEXT NOT NULL,
-    meals TEXT NOT NULL DEFAULT '[]',
-    dietary_filter TEXT NOT NULL DEFAULT 'none',
-    budget_cap_cents INTEGER,
-    total_regular_price INTEGER NOT NULL,
-    total_sale_price INTEGER NOT NULL,
-    estimated_savings INTEGER NOT NULL,
-    created_at INTEGER NOT NULL
-  )
-`;
-
-const CREATE_USER_SETTINGS = `
-  CREATE TABLE IF NOT EXISTS user_settings (
-    user_id TEXT PRIMARY KEY DEFAULT 'dimitar',
-    dietary_restriction TEXT NOT NULL DEFAULT 'none',
-    budget_cap_cents INTEGER,
-    kid_friendly INTEGER NOT NULL DEFAULT 0,
-    household_size INTEGER NOT NULL DEFAULT 2,
-    cooking_time TEXT NOT NULL DEFAULT 'any',
-    meal_types TEXT NOT NULL DEFAULT '["lunch","dinner"]',
-    updated_at INTEGER NOT NULL
-  )
-`;
-
-const CREATE_SAVINGS_LOG = `
-  CREATE TABLE IF NOT EXISTS savings_log (
-    id TEXT PRIMARY KEY,
-    plan_id TEXT NOT NULL,
-    week_start TEXT NOT NULL,
-    saved_amount INTEGER NOT NULL,
-    total_sale_price INTEGER NOT NULL,
-    total_regular_price INTEGER NOT NULL,
-    item_count INTEGER NOT NULL,
-    recorded_at INTEGER NOT NULL
-    -- plan_id is a SOFT REF by design: this is an independently weekly-deleted
-    -- event log, so no FK constraint to meal_plans(id).
-  )
-`;
-
-const CREATE_RECIPES = `
-  CREATE TABLE IF NOT EXISTS recipes (
-    id TEXT PRIMARY KEY,
-    query_key TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    cached_content TEXT NOT NULL,
-    source_url TEXT NOT NULL,
-    source_url_valid INTEGER NOT NULL DEFAULT 1,
-    cached_at INTEGER NOT NULL
-  )
-`;
-
-const CREATE_SHOPPING_LIST_ITEMS = `
-  CREATE TABLE IF NOT EXISTS shopping_list_items (
-    id TEXT PRIMARY KEY,
-    week_start TEXT NOT NULL,
-    source TEXT NOT NULL,
-    name TEXT NOT NULL,
-    store TEXT,
-    sale_price_cents INTEGER,
-    regular_price_cents INTEGER,
-    discount_item_id TEXT,
-    -- discount_item_id is a SOFT REF by design: it is a snapshot dedup key, not a
-    -- live pointer, so no FK constraint to discount_items(id).
-    taxonomy_category TEXT,
-    added_at INTEGER NOT NULL
-  )
-`;
 
 const PROBE_ID = "__probe__";
 
@@ -170,8 +35,16 @@ export function createDb(dbPath: string): DbClient {
   // turned ON near the end, before the probe, so normal operation enforces FKs.
   sqlite.exec("PRAGMA foreign_keys=OFF");
 
-  // Create tables FK-target-first: stores → scrape_jobs → discount_items → rest.
-  sqlite.exec(CREATE_STORES);
+  // Create EVERY table declared in schema.ts (single source of truth via the
+  // runtime DDL generator). stores FIRST — it is the FK target for
+  // scrape_jobs/discount_items/offer_history, and the seed loop below needs it.
+  // CREATE TABLE IF NOT EXISTS makes every statement a no-op on an existing
+  // populated DB; the legacy store→store_id rebuild below still runs for old dbs.
+  const allTables = (Object.values(schema) as unknown[]).filter((t): t is SQLiteTable =>
+    is(t, SQLiteTable)
+  );
+  const ordered = [schema.stores as SQLiteTable, ...allTables.filter((t) => t !== schema.stores)];
+  for (const t of ordered) sqlite.exec(generateCreateTableSql(t));
 
   // Seed canonical stores (idempotent). Uses the canonical slug, never slugify()
   // (slugify("Aldi Süd") = "aldi-s-d"); the SSOT slugs are the correct values.
@@ -182,127 +55,36 @@ export function createDb(dbPath: string): DbClient {
     seedStore.run(store.name, store.slug, Date.now());
   }
 
-  sqlite.exec(CREATE_SCRAPE_JOBS);
-  sqlite.exec(CREATE_DISCOUNT_ITEMS);
-  sqlite.exec(CREATE_MEAL_PLANS);
-  sqlite.exec(CREATE_USER_SETTINGS);
-
-  // Idempotent migration: add meals column if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE meal_plans ADD COLUMN meals TEXT NOT NULL DEFAULT '[]'");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add dietary_filter column if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE meal_plans ADD COLUMN dietary_filter TEXT NOT NULL DEFAULT 'none'");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add budget_cap_cents (nullable) to meal_plans if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE meal_plans ADD COLUMN budget_cap_cents INTEGER");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add budget_cap_cents (nullable) to user_settings if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE user_settings ADD COLUMN budget_cap_cents INTEGER");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migrations: add phase-12 recipe-search params to user_settings if the table pre-dates them
-  try {
-    sqlite.exec("ALTER TABLE user_settings ADD COLUMN kid_friendly INTEGER NOT NULL DEFAULT 0");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  try {
-    sqlite.exec("ALTER TABLE user_settings ADD COLUMN household_size INTEGER NOT NULL DEFAULT 2");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  try {
-    sqlite.exec("ALTER TABLE user_settings ADD COLUMN cooking_time TEXT NOT NULL DEFAULT 'any'");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  try {
-    sqlite.exec(`ALTER TABLE user_settings ADD COLUMN meal_types TEXT NOT NULL DEFAULT '["lunch","dinner"]'`);
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add taxonomy_category (nullable) to discount_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE discount_items ADD COLUMN taxonomy_category TEXT");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add tags column to discount_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE discount_items ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add source_url (nullable) to discount_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE discount_items ADD COLUMN source_url TEXT");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add image_url (nullable) to discount_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE discount_items ADD COLUMN image_url TEXT");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add brand (nullable) to discount_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE discount_items ADD COLUMN brand TEXT");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
-
-  // Idempotent migration: add description (nullable) to discount_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE discount_items ADD COLUMN description TEXT");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
+  // Schema-driven column heal: ADD any schema.ts column missing from a legacy
+  // table (generated from schema.ts — no hand-listed ALTERs). Fresh dbs already
+  // have every column → no-op. Runs BEFORE the store→store_id rebuild: that
+  // rebuild's discount_items SELECT reads tags/taxonomy_category/source_url/…, so
+  // those columns must be healed onto the old table first. store_id is safe under
+  // this order too — on a populated legacy table its NOT NULL-without-default ALTER
+  // is rejected (try/catch swallows it) and the rebuild backfills it anyway; on a
+  // fresh/already-migrated table it is already present and skipped. Per-stmt
+  // try/catch: a NOT NULL-without-default column can't be added to a populated
+  // legacy table (SQLite rule) — swallow and leave as-is (prior behaviour).
+  for (const t of ordered) {
+    const tableName = getTableConfig(t).name;
+    const existing = new Set(
+      (sqlite.query(`PRAGMA table_info(${tableName})`).all() as { name: string }[]).map((r) => r.name)
+    );
+    for (const stmt of generateMissingColumnAlters(t, existing)) {
+      try { sqlite.exec(stmt); } catch { /* legacy column that can't be auto-added — leave as-is */ }
+    }
   }
 
   // ── Idempotent legacy migration: normalize free-text `store` → `store_id` FK ──
   // Runs ONLY for OLD dbs that still carry the `store` text column. Fresh dbs get
-  // the new schema from the CREATE strings above and skip this entirely.
+  // the new schema from the generated CREATE statements above and skip this entirely.
   // Rebuild order: scrape_jobs FIRST (parent), then discount_items (child) — so
   // discount_items' FK + the orphan-drop INNER-lookup see the rebuilt scrape_jobs.
   // The whole rebuild MUST run with foreign_keys OFF (already OFF at this point).
+  // (All tables — incl. savings_log/recipes/shopping_list_items/offer_history —
+  // were already created up front by the generator loop; the rebuild only touches
+  // scrape_jobs + discount_items.)
   migrateStoreToStoreId(sqlite);
-
-  sqlite.exec(CREATE_SAVINGS_LOG);
-  sqlite.exec(CREATE_RECIPES);
-  sqlite.exec(CREATE_SHOPPING_LIST_ITEMS);
-  // offer_history references stores(id) (created + seeded above) and is
-  // independent of the discount_items rebuild, so it is safe to create here.
-  sqlite.exec(CREATE_OFFER_HISTORY);
-
-  // Idempotent migration: add taxonomy_category (nullable) to shopping_list_items if the table pre-dates it
-  try {
-    sqlite.exec("ALTER TABLE shopping_list_items ADD COLUMN taxonomy_category TEXT");
-  } catch {
-    // Column already exists — expected for fresh databases created with the current schema
-  }
 
   // Indexes for hot query paths (idempotent).
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_discount_items_valid_until ON discount_items(valid_until)");
