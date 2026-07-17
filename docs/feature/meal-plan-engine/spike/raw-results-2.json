@@ -1,0 +1,473 @@
+{
+  "generatedBaskets": 12,
+  "results": [
+    {
+      "basket": "Produce+Dairy & Cheese+Pantry#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert",
+        "Paprikamix"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Mini-Wassermelone Back-Camembert Paprikamix vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Pantry#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert",
+        "Paprikamix"
+      ],
+      "strategy": "llm",
+      "query": "Wassermelonen Camembert Paprika Salat",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Pantry#1",
+      "products": [
+        "Bio-Zitronen",
+        "Emmentaler",
+        "Barilla Pasta"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Zitronen Emmentaler Barilla Pasta vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Pantry#1",
+      "products": [
+        "Bio-Zitronen",
+        "Emmentaler",
+        "Barilla Pasta"
+      ],
+      "strategy": "llm",
+      "query": "Pasta mit Zitrone und Käse",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Pantry#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Paprikamix"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Mini-Wassermelone Paprikamix vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Pantry#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Paprikamix"
+      ],
+      "strategy": "llm",
+      "query": "Wassermelonensalat mit Paprika",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Pantry#1",
+      "products": [
+        "Bio-Zitronen",
+        "Barilla Pasta"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Zitronen Barilla Pasta vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Pantry#1",
+      "products": [
+        "Bio-Zitronen",
+        "Barilla Pasta"
+      ],
+      "strategy": "llm",
+      "query": "Zitronen Pasta vegetarisch",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Dairy & Cheese+Bakery#0",
+      "products": [
+        "Back-Camembert",
+        "Bio-Steinofen-Sauerteigkruste"
+      ],
+      "strategy": "rules",
+      "query": "Back-Camembert Bio-Steinofen-Sauerteigkruste vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Dairy & Cheese+Bakery#0",
+      "products": [
+        "Back-Camembert",
+        "Bio-Steinofen-Sauerteigkruste"
+      ],
+      "strategy": "llm",
+      "query": "Gebackener Camembert Sauerteigbrot",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Dairy & Cheese+Bakery#1",
+      "products": [
+        "Emmentaler",
+        "Dinkel-Vollkornbrot"
+      ],
+      "strategy": "rules",
+      "query": "Emmentaler Dinkel-Vollkornbrot vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Dairy & Cheese+Bakery#1",
+      "products": [
+        "Emmentaler",
+        "Dinkel-Vollkornbrot"
+      ],
+      "strategy": "llm",
+      "query": "Käsebrot Emmentaler Vollkorn",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Mini-Wassermelone Back-Camembert vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert"
+      ],
+      "strategy": "llm",
+      "query": "Wassermelone Camembert Salat",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese#1",
+      "products": [
+        "Bio-Zitronen",
+        "Emmentaler"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Zitronen Emmentaler vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese#1",
+      "products": [
+        "Bio-Zitronen",
+        "Emmentaler"
+      ],
+      "strategy": "llm",
+      "query": "Käsespätzle mit Zitrone",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Pantry+Dairy & Cheese+Produce#0",
+      "products": [
+        "Paprikamix",
+        "Back-Camembert",
+        "Bio-Mini-Wassermelone"
+      ],
+      "strategy": "rules",
+      "query": "Paprikamix Back-Camembert Bio-Mini-Wassermelone vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Pantry+Dairy & Cheese+Produce#0",
+      "products": [
+        "Paprikamix",
+        "Back-Camembert",
+        "Bio-Mini-Wassermelone"
+      ],
+      "strategy": "llm",
+      "query": "Wassermelone Camembert Paprika Salat",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Pantry+Dairy & Cheese+Produce#1",
+      "products": [
+        "Barilla Pasta",
+        "Emmentaler",
+        "Bio-Zitronen"
+      ],
+      "strategy": "rules",
+      "query": "Barilla Pasta Emmentaler Bio-Zitronen vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Pantry+Dairy & Cheese+Produce#1",
+      "products": [
+        "Barilla Pasta",
+        "Emmentaler",
+        "Bio-Zitronen"
+      ],
+      "strategy": "llm",
+      "query": "Zitronenpasta mit Käse",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Bakery+Dairy & Cheese#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Bio-Steinofen-Sauerteigkruste",
+        "Back-Camembert"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Mini-Wassermelone Bio-Steinofen-Sauerteigkruste Back-Camembert vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Bakery+Dairy & Cheese#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Bio-Steinofen-Sauerteigkruste",
+        "Back-Camembert"
+      ],
+      "strategy": "llm",
+      "query": "Wassermelone Camembert Salat",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Bakery+Dairy & Cheese#1",
+      "products": [
+        "Bio-Zitronen",
+        "Dinkel-Vollkornbrot",
+        "Emmentaler"
+      ],
+      "strategy": "rules",
+      "query": "Bio-Zitronen Dinkel-Vollkornbrot Emmentaler vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "Produce+Bakery+Dairy & Cheese#1",
+      "products": [
+        "Bio-Zitronen",
+        "Dinkel-Vollkornbrot",
+        "Emmentaler"
+      ],
+      "strategy": "llm",
+      "query": "Emmentaler Vollkornbrot Zitrone",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    }
+  ]
+}

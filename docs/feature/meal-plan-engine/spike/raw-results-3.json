@@ -1,0 +1,112 @@
+{
+  "results": [
+    {
+      "products": [
+        "Bio-Zitronen",
+        "Barilla Pasta"
+      ],
+      "query": "Zitronenpasta Rezept",
+      "found": false,
+      "status": 429,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "products": [
+        "Emmentaler",
+        "Dinkel-Vollkornbrot"
+      ],
+      "query": "überbackenes Käsebrot Emmentaler Rezept",
+      "found": false,
+      "status": 429,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "products": [
+        "Back-Camembert",
+        "Bio-Steinofen-Sauerteigkruste"
+      ],
+      "query": "gebackener Camembert Brot Rezept",
+      "found": false,
+      "status": 429,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Hirtenkäse"
+      ],
+      "query": "Wassermelone Feta Salat Rezept",
+      "found": false,
+      "status": 429,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "products": [
+        "Brokkoli",
+        "Emmentaler"
+      ],
+      "query": "Brokkoli Auflauf Käse Rezept",
+      "found": false,
+      "status": 429,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "products": [
+        "Eisbergsalat",
+        "Bio-Zitronen"
+      ],
+      "query": "Eisbergsalat Zitronendressing Rezept",
+      "found": false,
+      "status": 429,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    }
+  ]
+}

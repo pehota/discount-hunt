@@ -1,0 +1,509 @@
+{
+  "generatedBaskets": 12,
+  "results": [
+    {
+      "basket": "cat:Bakery",
+      "products": [
+        "Bäcker Bachmeier Bayerische Laugensemmeln",
+        "Backstube Wünsche Butterbreze",
+        "Backstube Wünsche Erdbeertasche",
+        "Backstube Wünsche Vegan Gassenhauer"
+      ],
+      "strategy": "rules",
+      "query": "Bäcker Bachmeier Bayerische Laugensemmeln Backstube Wünsche Butterbreze Backstube Wünsche Erdbeertasche vegetarisch Rezept",
+      "found": true,
+      "recipeName": "Alt-Wiener Apfelstrudel von wabe",
+      "url": "https://www.chefkoch.de/rezepte/1550611262213964/Alt-Wiener-Apfelstrudel.html",
+      "ingredientCount": 16,
+      "lenientProductsUsed": 1,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Bakery",
+      "products": [
+        "Bäcker Bachmeier Bayerische Laugensemmeln",
+        "Backstube Wünsche Butterbreze",
+        "Backstube Wünsche Erdbeertasche",
+        "Backstube Wünsche Vegan Gassenhauer"
+      ],
+      "strategy": "llm",
+      "query": "Brotsalat Laugensemmeln Butterbreze vegetarisch",
+      "found": true,
+      "recipeName": "Annas falsche Käse - Laugensemmeln von arthurdent42",
+      "url": "https://www.chefkoch.de/rezepte/477631141740500/Annas-falsche-Kaese-Laugensemmeln.html",
+      "ingredientCount": 8,
+      "lenientProductsUsed": 1,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Dairy & Cheese",
+      "products": [
+        "Alpenhain Obazda",
+        "Alpkracher Schnittkäse",
+        "Andechser Bio-Joghurt",
+        "Andechser Natur Bio-Jogurt"
+      ],
+      "strategy": "rules",
+      "query": "Alpenhain Obazda Alpkracher Schnittkäse Andechser Bio-Joghurt vegetarisch Rezept",
+      "found": true,
+      "recipeName": "Sommersalat mit Schnittkäse von heimwerkerkönig",
+      "url": "https://www.chefkoch.de/rezepte/709751173603380/Sommersalat-mit-Schnittkaese.html",
+      "ingredientCount": 12,
+      "lenientProductsUsed": 2,
+      "strictProductsUsed": 1,
+      "lenientGte2": true,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Dairy & Cheese",
+      "products": [
+        "Alpenhain Obazda",
+        "Alpkracher Schnittkäse",
+        "Andechser Bio-Joghurt",
+        "Andechser Natur Bio-Jogurt"
+      ],
+      "strategy": "llm",
+      "query": "Obazda Schnittkäse Joghurt vegetarisch",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Drinks",
+      "products": [
+        "Albi Fruchtsaft",
+        "Alpro Nuss Drink",
+        "Becker's Pils Pils",
+        "Bio-Gartensaft"
+      ],
+      "strategy": "rules",
+      "query": "Albi Fruchtsaft Alpro Nuss Drink Becker's Pils Pils vegetarisch Rezept",
+      "found": true,
+      "recipeName": "Heiße Cashew-Schokolade mit Gewürzen von RChris78",
+      "url": "https://www.chefkoch.de/rezepte/3258941484591667/Heisse-Cashew-Schokolade-mit-Gewuerzen.html",
+      "ingredientCount": 6,
+      "lenientProductsUsed": 1,
+      "strictProductsUsed": 1,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Drinks",
+      "products": [
+        "Albi Fruchtsaft",
+        "Alpro Nuss Drink",
+        "Becker's Pils Pils",
+        "Bio-Gartensaft"
+      ],
+      "strategy": "llm",
+      "query": "Vegetarische Biersoße Gemüse Nuss",
+      "found": true,
+      "recipeName": "Veganer gemischter Salat mit Käsedressing von worstbull",
+      "url": "https://www.chefkoch.de/rezepte/3073141459936406/Veganer-gemischter-Salat-mit-Kaesedressing.html",
+      "ingredientCount": 24,
+      "lenientProductsUsed": 1,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 1,
+      "dietaryLeaks": [
+        "4 EL, gehäuft Kräuter (frisch, gehackt, z. B. Thymian, Rosmarin, Oregano, Salbei, Basilikum) ~hack"
+      ]
+    },
+    {
+      "basket": "cat:Household",
+      "products": [
+        "2-in-1 Sonnenschirm",
+        "Bäder-Kippliege",
+        "Bodenstaubsauger Guard M1",
+        "Bref Power Reiniger"
+      ],
+      "strategy": "rules",
+      "query": "2-in-1 Sonnenschirm Bäder-Kippliege Bodenstaubsauger Guard M1 vegetarisch Rezept",
+      "found": true,
+      "recipeName": "Blätterteig-Tomaten-Quadrate von KarinG",
+      "url": "https://www.chefkoch.de/rezepte/820791186571522/Blaetterteig-Tomaten-Quadrate.html",
+      "ingredientCount": 8,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 1,
+      "dietaryLeaks": [
+        "n. B. Basilikum (gehacktes) ~hack"
+      ]
+    },
+    {
+      "basket": "cat:Household",
+      "products": [
+        "2-in-1 Sonnenschirm",
+        "Bäder-Kippliege",
+        "Bodenstaubsauger Guard M1",
+        "Bref Power Reiniger"
+      ],
+      "strategy": "llm",
+      "query": "I cannot complete this task. The products you've listed are **not grocery items**:",
+      "found": true,
+      "recipeName": "Mr. Tea von Gristle_McNerd",
+      "url": "https://www.chefkoch.de/rezepte/1444641249394729/Mr-Tea.html",
+      "ingredientCount": 5,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Meat & Fish",
+      "products": [
+        "Appel Heringfilets",
+        "Beef Burger",
+        "Bierschinken-Aufschnitt",
+        "Bio-Hackfleisch"
+      ],
+      "strategy": "rules",
+      "query": "Appel Heringfilets Beef Burger Bierschinken-Aufschnitt vegetarisch Rezept",
+      "found": true,
+      "recipeName": "Bierbrot von borussenulf",
+      "url": "https://www.chefkoch.de/rezepte/2363221375297430/Bierbrot.html",
+      "ingredientCount": 6,
+      "lenientProductsUsed": 1,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 1,
+      "dietaryLeaks": [
+        "150 g Röstzwiebeln (oder 1 Pck. Schinken, gewürfelt) ~schinken"
+      ]
+    },
+    {
+      "basket": "cat:Meat & Fish",
+      "products": [
+        "Appel Heringfilets",
+        "Beef Burger",
+        "Bierschinken-Aufschnitt",
+        "Bio-Hackfleisch"
+      ],
+      "strategy": "llm",
+      "query": "I need to raise a contradiction: all four products are meat/fish:",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Other",
+      "products": [
+        "3-Ring-Pool",
+        "Anglerstuhl",
+        "Anglerstuhl für Kinder",
+        "Bring-Mich-Mit-Spiele"
+      ],
+      "strategy": "rules",
+      "query": "3-Ring-Pool Anglerstuhl Anglerstuhl für Kinder vegetarisch Rezept",
+      "found": true,
+      "recipeName": "Brownie bzw. Schoko-Muffins mit weichem Kern von DerBoyTutCooken",
+      "url": "https://www.chefkoch.de/rezepte/2864141438614829/Brownie-bzw-Schoko-Muffins-mit-weichem-Kern.html",
+      "ingredientCount": 3,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Other",
+      "products": [
+        "3-Ring-Pool",
+        "Anglerstuhl",
+        "Anglerstuhl für Kinder",
+        "Bring-Mich-Mit-Spiele"
+      ],
+      "strategy": "llm",
+      "query": "I need to clarify something: the products you've provided (3-Ring-Pool, Anglerstuhl, Anglerstuhl für Kinder, Bring-Mich-",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Pantry",
+      "products": [
+        "3 Glocken Genuss Pur Nudeln",
+        "Barilla Pasta",
+        "Ben's Original Express Reis",
+        "Ben's Original Saucen"
+      ],
+      "strategy": "rules",
+      "query": "3 Glocken Genuss Pur Nudeln Barilla Pasta Ben's Original Express Reis vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Pantry",
+      "products": [
+        "3 Glocken Genuss Pur Nudeln",
+        "Barilla Pasta",
+        "Ben's Original Express Reis",
+        "Ben's Original Saucen"
+      ],
+      "strategy": "llm",
+      "query": "Nudeln Reis Sauce vegetarisch",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Produce",
+      "products": [
+        "Bio Tafeltrauben",
+        "Bio-Mini-Wassermelone",
+        "Bio-Zitronen",
+        "Brokkoli"
+      ],
+      "strategy": "rules",
+      "query": "Bio Tafeltrauben Bio-Mini-Wassermelone Bio-Zitronen vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Produce",
+      "products": [
+        "Bio Tafeltrauben",
+        "Bio-Mini-Wassermelone",
+        "Bio-Zitronen",
+        "Brokkoli"
+      ],
+      "strategy": "llm",
+      "query": "Brokkoli Trauben Zitrone Salat",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Snacks & Sweets",
+      "products": [
+        "Alaska Boy Icesticks",
+        "Amicelli",
+        "Bahlsen Comtess Kuchen",
+        "Bahlsen Leibniz Pick Up!"
+      ],
+      "strategy": "rules",
+      "query": "Alaska Boy Icesticks Amicelli Bahlsen Comtess Kuchen vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "cat:Snacks & Sweets",
+      "products": [
+        "Alaska Boy Icesticks",
+        "Amicelli",
+        "Bahlsen Comtess Kuchen",
+        "Bahlsen Leibniz Pick Up!"
+      ],
+      "strategy": "llm",
+      "query": "Eiskuchen mit Bahlsen Keksen",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "mixed:0",
+      "products": [
+        "Bäcker Bachmeier Bayerische Laugensemmeln",
+        "Alpenhain Obazda",
+        "Albi Fruchtsaft"
+      ],
+      "strategy": "rules",
+      "query": "Bäcker Bachmeier Bayerische Laugensemmeln Alpenhain Obazda Albi Fruchtsaft vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "mixed:0",
+      "products": [
+        "Bäcker Bachmeier Bayerische Laugensemmeln",
+        "Alpenhain Obazda",
+        "Albi Fruchtsaft"
+      ],
+      "strategy": "llm",
+      "query": "Obazda mit Laugensemmeln",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "mixed:3",
+      "products": [
+        "2-in-1 Sonnenschirm",
+        "Appel Heringfilets",
+        "3-Ring-Pool"
+      ],
+      "strategy": "rules",
+      "query": "2-in-1 Sonnenschirm Appel Heringfilets 3-Ring-Pool vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "mixed:3",
+      "products": [
+        "2-in-1 Sonnenschirm",
+        "Appel Heringfilets",
+        "3-Ring-Pool"
+      ],
+      "strategy": "llm",
+      "query": "Vegetarischer Heringssalat",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "mixed:6",
+      "products": [
+        "3 Glocken Genuss Pur Nudeln",
+        "Bio Tafeltrauben",
+        "Alaska Boy Icesticks"
+      ],
+      "strategy": "rules",
+      "query": "3 Glocken Genuss Pur Nudeln Bio Tafeltrauben Alaska Boy Icesticks vegetarisch Rezept",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    },
+    {
+      "basket": "mixed:6",
+      "products": [
+        "3 Glocken Genuss Pur Nudeln",
+        "Bio Tafeltrauben",
+        "Alaska Boy Icesticks"
+      ],
+      "strategy": "llm",
+      "query": "Nudelsalat mit Trauben vegetarisch",
+      "found": false,
+      "recipeName": "",
+      "url": "",
+      "ingredientCount": 0,
+      "lenientProductsUsed": 0,
+      "strictProductsUsed": 0,
+      "lenientGte2": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": []
+    }
+  ]
+}
