@@ -332,6 +332,33 @@ integration_validation:
       must_match_across: [2, 4]
       failure_message: "Savings estimate shown on meal plan (step 2) must equal actual savings record in savings tracker (step 4)."
 
+# ─────────────────────────────────────────────────────────────────────────────
+# CHANGED ASSUMPTIONS (feature meal-plan-engine, 2026-07-17)
+# Additive note — DISCOVER-era steps above are UNCHANGED. The meal-plan ENGINE that
+# realizes step 2 is being replaced; the journey's flow gains a draft lifecycle.
+# Full detail + rationale: docs/feature/meal-plan-engine/feature-delta.md.
+# ─────────────────────────────────────────────────────────────────────────────
+changed_assumptions:
+  - was: >
+      Meal name IS the discounted item's name; the plan is 14 slots filled by round-robin over the
+      selected discount items (placeholder). Generation AUTO-SAVES a non-empty plan; 1 plan/week frozen.
+      estimated_savings = sum over the whole selected basket.
+    now: >
+      Each meal is a REAL web recipe (never LLM-invented — JOB-003 dietary safety) built from this
+      week's discounted products; product selection minimizes total € to feed the week, preferring
+      discounts where cheapest (D7). Generation produces a THROWAWAY DRAFT (not saved) that the user
+      REGENERATES-WHOLE (v1) and then explicitly SAVES or DISCARDS; on Save the user is prompted to add
+      the plan's discounted items to the shopping list (D4, closes the JOB-004 loop). Savings/spend are
+      computed over the DEDUPED set of discounted products actually used by the plan's meals.
+    v2_deferred: >
+      Per-meal accept + partial regenerate + cross-source stickiness (D3) are deferred to v2 (D5/D8).
+    flow_shape: >
+      trigger source (feed selection | all discounts | shopping list, per D2)
+        -> generate DRAFT of real cost-aware recipes
+        -> experiment (regenerate WHOLE draft; v2: keep accepted meals)
+        -> Save / Discard
+        -> (on Save) add plan's discounts to the shopping list (D4).
+
 changelog:
   - date: "2026-07-13"
     feature: "discount-hunt"
@@ -343,3 +370,13 @@ changelog:
       Gherkin scenario per step. Flow is unchanged — this feature polishes the already-shipped
       shell (styled layout + responsive card-grid, phases 05–08) for mobile readability and
       glanceability. Step 3 (recipe detail) already ships store+price inline; no delta added.
+  - date: "2026-07-17"
+    feature: "meal-plan-engine"
+    change: >
+      Added a changed_assumptions block: step 2's meal-plan ENGINE moves from round-robin item-name
+      placeholder + auto-save to REAL web-recipe generation (never LLM-invented) with a cost objective
+      (cheapest weekly shop, prefer discounts — D7) and a throwaway-draft lifecycle (regenerate-whole,
+      explicit Save/Discard, Save->add-to-list per D4). Trigger location determines the source (D2).
+      v2 adds per-meal lock + partial regenerate + cross-source stickiness (D3). DISCOVER-era steps are
+      unchanged; no second journey minted (the list-centric spine stays in
+      grocery-expenditure-control.yaml). See docs/feature/meal-plan-engine/feature-delta.md.

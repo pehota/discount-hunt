@@ -253,3 +253,16 @@ changelog:
       JOB-001 and JOB-003 as SUPPORTING. Added a hierarchy block. All existing job statements, forces,
       and opportunity_scores are UNCHANGED; all IDs preserved verbatim. See feature-delta
       Changed-Assumptions section for the quoted prior framing and full rationale.
+  - date: "2026-07-17"
+    feature: "meal-plan-engine"
+    change: >
+      Meal planning (JOB-001, SUPPORTING) extended into a cost-minimizing, discount-maximizing engine
+      IN SERVICE OF JOB-004 (control grocery spend). Today's placeholder meal plan (round-robin
+      discount items as meal names) becomes real web-recipe generation (NEVER LLM-invented — dietary
+      safety per JOB-003) whose product selection minimizes the total € to feed the week, preferring
+      discounts where cheapest. This is NOT a re-elevation of meal planning to a product goal and NOT a
+      new job: no job minted, deleted, renumbered, or rescored. JOB-001 stays SUPPORTING under JOB-004;
+      its opportunity_score and statement are UNCHANGED. Feature stories all carry job_id JOB-001
+      (parent JOB-004); dietary safety via JOB-003; savings display reuses JOB-002's computation. See
+      docs/feature/meal-plan-engine/feature-delta.md (locked decisions D1-D8, D7 rejected alternatives,
+      Changed-Assumptions) and the extended weekly-discount-meal-planning.yaml journey.
