@@ -1,0 +1,265 @@
+{
+  "summary": {
+    "liveAfterPolls": 1,
+    "everBlockedDuringRun": false,
+    "baskets": 10,
+    "searched": 7,
+    "found": 5,
+    "foundRate": 0.71,
+    "lenientGte1": 5,
+    "strictGte1": 5,
+    "lenientGte2": 3,
+    "strictGte2": 1,
+    "withDietaryLeak": 2
+  },
+  "results": [
+    {
+      "basket": "Produce+Dairy & Cheese#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert"
+      ],
+      "query": "Wassermelone Camembert Salat",
+      "refused": false,
+      "found": true,
+      "status": 200,
+      "recipeName": "Wassermelonen-Feta-Salat - schnell & einfach",
+      "ingredientCount": 9,
+      "lenientUsed": 1,
+      "strictUsed": 1,
+      "lenientGte1": true,
+      "lenientGte2": false,
+      "strictGte1": true,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "250 g Wassermelone(n)",
+        "2 kleine Tomate(n)",
+        "1 kleine Gurke(n) (Minigurke)",
+        "1 kleine Zwiebel(n), rote (oder eine halbe)",
+        "100 g Feta-Käse",
+        "3 EL Balsamico",
+        "1 EL Weißweinessig (oder Zitronensaft)",
+        "2 EL Olivenöl",
+        "Salz und Pfeffer"
+      ]
+    },
+    {
+      "basket": "Dairy & Cheese+Bakery#1",
+      "products": [
+        "Emmentaler",
+        "Dinkel-Vollkornbrot"
+      ],
+      "query": "Käsebrot Emmentaler Vollkornbrot",
+      "refused": false,
+      "found": true,
+      "status": 200,
+      "recipeName": "Brot mit Zucchini und Käse von Carnetin",
+      "ingredientCount": 12,
+      "lenientUsed": 2,
+      "strictUsed": 2,
+      "lenientGte1": true,
+      "lenientGte2": true,
+      "strictGte1": true,
+      "strictGte2": true,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "3 kleine Zucchini",
+        "300 g Brot(e) (Vollkornbrot)",
+        "5 EL Öl",
+        "2 EL Tomatenmark",
+        "4 EL Wein (weiß)",
+        "250 g Käse ((Emmentaler), gerieben)",
+        "0.25 Liter Sahne",
+        "2 Ei(er)",
+        "Basilikum",
+        "2 Knoblauch",
+        "Thymian",
+        "Salz und Pfeffer"
+      ]
+    },
+    {
+      "basket": "Produce+Pantry#2",
+      "products": [
+        "Brokkoli",
+        "Bernbacher Eiernudeln"
+      ],
+      "query": "Brokkoli Eiernudeln Auflauf",
+      "refused": false,
+      "found": true,
+      "status": 200,
+      "recipeName": "Brokkoli - Nudel - Gratin von nudeline78",
+      "ingredientCount": 9,
+      "lenientUsed": 2,
+      "strictUsed": 1,
+      "lenientGte1": true,
+      "lenientGte2": true,
+      "strictGte1": true,
+      "strictGte2": false,
+      "dietaryLeakCount": 1,
+      "dietaryLeaks": [
+        "200 g Schinken (gekochter, gewürfelt)"
+      ],
+      "ingredients": [
+        "300 g Nudeln",
+        "750 g Brokkoli",
+        "200 g Schinken (gekochter, gewürfelt)",
+        "1 Becher Sahne",
+        "1 Becher Schmand",
+        "2 Ei(er)",
+        "200 g Käse (geriebener (Emmentaler))",
+        "Salz und Pfeffer",
+        "Muskat"
+      ]
+    },
+    {
+      "basket": "Pantry+Dairy & Cheese#0",
+      "products": [
+        "Paprikamix",
+        "Back-Camembert"
+      ],
+      "query": "Gebackener Camembert Paprika",
+      "refused": false,
+      "found": false,
+      "status": 200,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte1": false,
+      "lenientGte2": false,
+      "strictGte1": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Pantry#1",
+      "products": [
+        "Bio-Zitronen",
+        "Emmentaler",
+        "Barilla Pasta"
+      ],
+      "query": "Zitronenpasta mit Käse",
+      "refused": false,
+      "found": false,
+      "status": 200,
+      "recipeName": "",
+      "ingredientCount": 0,
+      "lenientUsed": 0,
+      "strictUsed": 0,
+      "lenientGte1": false,
+      "lenientGte2": false,
+      "strictGte1": false,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "label": "Produce+Bakery#2",
+      "products": [
+        "Brokkoli",
+        "Vanillestange"
+      ],
+      "query": "SKIP",
+      "refused": true,
+      "note": "refusal-sentinel: not searched"
+    },
+    {
+      "label": "Pantry+Produce#0",
+      "products": [
+        "Paprikamix",
+        "Bio-Mini-Wassermelone"
+      ],
+      "query": "SKIP",
+      "refused": true,
+      "note": "refusal-sentinel: not searched"
+    },
+    {
+      "basket": "Dairy & Cheese+Produce#1",
+      "products": [
+        "Emmentaler",
+        "Bio-Zitronen"
+      ],
+      "query": "Risotto Zitrone Emmentaler",
+      "refused": false,
+      "found": true,
+      "status": 200,
+      "recipeName": "Gefülltes Schnitzel mit Zitronenrisotto von plumbum",
+      "ingredientCount": 17,
+      "lenientUsed": 2,
+      "strictUsed": 1,
+      "lenientGte1": true,
+      "lenientGte2": true,
+      "strictGte1": true,
+      "strictGte2": false,
+      "dietaryLeakCount": 1,
+      "dietaryLeaks": [
+        "200 g Kalbsbrät (oder Wurstbrät)"
+      ],
+      "ingredients": [
+        "4 große Schnitzel (schneiden lassen wie Rouladen)",
+        "1 Bund Schnittlauch",
+        "1 Schalotte(n)",
+        "200 g Kalbsbrät (oder Wurstbrät)",
+        "Salz und Pfeffer",
+        "Mehl",
+        "1 großes Ei(er) (verquirlt)",
+        "Paniermehl",
+        "Butterschmalz (zum Braten)",
+        "250 g Reis (Risotto-)",
+        "1 Zwiebel(n)",
+        "1 Liter Brühe ((Instant), knapp)",
+        "100 g Käse ((Emmentaler), gerieben)",
+        "1 EL Butter",
+        "1 Zitrone(n) (Abrieb und etwas Saft)",
+        "Salz und Pfeffer",
+        "50 g Oliven (schwarz, entsteint)"
+      ]
+    },
+    {
+      "label": "Bakery+Dairy & Cheese#2",
+      "products": [
+        "Vanillestange",
+        "Hirtenkäse"
+      ],
+      "query": "SKIP",
+      "refused": true,
+      "note": "refusal-sentinel: not searched"
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Bakery#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert",
+        "Bio-Steinofen-Sauerteigkruste"
+      ],
+      "query": "Wassermelone Camembert Sauerteig Salat",
+      "refused": false,
+      "found": true,
+      "status": 200,
+      "recipeName": "Süß - saurer Melonensalat von Mondkanikel",
+      "ingredientCount": 6,
+      "lenientUsed": 1,
+      "strictUsed": 1,
+      "lenientGte1": true,
+      "lenientGte2": false,
+      "strictGte1": true,
+      "strictGte2": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "0.5 Melone(n) (Wassermelone)",
+        "4 EL Ahornsirup",
+        "4 EL Balsamico (oder Essig nach Wahl)",
+        "etwas Gewürzmischung (Knoblauchsalz)",
+        "etwas Salz",
+        "etwas Zimt"
+      ]
+    }
+  ]
+}

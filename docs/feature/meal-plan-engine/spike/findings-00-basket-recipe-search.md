@@ -7,7 +7,7 @@
 
 ## 1. Verdict
 
-**RESHAPE for D1.** NO-GO on the *naive* D1 design (real-time Chefkoch search per meal as the generation engine) — blocked primarily by Chefkoch's sticky rate-limit at interactive generate+regenerate volume; NOT a NO-GO on the feature, which survives if recipe sourcing is decoupled from live per-query scraping (cache/bulk corpus or quota'd API) and post-fetch dietary verification is made mandatory.
+**RESHAPE for D1.** NO-GO on the *naive* (burst) design — real-time Chefkoch search per meal at generate+regenerate volume trips a sticky rate-limit; NOT a NO-GO on the feature. **UPDATE — micro-probe RUN 4 (§9) revises the primary blocker:** a POLITE, self-throttled live client (browser headers, 1 search / 35 s) ran ~a plan's worth of searches with **ZERO 429** → **live web-search is viable at a throttled pace** (the D1 "LLM-query → live web-search" option survives; a pre-harvested corpus is now an *optimization for speed*, not a feasibility requirement). The load-bearing hard requirement is instead **mandatory post-fetch dietary verification** — RUN 4 found **2/5 fetched recipes were secretly meat (40%)**. ≥1-discounted-anchor coverage is now PROVEN good (5/5 found recipes, strict); ≥2 stays occasional.
 
 ---
 
@@ -112,3 +112,43 @@ A tiny, slow, cache-first coverage test — the single UNMEASURED gap:
 - **slice-01b changes**: the ≥2-products acceptance drops to ≥1 discounted anchor/meal; add a **mandatory post-fetch dietary verifier** (deterministic blocklist, not substring scan) as an explicit acceptance criterion; add the **refusal-sentinel contract** if the LLM query path is kept.
 - Two items move from "secondary" to **co-primary open risks** carried into DESIGN: clean-basket coverage and dietary false-negatives. Gate them behind the micro-probe (§7).
 - Bug to fix regardless of feature direction: the refusal-prose-fed-to-search integration bug and the `tokensOverlap` over-matcher.
+
+---
+
+## 9. Micro-probe (RUN 4) — closes the §7 gaps (clean, non-429 data)
+
+`probe4.ts` / `raw-results-4.json`. The 429 had cleared (liveness poll 1 = 200). 10 food-only,
+brand-stripped, realistic cross-category baskets; LLM-built query with a **refusal-sentinel** (`SKIP`);
+**one search each, 35 s spacing, browser-like headers, 300 s backoff on any mid-run 429**. Word-boundary
+non-veg blocklist + a fixed word-boundary (`strictUsed`) matcher over **full** ingredient lists.
+
+**Headline: `everBlockedDuringRun: false` — ZERO 429 across all 7 searches + the liveness poll.**
+
+| Measure | Result | Reading |
+|---|---|---|
+| Throttled-live 429 | **0 / 7 searches** at 1 / 35 s | A polite, self-throttled client sustains ~a plan's worth of searches. Live web-search is VIABLE at a throttled pace. |
+| Found rate | 5 / 7 searched (71%); 3 / 10 baskets `SKIP`-refused by the LLM | The refusal-sentinel works — the LLM declined baskets it couldn't make a veg dish from (no garbage search). |
+| ≥1 discounted anchor (STRICT, word-boundary) | **5 / 5 found (100%)** | The reshaped ≥1-anchor bar is comfortably achievable. Coverage is now PROVEN, not unproven. |
+| ≥2 products | strict **1 / 5**, lenient 3 / 5 | Occasional bonus, NOT reliable — confirms dropping the invented ≥2 gate was correct. |
+| **Dietary leak (post-fetch, word-boundary)** | **2 / 5 found = 40% REAL meat** | Query-level control is unreliable → post-fetch verification is UNCONDITIONALLY MANDATORY. |
+
+**The 2 leaks are true positives (0 false positives this run — the word-boundary blocklist fixed §3's substring over-flagging):**
+- `Brokkoli-Nudel-Gratin` (query "Brokkoli Eiernudeln Auflauf") → `200 g Schinken (gekochter, gewürfelt)` — real ham.
+- `Gefülltes Schnitzel mit Zitronenrisotto` (query "Risotto Zitrone Emmentaler") → `200 g Kalbsbrät` + it's a breaded schnitzel — real veal/meat.
+
+**Mechanism (why query-biasing can't be trusted, from either direction):** the LLM query builder itself
+**dropped the `vegetarisch` term** in both leaking queries ("Brokkoli Eiernudeln Auflauf", "Risotto Zitrone
+Emmentaler"), and even when `vegetarisch` IS present a meat recipe can still return (RUN 1 "Bierbrot").
+Three real leaks now across runs (Bierbrot, Schinken-Gratin, Schnitzel) → dietary safety MUST be a
+post-fetch gate on the fetched ingredient list, never a query hint.
+
+### Revised verdict deltas vs §1–§8
+- **Primary blocker downgraded**: the throughput wall applies to *burst/naive* volume, not a self-throttled
+  client. Live `LLM-query → web-search` is a viable path (≈ 35 s × 14 meals ≈ 8 min/generation; every
+  regeneration repeats — SLOW UX, so a pre-harvested corpus remains the recommended speed optimization,
+  now *optional* not *required*). Still UNMEASURED: the clean 429 trip-threshold above ~1 / 35 s.
+- **Coverage gap CLOSED (positive)**: ≥1-anchor is reliably achievable (100% of found; 71% found rate).
+- **Dietary verification is the #1 hard requirement** (40% leak): deterministic word-boundary non-veg
+  blocklist over full ingredient lists works (0 FP here); make it a blocking generation gate (reject +
+  re-pick, don't surface). False-negative rate still needs a larger sample.
+- **Refusal-sentinel proven** — carry it into any LLM-query design.
