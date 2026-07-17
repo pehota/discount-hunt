@@ -1,0 +1,209 @@
+{
+  "summary": {
+    "searched": 7,
+    "found": 6,
+    "strictGte1": 5,
+    "withDietaryLeak_run5_forcedVegetarisch": 0,
+    "run4_leakers": [
+      "Produce+Pantry#2",
+      "Dairy & Cheese+Produce#1"
+    ]
+  },
+  "results": [
+    {
+      "basket": "Produce+Dairy & Cheese#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert"
+      ],
+      "query": "Wassermelone Camembert Salat vegetarisch",
+      "run4Query": "Wassermelone Camembert Salat",
+      "run4LeakCount": 0,
+      "run4Recipe": "Wassermelonen-Feta-Salat - schnell & einfach",
+      "found": true,
+      "status": 200,
+      "recipeName": "Wassermelonen-Feta-Salat - schnell & einfach",
+      "strictUsed": 1,
+      "strictGte1": true,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "250 g Wassermelone(n)",
+        "2 kleine Tomate(n)",
+        "1 kleine Gurke(n) (Minigurke)",
+        "1 kleine Zwiebel(n), rote (oder eine halbe)",
+        "100 g Feta-Käse",
+        "3 EL Balsamico",
+        "1 EL Weißweinessig (oder Zitronensaft)",
+        "2 EL Olivenöl",
+        "Salz und Pfeffer"
+      ]
+    },
+    {
+      "basket": "Dairy & Cheese+Bakery#1",
+      "products": [
+        "Emmentaler",
+        "Dinkel-Vollkornbrot"
+      ],
+      "query": "Käsebrot Emmentaler Vollkornbrot vegetarisch",
+      "run4Query": "Käsebrot Emmentaler Vollkornbrot",
+      "run4LeakCount": 0,
+      "run4Recipe": "Brot mit Zucchini und Käse von Carnetin",
+      "found": false,
+      "status": 200,
+      "recipeName": "",
+      "strictUsed": 0,
+      "strictGte1": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": []
+    },
+    {
+      "basket": "Produce+Pantry#2",
+      "products": [
+        "Brokkoli",
+        "Bernbacher Eiernudeln"
+      ],
+      "query": "Brokkoli Eiernudeln Auflauf vegetarisch",
+      "run4Query": "Brokkoli Eiernudeln Auflauf",
+      "run4LeakCount": 1,
+      "run4Recipe": "Brokkoli - Nudel - Gratin von nudeline78",
+      "found": true,
+      "status": 200,
+      "recipeName": "Vegetarischer Nudel-Brokkoli Auflauf von Naduescha",
+      "strictUsed": 1,
+      "strictGte1": true,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "500 g Nudeln",
+        "1 Brokkoli",
+        "200 ml Milch",
+        "150 g Schmelzkäse",
+        "100 ml Sahne",
+        "170 g Tofu",
+        "2 Ei(er)",
+        "Salz",
+        "Pfeffer",
+        "Gemüsebrühe (instant)",
+        "Paprikapulver",
+        "200 g Mozzarella (gerieben)",
+        "2 EL Sonnenblumenkerne"
+      ]
+    },
+    {
+      "basket": "Pantry+Dairy & Cheese#0",
+      "products": [
+        "Paprikamix",
+        "Back-Camembert"
+      ],
+      "query": "Gebackener Camembert Paprika vegetarisch",
+      "run4Query": "Gebackener Camembert Paprika",
+      "run4LeakCount": 0,
+      "run4Recipe": "",
+      "found": true,
+      "status": 200,
+      "recipeName": "Gebackener Brie von Lottchen2007",
+      "strictUsed": 1,
+      "strictGte1": true,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "250 g Käse ((Brie), rund, oder Camembert)",
+        "1 EL Zitronensaft",
+        "3 EL Olivenöl",
+        "1 TL Dijonsenf (mit Kräutern)",
+        "2 EL Petersilie (frische, gehackt)",
+        "1 Zehe/n Knoblauch (gepresst)",
+        "0.5 Paprikaschote(n) (rot, klein gewürfelt)",
+        "Salz und Pfeffer"
+      ]
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Pantry#1",
+      "products": [
+        "Bio-Zitronen",
+        "Emmentaler",
+        "Barilla Pasta"
+      ],
+      "query": "Zitronenpasta mit Käse vegetarisch",
+      "run4Query": "Zitronenpasta mit Käse",
+      "run4LeakCount": 0,
+      "run4Recipe": "",
+      "found": true,
+      "status": 200,
+      "recipeName": "Zitronen-Käse-Nudeln von Frocki",
+      "strictUsed": 0,
+      "strictGte1": false,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "250 g Nudeln",
+        "Salzwasser",
+        "0.5 Zitrone(n)",
+        "150 ml Milch",
+        "100 g Käse (nach Wahl, z. B. Schmelzkäse, Parmesan)",
+        "0.5 EL Butter",
+        "0.5 EL Mehl",
+        "1 kleine Knoblauchzehe(n)",
+        "etwas Salz und Pfeffer",
+        "evtl. Chili"
+      ]
+    },
+    {
+      "basket": "Dairy & Cheese+Produce#1",
+      "products": [
+        "Emmentaler",
+        "Bio-Zitronen"
+      ],
+      "query": "Risotto Zitrone Emmentaler vegetarisch",
+      "run4Query": "Risotto Zitrone Emmentaler",
+      "run4LeakCount": 1,
+      "run4Recipe": "Gefülltes Schnitzel mit Zitronenrisotto von plumbum",
+      "found": true,
+      "status": 200,
+      "recipeName": "Emmentaler Bohnensalat von AFRED1",
+      "strictUsed": 1,
+      "strictGte1": true,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "300 g Bohnen (grüne, gewaschen und in mundgerechte Stücke geschnitten)",
+        "1 Zwiebel(n) (geschält und gewürfelt)",
+        "2 EL Öl",
+        "250 g Käse (Emmentaler, in kleine Würfel schneiden)",
+        "250 g Tomate(n) ((Datteltomaten), würfeln)",
+        "1 Zitrone(n)",
+        "Salz und Pfeffer (nach Geschmack)",
+        "Bohnenkraut"
+      ]
+    },
+    {
+      "basket": "Produce+Dairy & Cheese+Bakery#0",
+      "products": [
+        "Bio-Mini-Wassermelone",
+        "Back-Camembert",
+        "Bio-Steinofen-Sauerteigkruste"
+      ],
+      "query": "Wassermelone Camembert Sauerteig Salat vegetarisch",
+      "run4Query": "Wassermelone Camembert Sauerteig Salat",
+      "run4LeakCount": 0,
+      "run4Recipe": "Süß - saurer Melonensalat von Mondkanikel",
+      "found": true,
+      "status": 200,
+      "recipeName": "Süß - saurer Melonensalat von Mondkanikel",
+      "strictUsed": 1,
+      "strictGte1": true,
+      "dietaryLeakCount": 0,
+      "dietaryLeaks": [],
+      "ingredients": [
+        "0.5 Melone(n) (Wassermelone)",
+        "4 EL Ahornsirup",
+        "4 EL Balsamico (oder Essig nach Wahl)",
+        "etwas Gewürzmischung (Knoblauchsalz)",
+        "etwas Salz",
+        "etwas Zimt"
+      ]
+    }
+  ]
+}

@@ -7,7 +7,7 @@
 
 ## 1. Verdict
 
-**RESHAPE for D1.** NO-GO on the *naive* (burst) design — real-time Chefkoch search per meal at generate+regenerate volume trips a sticky rate-limit; NOT a NO-GO on the feature. **UPDATE — micro-probe RUN 4 (§9) revises the primary blocker:** a POLITE, self-throttled live client (browser headers, 1 search / 35 s) ran ~a plan's worth of searches with **ZERO 429** → **live web-search is viable at a throttled pace** (the D1 "LLM-query → live web-search" option survives; a pre-harvested corpus is now an *optimization for speed*, not a feasibility requirement). The load-bearing hard requirement is instead **mandatory post-fetch dietary verification** — RUN 4 found **2/5 fetched recipes were secretly meat (40%)**. ≥1-discounted-anchor coverage is now PROVEN good (5/5 found recipes, strict); ≥2 stays occasional.
+**RESHAPE for D1.** NO-GO on the *naive* (burst) design — real-time Chefkoch search per meal at generate+regenerate volume trips a sticky rate-limit; NOT a NO-GO on the feature. **UPDATE — micro-probe RUN 4 (§9) revises the primary blocker:** a POLITE, self-throttled live client (browser headers, 1 search / 35 s) ran ~a plan's worth of searches with **ZERO 429** → **live web-search is viable at a throttled pace** (the D1 "LLM-query → live web-search" option survives; a pre-harvested corpus is now an *optimization for speed*, not a feasibility requirement). The dietary requirement (RUN 4: 2/5 fetched recipes were secretly meat) is driven by the query **omitting** the diet term; **RUN 5 (§10) shows forcing `vegetarisch` into the query flips both leakers → 0/6 leaks** — so the first-line control is a forced dietary term, with a post-fetch verifier as prudent defense-in-depth (not proven-mandatory; residual rate needs a larger sample). ≥1-discounted-anchor coverage is PROVEN good (5/5 found recipes, strict); ≥2 stays occasional.
 
 ---
 
@@ -136,11 +136,18 @@ non-veg blocklist + a fixed word-boundary (`strictUsed`) matcher over **full** i
 - `Brokkoli-Nudel-Gratin` (query "Brokkoli Eiernudeln Auflauf") → `200 g Schinken (gekochter, gewürfelt)` — real ham.
 - `Gefülltes Schnitzel mit Zitronenrisotto` (query "Risotto Zitrone Emmentaler") → `200 g Kalbsbrät` + it's a breaded schnitzel — real veal/meat.
 
-**Mechanism (why query-biasing can't be trusted, from either direction):** the LLM query builder itself
-**dropped the `vegetarisch` term** in both leaking queries ("Brokkoli Eiernudeln Auflauf", "Risotto Zitrone
-Emmentaler"), and even when `vegetarisch` IS present a meat recipe can still return (RUN 1 "Bierbrot").
-Three real leaks now across runs (Bierbrot, Schinken-Gratin, Schnitzel) → dietary safety MUST be a
-post-fetch gate on the fetched ingredient list, never a query hint.
+**Mechanism — and an honest limit on this evidence.** The RUN-4 leaks came from queries that had **NO
+dietary term at all**: the LLM query builder **dropped `vegetarisch` in ALL 5 built queries** despite the
+prompt (e.g. "Brokkoli Eiernudeln Auflauf", "Risotto Zitrone Emmentaler"). So RUN 4 proves the **LLM path
+unreliably ENCODES the constraint** — it does NOT prove that an *explicit* `vegetarisch` query would also
+leak on realistic food baskets. The only explicit-term leak (RUN 1 "Bierbrot", `~schinken`) was an
+**all-meat basket** ("…Heringfilets Beef Burger Bierschinken vegetarisch") — a self-contradictory query,
+not a fair test. **UNMEASURED: forced-`vegetarisch` query over good food baskets.** Conclusions that hold:
+(1) if LLM-built queries are used, the dietary term must be FORCED in, not left to the LLM; (2) a
+post-fetch verifier is still warranted as defense-in-depth (Chefkoch's `vegetarisch` is a keyword bias, not
+a guarantee — the Brokkoli gratin lists ham as a normal ingredient) — but it is NOT yet *proven necessary*.
+Next cheap probe (§10 TODO): rerun the same good baskets with `vegetarisch` FORCED into every query and
+measure the leak rate; only then is the "query hint is insufficient" claim earned.
 
 ### Revised verdict deltas vs §1–§8
 - **Primary blocker downgraded**: the throughput wall applies to *burst/naive* volume, not a self-throttled
@@ -152,3 +159,34 @@ post-fetch gate on the fetched ingredient list, never a query hint.
   blocklist over full ingredient lists works (0 FP here); make it a blocking generation gate (reject +
   re-pick, don't surface). False-negative rate still needs a larger sample.
 - **Refusal-sentinel proven** — carry it into any LLM-query design.
+
+---
+
+## 10. RUN 5 — forced-`vegetarisch` A/B (resolves the §9 TODO on the dietary lever)
+
+`probe5.ts` / `raw-results-5.json`. Single-variable A/B: the SAME 7 searched baskets + their EXACT run-4
+queries, with `vegetarisch` appended (run 4's LLM queries had NO dietary term — it was the confound).
+
+**Result: the dietary term matters a lot. Forcing `vegetarisch` in flipped BOTH run-4 leakers and gave 0 leaks.**
+
+| Basket | RUN 4 (no term) | RUN 5 (+`vegetarisch`) |
+|---|---|---|
+| Produce+Pantry#2 | 🔴 "Brokkoli-Nudel-Gratin" — `Schinken` | ✅ "Vegetarischer Nudel-Brokkoli Auflauf" — clean |
+| Dairy&Cheese+Produce#1 | 🔴 "Gefülltes Schnitzel mit Zitronenrisotto" — `Kalbsbrät` | ✅ "Emmentaler Bohnensalat" — clean |
+| all others | 0 leaks | 0 leaks |
+| **Leak rate** | **2 / 5 found (40%)** | **0 / 6 found (0%)** |
+
+Coverage held: 5/6 found had strict ≥1 anchor; found-rate 6/7 (≈ unchanged).
+
+**Corrected conclusion on dietary (supersedes the "unconditionally mandatory post-fetch gate" claim in §1/§9):**
+- **Forcing `vegetarisch` into the query is a strong, cheap FIRST-LINE control** — it eliminated both real
+  leaks (40% → 0%). The run-4 leaks were caused by the LLM **dropping** the term, NOT by query-biasing
+  being useless. So: if the LLM builds the query, the dietary term MUST be forced in (do not trust the LLM
+  to include it).
+- **A post-fetch verifier is prudent DEFENSE-IN-DEPTH, not proven-mandatory.** Reasons it stays recommended
+  despite 0/6: (a) n=6 cannot establish a low leak rate with confidence — residual + false-negative risk is
+  unquantified; (b) Chefkoch `vegetarisch` is a keyword/tag bias, not a formal guarantee; (c) JOB-003 is a
+  HARD constraint where a cheap deterministic word-boundary blocklist backstop is cheap insurance.
+- **Open (larger-sample) question:** the residual leak rate under forced-`vegetarisch` over ~30+ baskets —
+  needed to decide whether the post-fetch gate can ever be dropped, or must always run. Until then: ship BOTH
+  (forced term + post-fetch gate).
