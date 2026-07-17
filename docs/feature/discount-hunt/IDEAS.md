@@ -75,13 +75,13 @@ The supporting part is helping with deciding on meal plans.
 
 **Why now**: scrapes are now *replace-per-store* (a scrape DELETEs a store's rows before inserting the fresh batch — see `SQLiteDiscountItemRepository.replaceStore`). That means every re-scrape currently DISCARDS the previous offers. Before we lose more of it, archive the replaced rows so we build a longitudinal record, and start deriving behaviour/preference insights.
 
-### Part A — Offer history table (archive-on-replace)
-- New table `discount_items_history` (or `offer_history`): the discount_items columns + `archived_at` (ms) + `scrape_job_id` (+ `week_start` for convenience).
-- In `replaceStore`'s transaction, BEFORE the delete: `INSERT INTO offer_history SELECT *, <archived_at>, <jobId> FROM discount_items WHERE store = ?`. Then delete + insert fresh. (One transaction, so archive+replace are atomic.)
-- Retention: keep all for now (data is tiny); revisit if it grows.
-- **Enables** (all from data we already scrape — no user tracking): price history per product (sale + regular over weeks) → "cheapest ever / is this actually a good deal vs usual?"; recurring-deal detection (which products cycle on sale, how often, at what price); category/store offer-volume + discount-depth trends over time; price-drop alerts (future pillar in the vision).
+### Part A — Offer history table (archive-on-replace) — ✅ SHIPPED (2026-07-17, commit `aa49ff7`)
+Implemented as the `offer_history` table (surrogate `history_id` PK + `item_id` = original discount_items.id, since the id repeats weekly; mirrors all discount_items columns + `archived_at` (ms) + `week_start` (`currentWeekMonday()` SSOT); `store_id` FK → stores(id); indexes on store_id + item_id). `replaceStore` archives the store's live rows via `INSERT ... SELECT` as the first statement inside its transaction, before the DELETE (archive+replace atomic; old rows' `scrape_job_id`/`created_at` preserved for provenance). Retention: keep all (tiny). Verified end-to-end on a real-DB copy: a re-scrape of Aldi archived the 32 prior offers with archived_at/week_start set.
+- **Now enables** (all from data we already scrape — no user tracking): price history per product (`item_id` over weeks) → "cheapest ever / good deal vs usual?"; recurring-deal detection; category/store offer-volume + discount-depth trends; price-drop alerts (future vision pillar). These are the natural next builds once Part B.1 lands.
 
-### Part B — Usage statistics (understand behaviour + preferences → improve UX)
+### Part B — Usage statistics (SUGGESTIONS ONLY — owner to approve before any build)
+
+> Status 2026-07-17: **NOT started — no code.** Owner directive: Part B is suggestions only. Part A (offer_history) has shipped, so B.1 below can already join it for "good deal vs usual" answers. Single-user, local (SQLite), no third-party. Phased cheapest/highest-value first; each phase gated on the prior proving worth acting on.
 Single-user personal tool → analytics is for self-understanding + product improvement, kept LOCAL (SQLite), no third-party. Build in phases:
 
 1. **Derived-from-existing-data (no new tracking) — cheapest, do first alongside Part A.** From shopping_list_items / meal_plans / savings_log / user_settings:
@@ -97,6 +97,9 @@ Single-user personal tool → analytics is for self-understanding + product impr
 
 4. **Insights view + preference-driven UX**: a `/insights` (or Settings) dashboard summarizing A + B; then act on inferred preferences (personalized defaults, "good deal" badges powered by offer history).
 
-**Build order**: Part A (offer-history archive-on-replace) + Part B.1 (derived stats) first — high value, no tracking infra. Then B.2 (event logging) → B.3/B.4 (dashboard + personalization).
+**Build order** (recommended): **B.1 first** (derived-from-existing-data + offer_history — pure read model, zero new schema, immediately useful; ship as a compact `/insights` summary, not a dashboard) → **B.2** (events table, only once B.1 proves the insights are worth acting on) → **B.3 / B.4** (engagement patterns + preference-driven UX: default filters to favourites, "good deal" badges powered by offer_history price stats).
 
-**Prerequisite**: product-details dialog ships first (owner's stated order).
+**Open questions for the owner (blockers before building B.2+):**
+- Is a new `events` tracking table wanted at all, or should insights stay purely derived (B.1 only)?
+- Any privacy line even for a local single-user tool?
+- Which personalization is most wanted first — default feed filters (store/category → favourites), or "good deal" badges from offer_history price history?
