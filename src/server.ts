@@ -88,7 +88,7 @@ export async function createServer(
   // shoppingListService is injected into every page handler so each render can show the
   // current-week list-count nav badge (ShoppingListHandler already holds it as its service).
   const discountHandler = new DiscountHandler(discountService, scrapeJobRepo, preferencesRepo, shoppingListService);
-  const planHandler = new PlanHandler(planService, preferencesRepo, shoppingListService);
+  const planHandler = new PlanHandler(planService, preferencesRepo, shoppingListService, mealPlanRepo);
   const savingsHandler = new SavingsHandler(savingsService, shoppingListService);
   const settingsHandler = new SettingsHandler(preferencesService, shoppingListService);
   const recipeHandler = new RecipeHandler(planService, recipeService, discountService, preferencesRepo, shoppingListService);
@@ -115,6 +115,9 @@ export async function createServer(
       }
       if (method === "POST" && url.pathname === "/plan/discard") {
         return planHandler.handlePostDiscard(request);
+      }
+      if (method === "GET" && url.pathname === "/plan/archive") {
+        return planHandler.handleGetArchive(request);
       }
       if (method === "GET" && url.pathname === "/plan") {
         return planHandler.handleGetPlan(request);

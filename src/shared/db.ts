@@ -96,6 +96,7 @@ export function createDb(dbPath: string): DbClient {
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_savings_log_week_start ON savings_log(week_start)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_store_id ON offer_history(store_id)");
   sqlite.exec("CREATE INDEX IF NOT EXISTS idx_offer_history_item_id ON offer_history(item_id)");
+  sqlite.exec("CREATE INDEX IF NOT EXISTS idx_meal_plan_history_archived_at ON meal_plan_history(archived_at)");
 
   // Turn FK enforcement ON for normal operation (all rebuilds are done).
   sqlite.exec("PRAGMA foreign_keys=ON");

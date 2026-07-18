@@ -4,7 +4,7 @@
  * All secondary adapters import from here.
  * Only src/{context}/adapters/sqlite-*.ts files may import this module (enforced by dependency-cruiser D34).
  *
- * Tables: stores, discount_items, offer_history, meal_plans, savings_log, scrape_jobs, shopping_list_items
+ * Tables: stores, discount_items, offer_history, meal_plans, meal_plan_history, savings_log, scrape_jobs, shopping_list_items
  */
 
 import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
@@ -78,6 +78,21 @@ export const mealPlans = sqliteTable("meal_plans", {
   totalSalePrice: integer("total_sale_price").notNull(), // cents
   estimatedSavings: integer("estimated_savings").notNull(), // cents — D23 atomic
   createdAt: integer("created_at").notNull(), // ms since epoch
+});
+
+export const mealPlanHistory = sqliteTable("meal_plan_history", {
+  historyId: integer("history_id").primaryKey({ autoIncrement: true }),
+  id: text("id").notNull(),                        // original meal_plans.id (provenance)
+  weekStart: text("week_start").notNull(),         // ORIGINAL plan's week_start (preserved)
+  itemIds: text("item_ids").notNull(),
+  meals: text("meals").notNull().default("[]"),
+  dietaryFilter: text("dietary_filter").notNull().default("none"),
+  budgetCapCents: integer("budget_cap_cents"),
+  totalRegularPrice: integer("total_regular_price").notNull(),
+  totalSalePrice: integer("total_sale_price").notNull(),
+  estimatedSavings: integer("estimated_savings").notNull(),
+  createdAt: integer("created_at").notNull(),      // ORIGINAL plan's created_at (first-save time, preserved)
+  archivedAt: integer("archived_at").notNull(),    // ms when this replace archived the row
 });
 
 export const userSettings = sqliteTable("user_settings", {

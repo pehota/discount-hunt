@@ -14,6 +14,7 @@
 
 import type { PlanService } from "../plan-service.ts";
 import type { PlanDraft } from "../ports/plan-draft-repository.ts";
+import type { MealPlanRepository, ArchivedMealPlan } from "../ports/meal-plan-repository.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
 import type { MealSlot } from "../../shared/types.ts";
 import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
@@ -206,6 +207,29 @@ function renderSavePromptHtml(listCount: number): string {
   return renderPage({ title: "Plan saved", activeNav: "plan", body, listCount });
 }
 
+/**
+ * Plan-archive read surface (TECH-06, GET /plan/archive). Renders every previously-saved,
+ * then-replaced plan as a card carrying the `data-archived-plan` marker, showing its ORIGINAL
+ * week + estimated savings (provenance preserved). Separate read surface — the current-week
+ * /plan view is unchanged. Empty archive renders a friendly empty state (no markers).
+ */
+function renderArchiveHtml(archived: ArchivedMealPlan[], listCount: number): string {
+  if (archived.length === 0) {
+    const emptyBody = `<h1>Plan Archive</h1>
+  <p class="empty-archive">No previous plans have been archived yet.</p>`;
+    return renderPage({ title: "Plan Archive", activeNav: "plan", body: emptyBody, listCount });
+  }
+  const cards = archived
+    .map((plan) => `<li data-archived-plan class="archived-plan">` +
+      `<span class="archived-week">Week of ${escapeHtml(plan.weekStart)}</span> ` +
+      `<span class="archived-savings" data-estimated-savings="${plan.estimatedSavings}">${formatEuros(plan.estimatedSavings)}</span>` +
+      `</li>`)
+    .join("");
+  const body = `<h1>Plan Archive</h1>
+  <ul class="archived-plans">${cards}</ul>`;
+  return renderPage({ title: "Plan Archive", activeNav: "plan", body, listCount });
+}
+
 const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
 
 /**
@@ -250,6 +274,9 @@ export class PlanHandler {
     private readonly preferencesRepository?: UserPreferencesRepository,
     // Optional trailing param (same precedent): production injects it for the nav badge.
     private readonly shoppingListService?: ShoppingListService,
+    // Optional trailing param (same precedent): the archive READ port (TECH-06). Production
+    // (server.ts) injects the SQLite repo; when absent, the archive view shows the empty state.
+    private readonly mealPlanRepository?: MealPlanRepository,
   ) {}
 
   async handleGetPlan(request: Request): Promise<Response> {
@@ -275,6 +302,19 @@ export class PlanHandler {
     const plan = await this.planService.getOrGenerateCurrentWeekPlan();
     const html = renderPlanHtml(plan, scopedSlots, itemsById, this.listCount());
     return new Response(html, {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+
+  /**
+   * GET /plan/archive (TECH-06) — the plan-archive read surface. Lists previously-saved,
+   * then-replaced plans (archived, not deleted) as `data-archived-plan` cards. A SEPARATE
+   * read surface from the current-week /plan view, which stays unchanged.
+   */
+  async handleGetArchive(_request: Request): Promise<Response> {
+    const archived = this.mealPlanRepository?.listArchivedPlans() ?? [];
+    return new Response(renderArchiveHtml(archived, this.listCount()), {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });

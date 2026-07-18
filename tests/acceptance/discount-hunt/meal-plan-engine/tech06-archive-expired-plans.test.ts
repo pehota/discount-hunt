@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
 import { HAPPY_VEG_BASKET } from "../../support/meal-plan-domain.ts";
 
-describe.skip("@driving_port — Replacing a saved plan archives the previous plan rather than deleting it", () => {
+describe("@driving_port — Replacing a saved plan archives the previous plan rather than deleting it", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
