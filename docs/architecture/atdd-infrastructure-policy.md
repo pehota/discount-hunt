@@ -39,7 +39,34 @@
 |-----------|-----------|-------|
 | Aldi Süd catalogue HTTP (`CatalogueFetcher`) | `FakeAldiCatalogueAdapter` — in-memory, injected via port; when CLI subprocess: fixture JSON written to tmp file + `FAKE_CATALOGUE_FIXTURE` env var set | Fixture must include items with BOTH `price` and `discountedPrice` (happy path) or `price`-only items (error path); `price > discountedPrice` invariant enforced in fixture per D22 |
 | Chefkoch recipe fetcher (`RecipeFetcher`) | `FakeChefkochFetcher` — in-memory, injected via port | S01 plan-service uses hardcoded stub URL; real integration deferred to S05 |
-| Brave Search API (`RecipeSearchClient`) | `FakeBraveSearchClient` — in-memory, injected via port | OQ-1 unresolved; fake covers S01 walking skeleton; real validation deferred to S05 |
+| ~~Brave Search API (`RecipeSearchClient`)~~ **SUPERSEDED (meal-plan-engine DISTILL)** | ~~`FakeBraveSearchClient`~~ | **OQ-1 RESOLVED: Brave was never adopted. Recipe lookup is the source-agnostic `RecipeSource` port (`find(query)→FetchedRecipe\|null`). Row retained struck-through for provenance; the live seam is the `RecipeSource` row below.** |
+| **`RecipeSource` (source-agnostic port; source = `ChefkochRecipeSource`, ADR-008 reverted)** — driven-external | `FakeRecipeSource` (`tests/acceptance/support/fake-recipe-source.ts`) — in-memory, injected via the shipped `recipeSource` param on `createServer` | The single testability seam for recipe lookup; acceptance tests inject canned `FetchedRecipe`. Prod wires `ChefkochRecipeSource` behind the port; the port keeps a future source addable without redesign |
+| **`RecipeCandidateProvider` (driving port, read-only)** — internal app service | exercised INDIRECTLY through the driving HTTP routes (not a driven port; composes `RecipeService` + `DietaryVerifier`) | No standalone fake — it is the shell service the plan handler calls; tested via `POST /plan/generate` acceptance scenarios |
+
+---
+
+## Driven Internal Ports — additions (meal-plan-engine)
+
+| Port class | Mechanism | Notes |
+|-----------|-----------|-------|
+| **`PlanDraftRepository` (NEW, ADR-007)** | Real SQLite file in `os.tmpdir()` per test file (same mechanism as all repos); single-user draft singleton | Server-side throwaway draft state (survives regenerate→save gap); v2 extends with per-meal `accepted` |
+
+---
+
+## Pure Domain Logic — NOT a port (meal-plan-engine)
+
+| Component | Test treatment | Notes |
+|-----------|----------------|-------|
+| **`DietaryVerifier`** (`src/recipe/dietary-verifier.ts`) | Pure function — collocated unit test + fast-check PBT (`src/recipe/dietary-verifier.test.ts`), NOT injected via a port | JOB-003 safety gate; German gold corpus (EN families kept as harmless extra coverage; ADR-008 reverted) + word-boundary no-over-match; deterministic, no I/O — so it is unit-tested directly, never faked |
+| **cost-objective** (`src/meal-planning/cost-objective.ts`) | Pure functions — collocated fast-check PBT (`cost-objective.test.ts`) | Deduped-savings invariants (D44 double-count guard) + spend<=baseline (KPI-1) |
+
+---
+
+## Driving / Subprocess — additions (meal-plan-engine)
+
+| Port class | Mechanism | Notes |
+|-----------|-----------|-------|
+| **Recipe cache-warmer one-shot** (`bun run src/recipe/recipe-cache-warmer.ts`) | `Bun.spawnSync` like the scraper (subprocess + exit code), fake `RecipeSource` injected via env seam analogous to `CATALOGUE_SOURCE=fake` | ADR-006 Option D; cron post-Monday-scrape; paced (1 req/30-35s, 429 backoff); NOT a daemon. Covered by a subprocess adapter test when built (DELIVER) |
 
 ---
 

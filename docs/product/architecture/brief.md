@@ -13,7 +13,7 @@
 | Users | 1 | Single-user, no concurrency |
 | Scrape volume | ~155 items/week | prospekt.aldi-sued.de catalogue |
 | DB rows/year | ~8,000 discount items + ~260 recipes + ~52 plan rows | <5 MB/year |
-| Recipe lookups | ~5/week | Chefkoch site-search + JSON-LD; no API key; ~260/year, 7-day cache |
+| Recipe lookups | ~5/week | Chefkoch site-search + JSON-LD parse (no API key). ~260/year, 7-day cache |
 | QPS | < 1 | One human, a few clicks per week |
 | Peak load | 1 person clicking "Generate Plan" | Plan generation <5s NFR easily met in-memory |
 | Scraper runtime | ~30s once/week | Monday 06:00 CET |
@@ -73,7 +73,7 @@ flowchart TB
     Dimitar -->|"Views discount feed,\ngenerates meal plan,\nchecks savings"| DiscountHunt
     DiscountHunt -->|"HEAD → 302 slug,\nGET hotspots_data.json pages"| Prospekt
     DiscountHunt -->|"GET catalogue pages\n(SLICE-02+)"| Edeka
-    DiscountHunt -->|"GET suche.php site-search,\nthen GET recipe page,\nparse JSON-LD (~5/week)"| Chefkoch
+    DiscountHunt -->|"GET suche.php site-search,\nthen GET recipe page,\nparse JSON-LD"| Chefkoch
 ```
 
 ---
@@ -99,7 +99,7 @@ flowchart TB
 
     Dimitar -->|"http://localhost\nbrowser"| Web
     Web -->|"SQL reads"| DB
-    Web -->|"GET suche.php + recipe page\n(cache miss, recipe detail view)"| ExtChefkoch
+    Web -->|"GET suche.php + recipe page\n(cache miss)"| ExtChefkoch
     Web -->|"SQL write\n(recipe cache)"| DB
 
     Scheduler -->|"exec weekly"| Scraper
@@ -168,7 +168,7 @@ Per Principle 9 (Earned Trust), each infrastructure component must empirically v
 | **Catalogue Scraping** | Fetches external store catalogues; normalizes raw JSON to domain objects; records scrape metadata | `ScrapeJob` | `scrape_jobs` | Invokes `RegisterDiscountItem` command on Discount/Pricing context (ACL to external stores) |
 | **Discount / Pricing** | Owns discounted item records; enforces price invariants; resolves item availability | `DiscountItem` | `discount_items` | Customer: receives normalized data from Scraping context; Supplier to Meal Planning |
 | **Meal Planning** | Generates dietary-filtered, discount-driven 7-day meal plan; coordinates item selection + recipe linking; computes and commits estimated savings | `MealPlan` | `meal_plans` | Customer: reads DiscountItem from Discount/Pricing, reads Recipe from Recipe Matching, reads UserPreferences from Preferences |
-| **Recipe Matching** | Finds recipes for meal ingredients via Chefkoch site-search + JSON-LD parse; maintains 7-day cache | `Recipe` | `recipes` | ACL to chefkoch.de (single `RecipeSource` port); Supplier to Meal Planning |
+| **Recipe Matching** | Finds recipes for meal ingredients via Chefkoch site-search → JSON-LD parse; maintains 7-day cache | `Recipe` | `recipes` | ACL to chefkoch.de via the single source-agnostic `RecipeSource` port; Supplier to Meal Planning |
 | **Savings Tracking** | Stores immutable weekly savings records; displays week/month history | `SavingsRecord` | `savings_log` | Customer: receives committed `saved_amount` from Meal Planning at plan-save time; read-only thereafter |
 | **User Preferences** | Stores dietary restriction setting; single-user configuration | `UserPreferences` | `user_settings` | Supplier to Meal Planning (read at plan-generation time) |
 
@@ -404,7 +404,7 @@ flowchart TB
 | Relationship | Pattern | Rationale |
 |-------------|---------|-----------|
 | External stores → Catalogue Scraping | **ACL** | External catalogue JSON (Publitas format, Aldi Süd-specific) translated at boundary; protects domain from schema drift |
-| Chefkoch → Recipe Matching | **ACL** | Site-search HTML + recipe-page JSON-LD translated to internal `Recipe` aggregate via the single `RecipeSource` port; `find()` returns null on any shape change (never throws into the domain) |
+| Chefkoch → Recipe Matching | **ACL** | Chefkoch site-search + JSON-LD translated to the internal `Recipe` aggregate via the single source-agnostic `RecipeSource` port; `find()` returns null on any shape change or no parseable `schema.org/Recipe` (never throws into the domain) |
 | Catalogue Scraping → Discount/Pricing | **Customer-Supplier** | Scraping is upstream; Discount/Pricing is downstream consumer of normalized rows. Scraping owns the schema; Discount/Pricing conforms to it |
 | Discount/Pricing → Meal Planning | **Customer-Supplier** | Discount/Pricing is upstream supplier; Meal Planning is downstream customer. Meal Planning reads by `week_start`; no negotiation needed at this scale |
 | User Preferences → Meal Planning | **Customer-Supplier** | Preferences is upstream supplier; Meal Planning reads restriction at plan-generation time |
@@ -582,10 +582,10 @@ One row per bounded context. All modules share the single Bun HTTP process (D11)
 | `CatalogueFetcher` | `edeka-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | FUTURE — not implemented; Edeka blocked by Akamai Bot Manager | Yes: Edeka catalogue |
 | `CatalogueFetcher` | `v-markt-catalogue-fetcher.ts` | `Bun.fetch` | Catalogue Scraping | Delivered S02 | Yes: V-Markt catalogue |
 | `CatalogueExtractor` | `haiku-catalogue-extractor.ts` | Anthropic SDK (claude-haiku-4-5) | Catalogue Scraping | Delivered S02 | Yes: Anthropic API |
-| `RecipeSource` | `chefkoch-recipe-source.ts` (prod) / `FakeRecipeSource` (tests) | `Bun.fetch` + Chefkoch site-search + JSON-LD parse | Recipe Matching | SPIKE-02 closure probe (3/3 live); `find()` returns null on shape change | Yes: chefkoch.de (`suche.php` + recipe pages) |
+| `RecipeSource` | `chefkoch-recipe-source.ts` (as-shipped, primary/sole source) / `FakeRecipeSource` (tests) | `Bun.fetch` + chefkoch.de site-search + JSON-LD parse | Recipe Matching | SPIKE-02 closure probe (3/3 live, Chefkoch); `find()` returns null on shape change | Yes: chefkoch.de (no API key) |
 
 **External integrations requiring contract tests (handoff annotation for platform-architect):**
-- chefkoch.de (site-search HTML + schema.org JSON-LD): the single `RecipeSource` port is the seam; `FakeRecipeSource` keeps the suite off the network. `ChefkochRecipeSource` is validated by the SPIKE-02 closure probe; consider HTTP recording fixture tests (e.g., `nock` or Bun fetch mock) to detect site-search / JSON-LD schema drift in CI. (Brave dropped at SPIKE-02 closure — no external API key.)
+- chefkoch.de (site-search HTML + schema.org JSON-LD): the primary/sole recipe source behind the source-agnostic `RecipeSource` port; `FakeRecipeSource` keeps the suite off the network. `ChefkochRecipeSource` is validated by the SPIKE-02 closure probe; consider HTTP recording fixture tests (e.g., `nock` or Bun fetch mock) to detect site-search / JSON-LD schema drift in CI. (Brave dropped at SPIKE-02 closure — no external API key.)
 
 ---
 
@@ -720,9 +720,136 @@ flowchart TB
 | D32 | Test framework | Bun test (built-in) | Zero additional dependency; compatible with D17; Vitest rejected (requires Node.js-compatible runtime config, adds a dev dependency for no benefit when Bun test is equivalent) |
 | D33 | Dietary filter enforcement | `isCompatible()` Shared Kernel in `src/shared/dietary.ts` | Solves registry HIGH risk: three consumers cannot diverge if there is only one predicate; declared Shared Kernel (explicit D26 exception); import-linter enforces no other file reimplements the predicate |
 | D34 | Architectural enforcement | `dependency-cruiser` configured to enforce: (a) no cross-context imports except from `src/shared/`; (b) only `src/*/adapters/sqlite-*.ts` may import `src/shared/schema.ts`; (c) no domain service imports HTTP handler | Principle 11: architecture rules without enforcement erode; pre-commit hook + CI check |
-| D35 | Composition root | `src/server.ts` — wire → probe → register routes | Implements "wire then probe then use" invariant (Principle 13); adapters that fail probe cause `health.startup.refused` + process exit code 1 before any route is registered |
+| D35 | Composition root | `src/server.ts` — wire → probe → register routes | Implements "wire then probe then use" invariant (Principle 13); adapters that fail probe cause `health.startup.refused` + process exit code 1 before any route is registered. |
 | D36 | Recipe rotation window | 4-week exclusion — `GeneratePlan` excludes any `recipe_id` used in the last 28 days | Prevents weekly repetition of the same recipe when the same ingredient recurs on sale; enforced in `plan-service.ts` via `getRecentRecipeIds(since)` pre-filter; window is a named constant (`RECIPE_ROTATION_DAYS = 28`) for future tunability |
 | D37 | Plan generation contract shape | `generatePlan(weekStart, preferences): MealPlan` — pure computation returning a `MealPlan` value; `savePlan(plan): void` is the only impure function (writes to DB + savings_log in one transaction) | Plan-value pattern (Principle 12): `generatePlan` cannot silently write; the bug class "preview wrote to savings_log" becomes structurally impossible |
+
+---
+
+## Wave: DESIGN / [REF] meal-plan-engine — Application Architecture Extension (2026-07-17, Morgan)
+
+*EXTENDS the Application Architecture above. Feature: meal-plan-engine (real discount-driven recipes,
+throwaway drafts, cost objective). Full DESIGN detail: `docs/feature/meal-plan-engine/feature-delta.md`
+DESIGN sections + adr-006, adr-007, adr-008 (recipe SOURCE = Chefkoch-primary; ADR-008 Google swap reverted), adr-005 addendum.*
+
+### New / extended components
+
+| Component | File | EXTEND / NEW | Contract shape | Responsibility |
+|---|---|---|---|---|
+| `ChefkochRecipeSource` (primary/sole source) | `src/recipe/adapters/chefkoch-recipe-source.ts` | REUSE | effectful behind `RecipeSource` port | The shipped Chefkoch site-search + JSON-LD adapter is the primary/sole recipe source behind the `RecipeSource` port. |
+| `PlanService.generatePlan` | `src/meal-planning/plan-service.ts` | EXTEND | pure / return-only (**D37 preserved**) | Assemble `MealPlan` from a **verified recipe-candidate set** (pure data in). No fetch, no verify, no write. |
+| Draft orchestration | `src/meal-planning/plan-service.ts` | EXTEND | bounded-change (draft slot) | `generateDraft`/`regenerateDraft`/`saveDraft`→`savePlan`/`discardDraft`. Recipe resolution + dietary verify are SHELL effects here, then the pure core is called (D38). |
+| `RecipeCandidateProvider` (port + impl) | `src/recipe/ports/recipe-candidate-provider.ts` | NEW | effectful, read-only port | `findCandidates(basket, restriction) → VerifiedCandidate[]`. Composes shipped `RecipeService` + `DietaryVerifier`. No write method (Principle 12 driving-port split). |
+| `DietaryVerifier` | `src/recipe/dietary-verifier.ts` | NEW | pure / return-only | Deterministic word-boundary German-focused non-veg blocklist over FULL fetched ingredient lists + title (adr-005 Layer 3); skips results without a parseable `schema.org/Recipe` (reject, never surface unverified). NOT `tokensOverlap`. |
+| Paced cache-warmer | `src/recipe/recipe-cache-warmer.ts` | NEW (adr-006 Option D — LOCKED 2026-07-17) | bounded-change (recipes cache) | **Cron one-shot** (reuses D12/D18, NOT a daemon), scheduled post-Monday-scrape: paced crawl (1 req/30–35 s, backoff) of queries from this week's deals into the shipped 7-day cache; generation reads cache-first, with cold-cache fallback to live-throttled fetch (Option B behavior). Adds one cron-invoked one-shot to the L2 Container topology. |
+| `PlanDraftRepository` (port + adapter) | `src/meal-planning/ports/plan-draft-repository.ts` + `adapters/sqlite-plan-draft-repository.ts` | NEW | bounded-change (draft row) | Server-side draft singleton (adr-007); mirrors `user_settings` singleton; never touches `meal_plans`/`savings_log`. |
+| `tokensOverlap` fix | `src/recipe/ingredient-match.ts` | EXTEND (bug fix) | pure | Word-boundary match (SPIKE over-matcher bug). Display-only. |
+
+### Model change (Meal Planning CORE aggregate)
+
+`Meal` value object: `discountItemId | null` → `discountItemIds[]` (multi-product meals) + `recipeId` +
+recipe title + (v2) `accepted`. Deduped savings computed over the **used-product set referenced by meals**
+(a product used by N meals counts once), reusing `regular−sale` from the same `discount_items` rows (single
+source). The replace-on-save double-count guard (`plan-service.ts:100-118`, one `savings_log` row/week) is
+**orthogonal and unchanged** (D44). New `plan_drafts` table (fixed-PK singleton).
+
+### New driving ports (inbound)
+
+`POST /plan/regenerate`, `POST /plan/save` (+ D4 add-to-list prompt), `POST /plan/discard`,
+`POST /plan/generate?from=list` (D2), `POST /plan/meal/{id}/accept` (v2). Handlers extend
+`plan-handler.ts` / `shopping-list-handler.ts`. `RecipeCandidateProvider` is an INTERNAL service, not a route.
+
+### New driven ports (outbound) — added rows
+
+| Port | Adapter | Tech | External | Substrate probe |
+|---|---|---|---|---|
+| `RecipeSource` (SHIPPED port, reused) | `ChefkochRecipeSource` (primary/sole source) | `Bun.fetch` + chefkoch.de site-search + JSON-LD parse | Yes: chefkoch.de (no API key) | SPIKE-02 closure probe: a known query yields a parseable `schema.org/Recipe`; `find()` returns null on shape change |
+| `PlanDraftRepository` (NEW) | `sqlite-plan-draft-repository.ts` | Drizzle/SQLite | No | Shared WAL probe; test: draft write leaves `meal_plans`/`savings_log` unchanged |
+| Cache-warmer (conditional) | `recipe-cache-warmer.ts` | `Bun.fetch` (paced) via `RecipeSource` | Yes: chefkoch.de (paced) | Known query→parseable Recipe; refuse-to-warm + `health.warmer.refused` on repeated 429 (Principle 13) |
+| `DietaryVerifier` gold-test (Principle 13) | verifier suite | — | No | RUN-4 known lies (Brokkoli-gratin `Schinken`, Schnitzel `Kalbsbrät`) → REJECTED; German-focused blocklist |
+
+### Dietary enforcement — 3 layers (adr-005 EXTENDED, not superseded)
+
+1. Forced dietary query term, German `vegetarisch` — SHIPPED (`buildRecipeQuery`; RUN-5's 40%→0% proof holds on Chefkoch).
+2. `isCompatible(dietary_tags, restriction)` at anchor selection — SHIPPED (adr-005, unchanged).
+3. `DietaryVerifier` over the fetched recipe's free-text ingredients, German-focused blocklist — NEW (D40). The recipe safety gate.
+
+### Dietary Re-validation (defense-in-depth; residual recommended, not blocking)
+
+Echoes `docs/feature/meal-plan-engine/design/upstream-changes.md` UC-3 (single source of truth — summarized, not duplicated):
+
+- **Blocklist gold-test**: the `DietaryVerifier` (Layer 3) is gold-tested against the RUN-4 known lies (Schinken, Kalbsbrät → REJECT) plus the common German non-veg keyword families (pork/beef/poultry/fish/seafood/gelatin) — word-boundary matched (no substring over-match: `hack` ⊄ `gehackt`). Full family list lives in UC-3.
+- **Residual measurement (RECOMMENDED, not blocking)**: RUN-5's 40%→0% proof was measured on Chefkoch, so it holds; measure residual over the first weeks as defense-in-depth.
+- **Runtime guardrail**: on ANY non-veg keyword surfacing to a vegetarian/vegan plan, emit the structured `guardrail.dietary.violation` alert (the 100%-no-violation fail-safe behind the verifier).
+
+### C4 Component Diagram — recipe-sourcing + dietary-verifier subsystem (the complex one)
+
+```mermaid
+flowchart TB
+    PH["plan-handler\n(POST /plan/generate,\n/regenerate,/save,/discard)"]
+
+    subgraph Shell["Meal Planning SHELL (effects — src/meal-planning/plan-service.ts)"]
+        Orch["Draft orchestration\ngenerateDraft / regenerateDraft\n/ saveDraft / discardDraft"]
+    end
+
+    subgraph Core["Meal Planning CORE (PURE — D37)"]
+        Gen["generatePlan(weekStart,\nverifiedCandidates): MealPlan\nno fetch / no write"]
+    end
+
+    subgraph RecipeSub["Recipe candidate subsystem (src/recipe/)"]
+        Provider["RecipeCandidateProvider\nfindCandidates(basket, restriction)\n(read-only driving port)"]
+        RS["RecipeService\ngetRecipeForMeal (cache-first 7d)"]
+        Query["buildRecipeQuery\n(forced vegetarisch — Layer 1)"]
+        Verifier["DietaryVerifier\nword-boundary blocklist\n(Layer 3, pure — German-focused)"]
+        Warmer["recipe-cache-warmer\n(adr-006 Option D — LOCKED)\ncron one-shot, paced, backoff"]
+    end
+
+    DraftRepo["PlanDraftRepository\n(sqlite draft singleton — adr-007)"]
+    SavePath["savePlan → meal_plans + savings_log\n(same tx; replace-on-save guard)"]
+    ChefkochSrc["ChefkochRecipeSource\n(RecipeSource port — primary/sole source)"]
+    ExtChefkoch["chefkoch.de [External]"]
+    DietTags["isCompatible (dietary_tags)\nLayer 2 — SHIPPED adr-005"]
+
+    PH -->|"triggers"| Orch
+    Orch -->|"resolves verified candidates via"| Provider
+    Orch -->|"reads/writes draft via"| DraftRepo
+    Orch -->|"assembles pure plan via"| Gen
+    Orch -->|"on Save →"| SavePath
+    Provider -->|"composes query via (forced vegetarisch)"| Query
+    Provider -->|"fetches via"| RS
+    Provider -->|"verifies free-text ingredients via (German blocklist)"| Verifier
+    Provider -->|"gates anchors via"| DietTags
+    RS -->|"find() via RecipeSource port"| ChefkochSrc
+    Warmer -->|"paced warms cache via"| ChefkochSrc
+    ChefkochSrc -->|"GET suche.php + recipe page"| ExtChefkoch
+```
+
+### Decisions (D38–D45)
+
+| ID | Decision | Verdict |
+|----|----------|---------|
+| D38 | Effect boundary | Fetch + verify are SHELL effects; `generatePlan` stays pure (D37) |
+| D39 | Recipe sourcing MECHANISM | **ACCEPTED — adr-006, Option D LOCKED (user sign-off 2026-07-17).** Cron-one-shot cache-warm; cold-cache fallback to B; warm/live TARGET = Chefkoch site-search |
+| **D39b** | Recipe **SOURCE** | **SUPERSEDED (adr-008 reverted 2026-07-18).** Reverted to Chefkoch-primary: the shipped `ChefkochRecipeSource` is the primary/sole source behind the `RecipeSource` port. External Google Custom Search JSON API discontinued + closed to new customers (unbuildable) |
+| D40 | Dietary verifier | NEW deterministic word-boundary German-focused blocklist over free-text recipe ingredients — RUN-5 0-leak proof holds on Chefkoch; residual recommended-not-blocking |
+| D41 | adr-005 | EXTENDED (addendum), NOT superseded |
+| D42 | Draft state | SQLite single-user draft singleton (adr-007) |
+| D43 | Multi-product `Meal` | `discountItemIds[]` array |
+| D44 | Deduped savings | Dedup over used-product set; replace-on-save guard orthogonal + unchanged |
+| D45 | LLM query-building | Optional, off by default; refusal-sentinel mandatory if enabled |
+
+**Enforcement (Principle 11):** `dependency-cruiser` — no context imports Chefkoch directly (only via the
+`RecipeSource` port); `DietaryVerifier`/`isCompatible` are the only dietary predicates. Verifier + warmer
+probes per Principle 13.
+
+> **ADR-008 REVERTED (2026-07-18) — recipe SOURCE stays Chefkoch:** ADR-008's Google multi-site swap is
+> SUPERSEDED. The Google Custom Search JSON API is discontinued (shuts down Jan 1 2027) AND already closed
+> to new customers — unbuildable; the whole cheap-web-search-API category collapsed (Brave killed its free
+> tier, Bing retiring, DDG has no API). The shipped `ChefkochRecipeSource` is the primary/sole source behind
+> the unchanged source-agnostic `RecipeSource` port. The Google adapter + composite were RED scaffolds ONLY
+> and have been DELETED. Dietary safety: RUN-5's 40%→0% proof was measured on Chefkoch, so it holds; the
+> German-focused verifier is defense-in-depth (residual measurement recommended, not blocking).
+> Full detail: `adr-008-recipe-source-selection.md` + feature-delta DESIGN sections.
 
 ---
 

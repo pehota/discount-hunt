@@ -79,3 +79,46 @@ A domain event / pub-sub approach was considered: `DietaryRestrictionsUpdated` t
 | Filtering delegated to the DB query layer | SQL `WHERE` clauses cannot be property-tested as a pure function; logic duplication across 3 queries |
 | Post-filter on plan output | Violates DISCUSS D7 ("applied before meal generation, not after"); may generate plans with 0 meals that weren't rejected early |
 | Pub-sub on `DietaryRestrictionsUpdated` | Adds async complexity for a consistency problem that doesn't exist — all consumers read from one SQLite row |
+
+---
+
+## Addendum (2026-07-17, meal-plan-engine DESIGN — EXTENDED, not superseded)
+
+The meal-plan-engine adds a SECOND dietary layer for a NEW data shape. `isCompatible(tags, restriction)`
+operates on a `DiscountItem`'s pre-classified `dietary_tags[]`. The new engine surfaces **real web recipes
+whose free-text ingredient lists are NOT pre-classified** — a shape this ADR's predicate cannot judge.
+
+**This ADR stands unchanged.** The new `DietaryVerifier` (`src/recipe/dietary-verifier.ts`, D40) is an
+ADDITIVE second-line gate over fetched-recipe free-text ingredients + title, using a deterministic
+word-boundary non-veg blocklist. Defense-in-depth after the first-line control (the forced dietary term
+injected by `buildRecipeQuery`).
+
+> **RESTORED for Chefkoch-primary (2026-07-18 — ADR-008 superseded):** SPIKE RUN-5's "forced `vegetarisch`
+> flipped leaks 40%→0%" was measured **ON CHEFKOCH**, which is again the shipped source, so this proof holds.
+> The guard returns to the SPIKE §10 posture: (1) forced German term `vegetarisch` (the language-aware
+> `+vegetarian` requirement is dropped — single German source); (2) German-focused blocklist below;
+> (3) residual leak measured over the first weeks in real use — **RECOMMENDED, not a blocking slice-01b gate**
+> (verifier is defense-in-depth). See `upstream-changes.md` UC-3.
+
+- Layer 1 (SHIPPED): forced German dietary query term `vegetarisch` (`buildRecipeQuery`) — first-line bias.
+- Layer 2 (SHIPPED): `isCompatible` on `DiscountItem.dietary_tags[]` — anchors gated at selection (this ADR).
+- Layer 3 (NEW, D40): `DietaryVerifier` on the fetched RECIPE's free-text ingredients, German-focused
+  blocklist (single German source) — the recipe safety gate.
+
+The verifier is NOT the display heuristic `tokensOverlap` (that is a display-only over-matcher, being fixed
+as a separate bug). Per Principle 13 its probe MUST exercise the SPIKE RUN-4 known lies (Brokkoli-gratin
+`Schinken`, Schnitzel `Kalbsbrät` → both REJECTED). See adr-006, feature-delta DESIGN sections. adr-005 is
+NOT superseded — the predicate and its Shared-Kernel enforcement are unchanged.
+
+**Verifier completeness (peer-review HIGH — JOB-003 is a hard 100%-no-violation constraint):** the
+blocklist gold-test corpus (German non-veg keyword families) plus the runtime 100%-guardrail alert are
+specified in `docs/feature/meal-plan-engine/design/upstream-changes.md` UC-3. The RUN-5 Chefkoch 0-leak proof
+holds (Chefkoch is the shipped source); the verifier is defense-in-depth. Residual leak is measured over the
+first weeks in real use (recommended, not a blocking gate).
+
+**Enforcement status note (this ADR's `dependency-cruiser` layer):** the static rule forbidding dietary
+predicate re-implementation outside `src/shared/dietary.ts` is the DELIVER-gated enforcement layer (D34
+configures `dependency-cruiser` as a pre-commit + CI check). For the meal-plan-engine, the same config MUST
+be extended to cover the new `DietaryVerifier` (no other file may re-implement non-veg detection). Until the
+rule ships, the "single source" property is enforced structurally (one file) + behaviorally (gold-test), and
+the linter is the third layer — add the verifier rule in slice-01b's DELIVER work.

@@ -192,7 +192,8 @@ converging (regenerate until it fits) → satisfied/in-control (saved, shop cost
 transitions: each regenerate is a low-cost experiment (throwaway draft — nothing committed until Save).
 
 **Critical error paths** (feed into DISTILL error scenarios):
-1. SPIKE-negative basket (no real recipe uses ≥2 discounted products dietary-compatibly) → fall back to
+1. SPIKE-negative basket (no real recipe uses ≥1 discounted anchor dietary-compatibly — SPIKE-reshaped
+   from the original ≥2 hypothesis; see design/upstream-changes.md UC-1) → fall back to
    fewer-product or single-product recipes; never invent a recipe (D1).
 2. Zero recipes for the whole basket → draft shows "couldn't build meals from these — try a different
    selection"; never a fabricated meal.
@@ -225,7 +226,7 @@ placeholder generation core in place; it is the highest-leverage increment, not 
 
 | # | Slice | One-line goal | Value×Urgency/Effort | Rationale |
 |---|-------|---------------|----------------------|-----------|
-| 1 | **S00 SPIKE** | Can a basket of N discounted products + a dietary need return a REAL recipe using ≥2 of them? | risk-gate | D8: highest uncertainty; disproves the whole feature cheaply if it fails. Validates D1 + whether LLM query-building helps. |
+| 1 | **S00 SPIKE** | Can a basket of N discounted products + a dietary need return a REAL recipe using ≥1 discounted anchor? (SPIKE-reshaped from the original ≥2 hypothesis — design/upstream-changes.md UC-1) | risk-gate | D8: highest uncertainty; disproves the whole feature cheaply if it fails. Validates D1 + whether LLM query-building helps. |
 | 2a | **S01a** draft lifecycle | Throwaway DRAFT + regenerate-WHOLE + Save/Discard (meals still round-robin) | 5×5/2 ≈ 12.5 | KEYSTONE part 1. **NOT gated on S00** — the lifecycle is independent of recipe feasibility, so it can proceed regardless of the spike outcome. Server-side draft state. |
 | 2b | **S01b** real-recipe generation | Replace round-robin with real basket-recipes (dietary-safe) | 5×5/3 ≈ 8.3 | KEYSTONE part 2. **Gated on S00 GO** — this is the part the spike de-risks. The real engine. |
 | 3 | **S03** cost objective | Selection minimises total € to feed the week, preferring discounts (D7) | 5×4/3 ≈ 6.7 | The JOB-004 outcome. Rides S01b's engine; changes the product-selection step. |
@@ -246,8 +247,9 @@ S02/S04 because the cost objective is the JOB-004 outcome the whole reframe exis
 
 ## Wave: DISCUSS / [REF] System Constraints (cross-cutting)
 
-- **Reuse over rebuild** (SSOT/DRY): extend the shipped Chefkoch source + `RecipeService` cache; reuse
-  the live `ShoppingListService` / `POST /list/add` for D2/D4; reuse the `LlmTextGenerator` port for
+- **Reuse over rebuild** (SSOT/DRY): reuse the source-agnostic `RecipeSource` port + `RecipeService`
+  cache; the shipped `ChefkochRecipeSource` is the primary/sole source behind that port.
+  Reuse the live `ShoppingListService` / `POST /list/add` for D2/D4; reuse the `LlmTextGenerator` port for
   optional query-building. No parallel artifacts.
 - **Dietary safety (JOB-003) is a hard gate**, not a filter-after: no recipe that violates the
   restriction may ever surface (D1). NEVER an LLM-invented recipe.
@@ -308,7 +310,7 @@ he cannot experiment.
 #### Domain Examples
 1. **Happy path**: Dimitar selects Rote Linsen (Aldi €1.19), Campari Tomaten (Edeka €1.29), Mozzarella
    (Aldi €0.69). Generates → a draft of real vegetarian recipes: "Rote Linsen-Tomaten-Dal" (uses Rote
-   Linsen + Campari Tomaten), "Caprese Salat" (uses Mozzarella + Campari Tomaten). Each links to Chefkoch.
+   Linsen + Campari Tomaten), "Caprese Salat" (uses Mozzarella + Campari Tomaten). Each links to its source.
 2. **Regenerate whole draft**: unhappy with the draft, taps "Regenerate" → a DIFFERENT set of real
    recipes from the same deals. Nothing was saved; the previous week's saved plan (if any) is untouched.
 3. **Discard**: taps "Discard" → the draft is gone, `/plan` shows the last saved plan (or the empty state).
@@ -353,7 +355,7 @@ Scenario: No real recipe can be built from the selection
 ```
 
 #### Acceptance Criteria
-- [ ] Each drafted meal is a REAL recipe (title + source link), sourced via the shipped Chefkoch source (reused/extended), never an LLM-invented recipe, never a bare discount-item name.
+- [ ] Each drafted meal is a REAL recipe (title + source link), sourced via the shipped `ChefkochRecipeSource` (primary/sole source) behind the source-agnostic `RecipeSource` port — never an LLM-invented recipe, never a bare discount-item name.
 - [ ] Each meal names the discounted product(s) it uses.
 - [ ] No drafted recipe violates the dietary restriction (JOB-003).
 - [ ] Generation produces a DRAFT that is NOT persisted; the existing saved plan and `savings_log` are untouched until Save.
@@ -848,7 +850,7 @@ whether LLM query-building helps) firm up only after the Spike.
 
 | Risk | Prob | Impact | Mitigation |
 |------|------|--------|------------|
-| SPIKE fails: no basket→real-recipe search returns ≥2-product dietary-safe recipes | Med | High | slice-00 first (D8); disproof condition explicit; degrade path = fewer-product recipes; never invent (D1) |
+| SPIKE fails: no basket→real-recipe search returns ≥1-anchor dietary-safe recipes (SPIKE-reshaped from ≥2 — UC-1) | Med | High | slice-00 first (D8); disproof condition explicit; degrade path = fewer-product recipes; never invent (D1) |
 | Multi-product savings breaks the `savings_log` double-count guard | Med | High | Architectural Flag 2 + AC pins deduped==shipped-tracker; DESIGN constraint |
 | Server-side draft state under-scoped (thought v2-only) | Med | Med | Flagged as attaching at v1 (slice-01); DESIGN chooses mechanism |
 | D2+D4 add-to-list no-op when source==list | Low | Low | Flagged; DESIGN dedups / suppresses prompt |
@@ -867,3 +869,403 @@ whether LLM query-building helps) firm up only after the Spike.
 | 4 | Dietary safety: 0 violating recipes surfaced | Not yet |
 | 5 | Demoable: generate a real-recipe draft, make it cheapest, save → add to list | Not yet |
 | 6 | Merged to main; running locally | Not yet |
+
+---
+---
+
+# Wave: DESIGN (Morgan — nw-solution-architect · 2026-07-17 · mode: propose · density: lean Tier-1)
+
+> Application/component layer. EXTENDS the shipped app (through phase 12). SSOT updates land in
+> `docs/product/architecture/brief.md` `## Application Architecture` + new ADRs (adr-006, adr-007) +
+> `docs/product/architecture/adr-005` reconciliation. Upstream AC changes:
+> `docs/feature/meal-plan-engine/design/upstream-changes.md`. Decision summary:
+> `docs/feature/meal-plan-engine/design/wave-decisions.md`.
+
+## Wave: DESIGN / [REF] Approach (no new style — extend the modular monolith)
+
+No architecture-style decision to make: the app is a modular monolith + hexagonal (D11, CLAUDE.md), one
+Bun process, one SQLite file. This feature adds/extends components **inside the existing Meal Planning core
+and Recipe Matching supporting contexts**. No new bounded context (DISCUSS "borderline >3 BC" resolved:
+reuse-heavy, all inside the 6 shipped contexts, D19).
+
+**Effect boundary (identity-essential — preserves D37).** The shipped `PlanService.generatePlan(...)` is a
+PURE function (D37 / Principle 12): synchronous, returns `MealPlan`, `savePlan` is the only effect. The new
+engine needs recipe fetch (network) + post-fetch dietary verification (effectful filter). These are
+**shell effects in the orchestrator**, NOT inside the pure core — exactly mirroring how
+`generateFromSelection`/`getOrGenerateCurrentWeekPlan` already do the discount read as an effect and then
+call the pure `generatePlan`. The shell resolves + verifies recipes → produces a **verified candidate set**
+(pure data) → the pure assembly core consumes it. `generatePlan` stays pure and synchronous. The bug class
+"generatePlan silently fetched / wrote" remains non-representable. This is the functional-core /
+imperative-shell answer and it reuses the shipped structure.
+
+## Wave: DESIGN / [REF] DDD (subdomain deltas — no new contexts)
+
+| Context | Delta | Class (unchanged) |
+|---------|-------|-------------------|
+| Meal Planning (CORE) | `Meal` value object gains `discountItemIds[]` (was single `discountItemId`) for multi-product meals + `recipeId`/recipe title + `accepted` flag (v2). New draft aggregate `PlanDraft` (server-side, throwaway, one per user). Cost-minimising selection. Deduped savings over the used-product set. | Core |
+| Recipe Matching (Supporting) | New `RecipeCandidateProvider` driving port (basket → verified candidates) — an application service over the shipped `RecipeService`. New `DietaryVerifier` (free-text-ingredient safety gate). Optional paced cache-warmer (recipe-sourcing option D — see ADR-006). Fix `tokensOverlap` word-boundary over-matcher. | Supporting |
+| Shopping List (Supporting) | Reused verbatim for D2 (list-source) + D4 (add-to-list). No model change. | Supporting |
+| User Preferences (Generic) | Reused verbatim — `dietaryRestriction` read at generation, forced into the query (already shipped in `buildRecipeQuery`). | Generic |
+
+## Wave: DESIGN / [REF] Component Decomposition (new + extended)
+
+| Component | File | EXTEND / NEW | Contract shape | Responsibility |
+|---|---|---|---|---|
+| `PlanService.generatePlan` | `src/meal-planning/plan-service.ts` | EXTEND | pure-function / return-only (D37 preserved) | Assemble a `MealPlan` from a **verified recipe-candidate set** (pure data passed in). No fetch, no verify, no write. |
+| `PlanService` draft orchestration | `src/meal-planning/plan-service.ts` | EXTEND | bounded-change (draft slot only) | New shell use cases: `generateDraft`, `regenerateDraft`, `saveDraft` (→ existing `savePlan`), `discardDraft`. Effects (recipe resolution + dietary verify) happen here, then the pure core is called. |
+| `RecipeCandidateProvider` (port) | `src/recipe/ports/recipe-candidate-provider.ts` | NEW | effectful (behind port) | Driving port: `findCandidates(basket, restriction): Promise<VerifiedCandidate[]>`. READ-ONLY — no write method (Principle 12 driving-port split). Impl composes the shipped `RecipeService` + `DietaryVerifier`. |
+| `DietaryVerifier` | `src/recipe/dietary-verifier.ts` | NEW | pure-function / return-only | Deterministic word-boundary non-veg blocklist over FULL fetched ingredient lists + title. Second-line defense-in-depth after the forced `vegetarisch` query term. Returns pass/reject + reason. NOT the display heuristic. |
+| Refusal-sentinel contract | `src/recipe/recipe-query.ts` (or LLM adapter) | EXTEND | pure | `SKIP` sentinel: an LLM refusal is NEVER fed to search (SPIKE bug fix). Only if the optional LLM query path is enabled. |
+| Paced cache-warmer (Option D — LOCKED) | `src/recipe/recipe-cache-warmer.ts` | NEW (ADR-006 Option D accepted 2026-07-17) | bounded-change (recipes cache only) | Cron one-shot post-Monday-scrape: background paced crawl (1 req / 30–35 s, backoff) of queries derived from THIS WEEK's live deals into the shipped 7-day `recipes` cache. Generation reads cache-first → sub-second regenerate; cold-cache falls back to live-throttled fetch. |
+| `PlanDraftRepository` (port) + adapter | `src/meal-planning/ports/plan-draft-repository.ts` + `adapters/sqlite-plan-draft-repository.ts` | NEW | bounded-change (draft row only) | Server-side draft state (ADR-007): single-user draft singleton in SQLite. Survives regenerate→save gap; extends in v2 for per-meal `accepted`. |
+| `tokensOverlap` fix | `src/recipe/ingredient-match.ts` | EXTEND (bug fix) | pure | Word-boundary match, not substring (`reis` ⊄ `preiselbeeren`). Regression test in DELIVER (CLAUDE.md bug-handling). Display-only; the safety verifier is separate. |
+
+## Wave: DESIGN / [REF] Driving Ports (new inbound)
+
+| Route | Method | Handler | Use case | Slice |
+|---|---|---|---|---|
+| `POST /plan/regenerate` | POST | `plan-handler.ts` (EXTEND) | `regenerateDraft` — rebuild whole draft (v1) | S01a |
+| `POST /plan/save` | POST | `plan-handler.ts` (EXTEND) | `saveDraft` → `savePlan`; then D4 add-to-list prompt | S01a/S04 |
+| `POST /plan/discard` | POST | `plan-handler.ts` (EXTEND) | `discardDraft` — drop draft, show last saved | S01a |
+| `POST /plan/generate?from=list` | POST | `plan-handler.ts` (EXTEND) | list-sourced generation (D2) via `ShoppingListService.getCurrentList()` | S02 |
+| `POST /list/generate-plan` (or `/plan/generate` from list page) | POST | `shopping-list-handler.ts` (EXTEND) | trigger generation with list as source (D2) | S02 |
+| `POST /plan/meal/{id}/accept` | POST | `plan-handler.ts` (EXTEND, v2) | per-meal accept (D3) | S05 |
+
+> `RecipeCandidateProvider` is an INTERNAL application service (not an HTTP route); the shell calls it.
+
+## Wave: DESIGN / [REF] Driven Ports + Adapters (new outbound)
+
+| Port | Adapter | Tech | External | Substrate probe |
+|---|---|---|---|---|
+| `RecipeSource` (SHIPPED port, reused source-agnostic) | `ChefkochRecipeSource` (primary/sole source); `FakeRecipeSource` (tests) | `Bun.fetch` + chefkoch.de site-search + JSON-LD parse | Yes: chefkoch.de (no API key) | SPIKE-02 probe for Chefkoch; returns null on shape change |
+| `PlanDraftRepository` (NEW) | `sqlite-plan-draft-repository.ts` | Drizzle / SQLite | No | Shared WAL probe |
+| Cache-warmer (option D) | `recipe-cache-warmer.ts` | `Bun.fetch` (paced) via `RecipeSource` | Yes: chefkoch.de (paced) | MUST probe: exercise a known live query returns a Recipe; refuse-to-warm on repeated 429 (`health.warmer.refused`) |
+| `DietaryVerifier` probe (Principle 13) | gold-test in verifier suite | — | No | MUST exercise the RUN-4 known lies: Brokkoli-gratin `Schinken`, Schnitzel `Kalbsbrät` → both REJECTED |
+
+**External integrations requiring contract tests (handoff to platform-architect):** chefkoch.de is the
+external boundary (site-search HTML + schema.org JSON-LD) — recommend recorded-fixture regression tests for
+site-search / JSON-LD drift. The paced cache-warmer's 429-backoff + browser-header behavior needs a
+recorded-fixture regression test in CI. (Brave dropped at SPIKE-02 — no external API key.)
+
+## Wave: DESIGN / [REF] Technology Choices (all reuse — no new deps)
+
+| Choice | Verdict | Rationale |
+|---|---|---|
+| Recipe sourcing MECHANISM | **ACCEPTED: Option D (ADR-006, user sign-off 2026-07-17)** — bounded background cache-warm keyed to this week's deals (cron one-shot post-Monday-scrape), with Option B (live-throttled) as the cold-cache fallback. Paced-warm ToS posture explicitly accepted. Warm/live TARGET = Chefkoch site-search. | SPIKE-reshaped; latency-at-regenerate was the tie-breaker. See ADR-006 + options table below. |
+| Recipe **SOURCE** | **SUPERSEDED: reverted to Chefkoch-primary (ADR-008 reverted 2026-07-18)** — the shipped `ChefkochRecipeSource` is the primary/sole source behind the source-agnostic `RecipeSource` port. No API key. | ADR-008's Google Custom Search JSON API is discontinued and closed to new customers — unbuildable; the cheap-web-search-API category collapsed. |
+| Server-side draft state | SQLite single-user draft singleton (mirrors `user_settings` singleton pattern) | ADR-007; no client session (server-rendered); reuses Drizzle + WAL probe; no Redis/session store (over-engineering at 1 user, <1 QPS) |
+| Dietary verifier | Deterministic word-boundary German-focused blocklist (no LLM, no new dep). RUN-5's 40%→0% proof holds on Chefkoch; the verifier is defense-in-depth; measure residual over the first weeks (recommended). | Verifier is cheap deterministic defense-in-depth behind the forced `vegetarisch` query term; LLM classification rejected (cost, non-determinism, JOB-003 is a hard gate) |
+| LLM query-building | DEMOTED to optional-off by default; `resolveLlm` port reused if enabled | SPIKE §3: query strategy orthogonal to throughput; rules pre-filter + forced term suffices; LLM only adds refusal + synthesis (which drifts). Refusal-sentinel mandatory if enabled. |
+| Multi-product `Meal` model | `discountItemIds[]` (array) | Multi-product meals; dedup over used-product set |
+
+## Wave: DESIGN / [REF] Recipe-Sourcing Options (LOCKED — Option D accepted 2026-07-17)
+
+SPIKE verdict as of RUN 4/5 (supersedes the pre-RUN-4 framing): **live-throttled is PROVEN viable
+(0×429 at 1/35 s) but SLOW (~8 min/generation, repeats every regenerate); a pre-harvested corpus is a
+SPEED optimization, not a feasibility gate.** ≥1 discounted anchor/meal is PROVEN (5/5). Forced
+`vegetarisch` term flipped leaks 40%→0% **on Chefkoch** — this proof holds (Chefkoch is the source). Keep
+the post-fetch verifier as defense-in-depth; measure residual over the first weeks (recommended, not blocking).
+
+> **NOTE (ADR-008 reverted, 2026-07-18):** the options table below reasons about the sourcing MECHANISM
+> (warm vs live). The MECHANISM decision (Option D) is unchanged and NOT re-opened; the fetch TARGET is
+> Chefkoch site-search. See ADR-006.
+
+**Discriminating constraint (the tie-breaker):** US-MPE-01's entire arc is *"regenerate = low-cost
+experiment → converge until it fits."* An ~8-min regenerate contradicts the feature's reason to exist.
+Latency-at-regenerate is what decides this, not feasibility.
+
+| Option | What | Reuse | Regenerate UX | Cost | Dietary screening | Risk |
+|---|---|---|---|---|---|---|
+| **A. Pre-harvested general corpus** | Slow paced full-site crawl → offline search | New crawler + offline index (heavy) | Fast (offline) | ~0 | Deterministic on cached ingredients | **Heaviest ToS/legal posture** (full-site harvest); blind coverage (queries not from real deals) |
+| **B. Live throttled** | 1 search / 35 s at generation | MAX — zero new code (shipped `RecipeService`/`ChefkochRecipeSource` as-is) | **~8 min/generation, repeats every regenerate — SLOW** | ~0 | Post-fetch verifier | Slow UX contradicts the draft-experiment arc |
+| **C. Quota'd German recipe API** | Spoonacular/Edamam | New adapter | Fast | Free tier thin; English-first | Structured diet tags (if provided) | Weak — English-first, thin free tiers, likely proprietary |
+| **D. Bounded background cache-warm keyed to THIS WEEK's deals (RECOMMENDED)** | Paced crawl (1 req/30–35 s, backoff) of queries derived from the live discount basket → shipped 7-day `recipes` cache; generation reads **cache-first** → sub-second regenerate | HIGH — reuses `RecipeService` + `ChefkochRecipeSource` + `buildRecipeQuery`; adds only a paced warmer | **Fast** (cache-first at gen time) | ~0 | Post-fetch verifier on cached ingredient lists (deterministic) | Same paced-fetch ToS posture as shipped per-meal fetch, at higher volume — **the risk the user signs off on** |
+
+**Recommendation: Option D.** Most reuse-faithful (hard constraint), dodges the latency wall (cache-first),
+and avoids A's blind-coverage risk because warmed queries come from the actual week's deals. **Fallback:
+Option B** (zero new code) if the user rejects D's paced-warm ToS posture — accepting the slow-regenerate UX.
+**A and C rejected** (A: heaviest legal posture + blind coverage; C: English-first, thin/proprietary tiers).
+→ **ACCEPTED: Option D (ADR-006, user sign-off 2026-07-17).** Paced-warm ToS posture explicitly accepted;
+B retained as the cold-cache fallback.
+
+## Wave: DESIGN / [REF] Decisions Table (D38–D45)
+
+| ID | Decision | Verdict | Rationale |
+|----|----------|---------|-----------|
+| D38 | Effect boundary | Recipe fetch + dietary verify are SHELL effects; `generatePlan` stays pure (D37) | Functional-core/imperative-shell; reuses shipped orchestrator pattern; keeps the "silent fetch/write" bug non-representable |
+| D39 | Recipe sourcing MECHANISM | **ACCEPTED — ADR-006, Option D locked (user sign-off 2026-07-17).** Cron-one-shot cache-warm; cold-cache fallback to B; warm/live TARGET = Chefkoch site-search | SPIKE-reshaped; latency-at-regenerate was the tie-breaker; paced-warm ToS posture accepted |
+| **D39b** | Recipe **SOURCE** | **SUPERSEDED (ADR-008 reverted 2026-07-18).** Reverted to Chefkoch-primary: the shipped `ChefkochRecipeSource` is the primary/sole source behind the `RecipeSource` port | ADR-008's Google Custom Search JSON API is discontinued + closed to new customers (unbuildable); the cheap-web-search-API category collapsed |
+| D40 | Dietary verifier | NEW `DietaryVerifier` — deterministic word-boundary German-focused blocklist over full ingredient lists + title; RUN-5 0-leak proof holds on Chefkoch; residual recommended-not-blocking | EXTENDS adr-005 (different data shape); second-line defense-in-depth after the forced `vegetarisch` term |
+| D41 | adr-005 reconciliation | EXTEND, not supersede | `isCompatible` (on `dietary_tags`) is untouched; the verifier is a NEW second layer on a NEW data shape |
+| D42 | Server-side draft state | SQLite single-user draft singleton (ADR-007) | No client session; reuses Drizzle+WAL; Redis/session rejected (1 user) |
+| D43 | Multi-product `Meal` | `Meal.discountItemIds[]` (array) | Multi-product meals; savings deduped over used-product set |
+| D44 | Deduped savings | Dedup over the used-product set referenced by meals; reuse `regular−sale` from same `discount_items` rows; replace-on-save guard UNCHANGED (orthogonal) | Flag 2; `savePlan` guards one `savings_log` row/week — that survives verbatim |
+| D45 | LLM query-building | Optional, off by default; refusal-sentinel mandatory if enabled | SPIKE: orthogonal to throughput; forced term + rules suffice; LLM synthesis drifts |
+
+## Wave: DESIGN / [REF] Reuse Analysis (MANDATORY — default EXTEND)
+
+| Component | File | Overlap | EXTEND / CREATE NEW | Contract shape | Assertion mechanism | Justification |
+|---|---|---|---|---|---|---|
+| Plan assembly core | `plan-service.ts` `generatePlan` | Shipped pure core | **EXTEND** | pure-function | PBT: no mutation, output from inputs only | Reshape assembly to consume verified candidates; stays pure (D37) |
+| Draft orchestration | `plan-service.ts` | Shipped `generateFromSelection`/`getOrGenerate` shell | **EXTEND** | bounded-change (draft slot) | Test: draft not persisted to `meal_plans`/`savings_log` until save | Same shell pattern; adds regenerate/save/discard |
+| Recipe resolution | `recipe-service.ts` `getRecipeForMeal` | Shipped cache-first 7d TTL | **EXTEND** (reuse as-is; called by provider) | bounded-change (1 recipes row) | Existing tests | Basket→candidates loops the shipped resolver; no rewrite |
+| Query builder | `recipe-query.ts` `buildRecipeQuery` | Shipped; forces `vegetarisch` | **EXTEND** (add refusal-sentinel only if LLM enabled) | pure | Existing tests + new sentinel | Forced German `vegetarisch` term is the first-line control; RUN-5's 0-leak proof holds on Chefkoch |
+| `RecipeSource` **port** | `ports/recipe-source.ts` | Shipped, source-agnostic | **REUSE (no change — port unchanged)** | effectful behind port | Provider + warmer both call the port | `find(query)→FetchedRecipe\|null` is source-agnostic; `ChefkochRecipeSource` is the sole adapter behind it |
+| `ChefkochRecipeSource` | `adapters/chefkoch-recipe-source.ts` | Shipped adapter | **REUSE — primary/sole source behind the port** | effectful behind port | SPIKE-02 probe | The shipped Chefkoch site-search + JSON-LD adapter is the primary/sole recipe source |
+| JSON-LD fetch/parse | `adapters/chefkoch-recipe-source.ts` | Shipped Chefkoch-page parse | **REUSE** | pure parse over fetched HTML | Test: Chefkoch JSON-LD; no parseable Recipe → null | Chefkoch recipe pages; skip any without a parseable `schema.org/Recipe` |
+| `RecipeCandidateProvider` | `recipe-candidate-provider.ts` | None — no basket→verified-candidates component exists | **CREATE NEW** | effectful (read-only port) | mypy/TS Protocol at composition root; behavioral gold test | No existing component turns a basket into dietary-verified candidates; it composes shipped parts |
+| `DietaryVerifier` | `dietary-verifier.ts` | `isCompatible` (wrong data shape); `tokensOverlap` (display-only, over-matcher being fixed) | **CREATE NEW** | pure-function | Gold test German-focused families (Schinken, Kalbsbrät → REJECT); PBT no-mutation; residual-leak measurement recommended over first weeks | `isCompatible` reads `dietary_tags[]`; verifier reads free-text recipe ingredients — different data, different mechanism; German-focused blocklist; `tokensOverlap` is the bug, not a safety tool |
+| Cache-warmer | `recipe-cache-warmer.ts` | None (ADR-006 Option D — LOCKED) | **CREATE NEW** | bounded-change (recipes cache) | Warmer probe: known query→Recipe; 429-backoff refuse | Option D accepted; adds paced fetch on top of shipped `RecipeSource` |
+| `PlanDraftRepository` | `plan-draft-repository.ts` + sqlite adapter | Mirrors `user_settings` singleton | **CREATE NEW** (pattern reused) | bounded-change (draft row) | WAL probe; test draft isolation from `meal_plans` | No draft table exists; singleton pattern reused from prefs adapter |
+| List source | `shopping-list-service.ts` `getCurrentList` | Shipped | **REUSE (no change)** | bounded-change | Existing tests | D2 wires to the shipped read; no new read model |
+| Add-to-list | `shopping-list-service.ts` `addFromDiscountSelection` | Shipped, dedups | **REUSE (no change)** | bounded-change | Existing tests | D4 wires to shipped add; dedup already handled |
+| Savings computation | `plan-service.ts` savings | Shipped `regular−sale`, same-transaction | **EXTEND** (dedup input set) | pure computation + same-tx write | Test: deduped == shipped tracker for same rows; guard intact | Dedup the input set; replace-on-save guard orthogonal |
+| `tokensOverlap` | `ingredient-match.ts` | Shipped display heuristic (over-matcher) | **EXTEND (bug fix)** | pure | Regression test (word boundary) | SPIKE bug; word-boundary fix; display-only |
+
+**Verdict: reuse-dominant** (the `RecipeSource` port + `ChefkochRecipeSource` are reused unchanged).
+REUSE-verbatim (port, `ChefkochRecipeSource` primary/sole source, JSON-LD parse, list read, add-to-list);
+EXTEND (`generatePlan` core, draft orchestration, `getRecipeForMeal`, savings); CREATE-NEW
+(`RecipeCandidateProvider`, `DietaryVerifier`, warmer, draft-repo). Each CREATE-NEW justified: no existing
+component performs its function.
+
+## Wave: DESIGN / [REF] Open Questions (carried to DELIVER / user)
+
+1. **Recipe-sourcing MECHANISM lock (ADR-006)** — RESOLVED (user sign-off 2026-07-17): **Option D accepted**, B retained as cold-cache fallback. slice-01b unblocked.
+1b. **Recipe SOURCE lock (ADR-008)** — SUPERSEDED (reverted 2026-07-18): Google Custom Search JSON API is discontinued + closed to new customers (unbuildable); reverted to Chefkoch-primary — the shipped `ChefkochRecipeSource` is the primary/sole source behind the `RecipeSource` port.
+2. **Residual dietary leak rate on Chefkoch.** The RUN-5 0-leak proof was measured on Chefkoch, so it holds. The German-focused word-boundary blocklist is defense-in-depth behind the forced `vegetarisch` term; residual-leak measurement over the first weeks is RECOMMENDED, not blocking.
+3. **KPI-3 pointer mismatch** (see upstream-changes.md) — the task pointed the ≥2→≥1 change at "US-MPE-03 AC + KPI-3", but those already read ≥1 / breadth-coverage. The ≥2 bar actually lives in the SPIKE hypothesis, slice-00/01b, feature-delta error-path #1 + Risks. Recorded where it truly is; flagged as a contradiction.
+4. **D2+D4 no-op** (DISCUSS inconsistency #2) — when source==list, suppress the add-to-list prompt or rely on shipped dedup. DELIVER decision; not architecture-blocking.
+
+---
+---
+
+# Wave: DEVOPS (Apex — nw-platform-architect · 2026-07-17 · density: lean Tier-1)
+
+> Local single-user host (ADR-001). No cloud, no containers, no CI system. Deployment strategy = recreate/direct.
+> Observability = custom-minimal (shipped `src/shared/logger.ts` structured logger + SQLite tables). SSOT:
+> `docs/product/kpi-contracts.yaml` (KPI + guardrail contracts) + `docs/feature/meal-plan-engine/environments.yaml`
+> (env matrix, consumed by DISTILL Mandate 4). The 9 platform decisions were resolved upstream — recorded, not re-litigated.
+
+## Wave: DEVOPS / [REF] Environment Matrix
+
+Full matrix: `environments.yaml`. Summary: a single `local` env — the shipped `ChefkochRecipeSource` is the
+primary/sole source (no API key, no key axis). The SPIKE-02 probe validates the Chefkoch source at startup.
+
+## Wave: DEVOPS / [REF] CI/CD Outline (hook-only + deferred nightly-delta)
+
+- **CI system: none.** Remote is a self-hosted git server (`pehota`, NOT GitHub). No workflow YAML is emitted (that would contradict the hook-only decision).
+- **Active gate = git hooks (`.githooks`):** pre-commit (git identity) + pre-push (`bun run hook:push` = typecheck + build + `bun test`). Single source of truth: `package.json` `hook:push`.
+- **Nightly-delta mutation CI: DEFERRED.** Strategy stays `nightly-delta` (CLAUDE.md, unchanged), but its EXECUTION vehicle is **NOT-YET-WIRED** — no CI runner exists to run it. Flagged honestly; the only active gate today is the push hook.
+
+## Wave: DEVOPS / [REF] Monitoring Contracts
+
+Numeric SSOT for KPIs = durable SQLite tables (`meal_plans`, `savings_log`) — NOT the log stream. The Logger
+emits a `capture_event` per KPI at plan-save carrying the same computed value (greppable, non-divergent). Full
+per-field contracts: `kpi-contracts.yaml`.
+
+| Instrument | SSOT / source | Event | Threshold |
+|---|---|---|---|
+| KPI-1 spend ≤ regular baseline | `meal_plans.totalSalePrice`≤`totalRegularPrice` | `kpi.plan.spend` | ≤ baseline every week |
+| KPI-2 meals using a discount | derive over `meal_plans.meals` | `kpi.plan.discount_meals` | ≥80% |
+| KPI-3 deal-breadth coverage | derive `meals` vs `item_ids` | `kpi.plan.deal_coverage` | ≥60% |
+| KPI-4 recipe coverage | derive resolved-recipe over `meals` | `kpi.plan.recipe_coverage` | ≥70% |
+| KPI-5 monthly € trend | `savings_log` rollup (TECH-MPE-06 archives history) | none (offline derive) | supports 20–30% |
+| GR-DIET dietary 100% | log-only (fail-safe behind DietaryVerifier) | `guardrail.dietary.violation` (error/Page) | ANY occurrence |
+| GR-SAVINGS deduped==tracker | log-only tripwire | `guardrail.savings.divergence` (error) | ANY divergence |
+
+## Wave: DEVOPS / [REF] Deployment Strategy (recreate)
+
+Recreate / direct — CLAUDE.md "any push goes straight to production". No canary/blue-green (single-user localhost;
+zero blast radius). Rollback = `git revert` + re-run `bun run src/server.ts` (trunk-based, no feature branches).
+Cron one-shots (scrape, warmer) are idempotent and safe to re-run.
+
+## Wave: DEVOPS / [REF] Mutation Strategy
+
+`nightly-delta` (CLAUDE.md — unchanged). **Execution DEFERRED** — no CI runner wired; NOT-YET-WIRED flag stands.
+Only active gate = git-hook push gate. CLAUDE.md `## Mutation Testing Strategy` section is NOT edited (already correct).
+
+## Wave: DEVOPS / [REF] Branching
+
+Trunk-based (CLAUDE.md) — single `main`, no feature branches, any push goes straight to production.
+Push gate = `.githooks` pre-push (`bun run hook:push`). Worktrees only for parallel tasks.
+
+## Wave: DEVOPS / [REF] Observability Stack (custom-minimal)
+
+Shipped `src/shared/logger.ts` (`Logger` → `[LEVEL] event key=value`, dotted event names) + SQLite tables. NO
+external vendor (Prometheus/Datadog overkill for 1 user on localhost). Reuse EXACT ADR-named health events:
+`health.startup.refused`, `health.warmer.refused`. New event families:
+`kpi.*` (capture), `guardrail.*` (alerts).
+
+> **Discrepancy flagged:** the DEVOPS task called this "the existing JSONL audit-log pattern". Verified against
+> code — there is NO `.jsonl` sink; the shipped pattern is the structured key=value console `Logger`. Instrumentation
+> reuses THAT (single source of truth), not an invented JSONL file. Recorded, not silently followed.
+
+## Wave: DEVOPS / [REF] Cache-Warmer Cron (operational)
+
+ADR-006 Option D warmer one-shot (`recipe-cache-warmer.ts`), a second `bun run` one-shot alongside `scrape.ts`.
+Cron sequencing: **scrape → warm** (warmer fires AFTER the Monday 06:00 CET scrape; this-week deals known post-scrape).
+Reuses OS cron (D12) + one-shot (D18); no daemon. Warmer probe (Principle 13): known query → parseable Recipe;
+`health.warmer.refused` + backoff on repeated 429. Cold-cache miss → live-throttled fallback at generation time (runtime concern).
+
+## Wave: DEVOPS / [REF] Coexistence Matrix
+
+Full matrix: `environments.yaml`. Must-not-break: `.githooks` (pre-commit + pre-push); existing OS-cron scrape;
+shipped scraper + LLM catalogue path; shipped discount→plan→savings flow + `/list` + `/savings` + `data-*` +
+375px/desktop layouts; replace-on-save double-count guard (`plan-service.ts:100-118`).
+
+## Wave: DEVOPS / [REF] DEVOPS Decisions
+
+| ID | Decision | Verdict |
+|----|----------|---------|
+| DV-1 | Deployment target | Local single-user host (ADR-001); `bun run src/server.ts` |
+| DV-2 | Container orchestration | None (local Bun process) |
+| DV-3 | CI/CD platform | Hook-only (`.githooks` push gate); no CI system; `pehota` remote; nightly-mutation CI DEFERRED |
+| DV-4 | Observability | custom-minimal — shipped `Logger` + SQLite tables; no vendor |
+| DV-5 | Deployment strategy | Recreate/direct (push→prod); rollback = git revert + re-run |
+| DV-6 | Continuous learning | No (no monitoring infra) |
+| DV-7 | Branching | Trunk-based (CLAUDE.md) |
+| DV-8 | Mutation testing | `nightly-delta` strategy kept; EXECUTION NOT-YET-WIRED (flagged) |
+| DV-10 | KPI numeric SSOT | Durable SQLite tables (`meal_plans`, `savings_log`); Logger carries event stream + log-only guardrails, never a divergent number |
+
+## Wave: DEVOPS / [REF] Pre-requisites (DEVOPS)
+
+- Dietary residual-leak measurement on Chefkoch over the first weeks (RECOMMENDED, not blocking); RUN-5's 0-leak proof holds on Chefkoch.
+- Warmer cron entry added AFTER the scrape entry; sequencing verified.
+- Guardrail alert (`guardrail.dietary.violation`) wired as the fail-safe behind `DietaryVerifier`.
+
+---
+---
+
+# Wave: DISTILL (Quinn — nw-acceptance-designer · 2026-07-18 · density: lean Tier-1 · type: application)
+
+> Acceptance suite authored as scaffolded RED (ADR-025: DISTILL is canonical AT author). Reconciliation
+> gate: pre-passed (0 blocking contradictions). Language: TypeScript / Bun / `bun test` — the project's
+> existing acceptance idiom (`.feature` narrative + paired `*.test.ts`, real `createServer` + real SQLite
+> tmpdir + in-memory port fakes) is matched, NOT Python pytest-bdd. S05 (v2 per-meal lock) DEFERRED.
+
+## Wave: DISTILL / [REF] Scenario List (tags)
+
+`.feature` files are the scenario SSOT under `tests/acceptance/discount-hunt/meal-plan-engine/`.
+
+| Slice | Feature file | Scenarios | State | Key tags |
+|---|---|---|---|---|
+| WS | `walking-skeleton.feature` | 1 | **GREEN** | `@walking_skeleton @driving_port @real_io @contract-shape:bounded-change` |
+| S01a | `s01a-draft-lifecycle.feature` | 4 | @skip | `@driving_port @us-mpe-01` · shapes: 3×unbounded-preservation, 1×bounded-change |
+| S01b | `s01b-real-recipe-generation.feature` | 3 | @skip | `@driving_port @us-mpe-01` |
+| S02 | `s02-list-source.feature` | 2 | @skip | `@driving_port @us-mpe-02 @real_io` |
+| S03 | `s03-cost-objective.feature` | 4 | @skip | `@driving_port @us-mpe-03`; 2×`@kpi` (KPI-1/GR-SAVINGS) |
+| S04 | `s04-save-add-to-list.feature` | 3 | @skip | `@driving_port @us-mpe-04 @real_io` |
+| TECH-06 | `tech06-archive-expired-plans.feature` | 2 | @skip | `@driving_port @tech-mpe-06 @real_io` |
+
+Plus **collocated pure-unit PBT (layer 1, fast-check, RED)**: `src/recipe/dietary-verifier.test.ts` (6 —
+German-focused gold corpus + word-boundary no-over-match), `src/meal-planning/cost-objective.test.ts` (3 — dedup +
+spend<=baseline). Totals: **1 WS green · 18 acceptance scenarios @skip · 9 pure-unit RED-when-unskipped (@skip pending)**.
+Full suite after handoff: green (push gate green — no regression).
+Error/edge share: 7 of 19 acceptance scenarios (37%) are error/preservation paths (boundary scenarios counted separately per C4).
+
+## Wave: DISTILL / [REF] WS Strategy
+
+Architecture-of-Reference defaults applied (driving = real Bun.serve; driven-internal = real SQLite tmpdir;
+driven-external = in-memory port fake). **WS reconciliation (DISCUSS said "Walking skeleton: None —
+brownfield"):** DISTILL authors ONE WS over the INVARIANT rail — generate → plan shows a saving → savings
+tracker matches → the plan's deals add to `/list` via the shipped `POST /list/add`. Green today, preserved
+by the feature (System Constraints "No regression"); differentiated from the shipped S01 WS by the
+shopping-list leg (the JOB-004 loop). It deliberately does NOT assert "meal is a real recipe title" — that
+cannot be green pre-DELIVER. All new-engine behaviour is @skip.
+
+## Wave: DISTILL / [REF] Adapter Coverage Table (Mandate 6)
+
+| Adapter / port | Coverage scenario | Tag | Verdict |
+|---|---|---|---|
+| `ChefkochRecipeSource` (primary/sole source) | SPIKE-02 closure probe (3/3 live); `FakeRecipeSource` in-suite (never run live) | fast-check / fake injection | COVERED |
+| `RecipeSource` fake injection | s01b real-recipe ×3 (canned `FetchedRecipe` via `recipeSource` param) | `@real_io @driving_port` | COVERED |
+| `PlanDraftRepository` (SQLite) | s01a lifecycle ×4 (real SQLite draft state) | `@real_io @driving_port` | COVERED |
+| Recipe cache-warmer one-shot | subprocess adapter test — DELIVER (policy row appended) | — | DEFERRED to DELIVER (built module) |
+| `DietaryVerifier` (pure — not a port) | collocated gold-test + PBT | fast-check unit | COVERED |
+
+**Zero `NO — MISSING` rows.** The warmer's real-I/O subprocess test is authored in DELIVER when the module
+lands (its scaffold + policy row exist now); the live Chefkoch source is validated by the SPIKE-02 closure
+probe and faked in-suite via `FakeRecipeSource` (never run live in-suite).
+
+## Wave: DISTILL / [REF] Driving Adapter Coverage (every new HTTP route via real HTTP)
+
+| Route (DESIGN) | Exercised via real Bun.serve HTTP by |
+|---|---|
+| `POST /plan/regenerate` | s01a "Regenerate rebuilds the whole draft" |
+| `POST /plan/save` | s01a "Saving a draft persists it…" + s03/s04 chains |
+| `POST /plan/discard` | s01a "Discarding a draft drops it" |
+| `POST /plan/generate?draft=true` | s01a/s01b/s03 generation scenarios |
+| `POST /plan/generate?from=list` | s02 list-source ×2 |
+| `POST /plan/add-to-list` (accept prompt) | s04 accept + dedup |
+| `GET /plan/archive` (read surface) | tech06 archive |
+
+All exercised through real HTTP (not service calls). `RecipeCandidateProvider` is an internal app service —
+exercised indirectly through `POST /plan/generate` (correct: it is not an HTTP route).
+
+## Wave: DISTILL / [REF] Scaffolds (Mandate 7, `__SCAFFOLD__` + exact TS signatures, typecheck 0)
+
+- `src/recipe/dietary-verifier.ts` — `verifyDietary(recipe, restriction): DietaryVerdict`
+- `src/recipe/ports/recipe-candidate-provider.ts` — `RecipeCandidateProvider.findCandidates(...)` + `VerifiedCandidate`
+- `src/recipe/recipe-cache-warmer.ts` — `warmRecipeCache(dbPath): Promise<WarmerResult>`
+- `src/meal-planning/ports/plan-draft-repository.ts` — `PlanDraftRepository` + `PlanDraft`
+- `src/meal-planning/cost-objective.ts` — `dedupedUsedProducts` / `planSpendCents` / `planRegularBaselineCents`
+
+Support (non-scaffold): `tests/acceptance/support/{meal-plan-domain.ts, seed-discounts.ts, fake-recipe-source.ts}`;
+state-delta port bootstrapped at `tests/common/state_delta.ts` (TS port, first DISTILL to need it).
+
+## Wave: DISTILL / [REF] Test Placement
+
+`tests/acceptance/discount-hunt/meal-plan-engine/` — subdir under the existing `discount-hunt/` acceptance
+root, matching the precedent (`walking-skeleton.feature` + paired `.test.ts`, support fakes in
+`../support/`). Collocated pure-unit PBT lives beside production (`src/**/*.test.ts`) per project convention.
+
+## Wave: DISTILL / [REF] Mandate Compliance Evidence
+
+- **CM-A** (hexagonal): acceptance tests enter through `createServer` HTTP routes / the `RecipeSource` port; no
+  internal-component imports. `RecipeCandidateProvider` exercised indirectly.
+- **CM-B** (business language): `.feature` steps use domain terms (Dimitar, deals, draft, shopping list) —
+  no HTTP/DB/endpoint jargon in scenario titles or Gherkin.
+- **CM-C** (counts): 1 WS + 18 focused acceptance scenarios; 37% error/edge (7 of 19).
+- **CM-D** (pure extraction): `DietaryVerifier` + cost-objective extracted as pure functions, PBT-tested
+  directly; impure recipe fetch behind the `RecipeSource` port; only the adapter layer is faked.
+- **CM-E/8** (Universe state-delta): applied at the S01a "saved plan untouched until Save" seam via
+  `tests/common/state_delta.ts` with port-exposed universe (`plan.savedEstimate`, `savings.recordCount`).
+  Other layer-4 HTTP scenarios use traditional assertions (Mandate 8 permits at layer 4+).
+- **CM-F/9** (PBT layer): fast-check appears ONLY on layer-1 collocated units (`dietary-verifier.test.ts`,
+  `cost-objective.test.ts`), both `describe.skip` pending (RED-when-unskipped, spot-verified — kept skipped
+  so the push gate stays green per DEVOPS must-not-break + Critical Rule 5); all layer-4 acceptance is
+  example-only. The Chefkoch source is faked in-suite via `FakeRecipeSource`; no live external call.
+- **CM-G/10** (Tier B): NOT emitted — journeys are ≤2 chained scenarios per line and the app is
+  HTTP-config-shaped; Tier A (production `createServer`) covers the space. Documented, not forgotten.
+- **CM-H/11** (integration sad paths example-based): dietary-leak, no-recipe, empty-list all
+  named example scenarios; no PBT machinery at layer 3+.
+- **CM-I/12** (SSOT via types): `tests/acceptance/support/meal-plan-domain.ts` holds every domain noun as a
+  typed const/enum (DietaryRestriction, Munich products+prices, non-veg families, contract shapes).
+  **Criteria 3 (AST ≤2-stmt step body) + the pytest-bdd `parsers.parse(enum)` decorator model are N/A by
+  idiom** — bun:test uses `describe/test` blocks, not step decorators. Step-reuse ratio (informational):
+  the shared support helpers (`seedDiscounts`, `FakeRecipeSource`, domain consts) are reused across all 7
+  test files — natural ceiling for an HTTP-config-shaped feature; no forced parameterization (Pillar 1
+  readability outranks the ratio).
+
+## Wave: DISTILL / [REF] Self-Completeness Audit (verdict)
+
+15-item mechanical checklist over the candidate AT set → **COMPLETE (≥13/15)**. Categories covered:
+C1 happy (WS + s01b real recipe), C2 draft state machine (s01a lifecycle), C3 error (no-recipe, empty-list,
+dietary leak), C4 boundary (over-buy, dedup shared product), C6 error contracts (empty-with-reason). No
+`SPECIFICATION_AMBIGUITY` blockers — all gaps are `AT_GAP_IN_DELIVERY_SCOPE` and filled. The one deferred
+item (S05 v2 lock) is out of scope by D5/D8, not a gap.
+
+## Wave: DISTILL / [REF] Pre-requisites (from upstream waves)
+
+- DESIGN driving ports: the new `/plan/*` routes + `?from=list` + `/plan/add-to-list` + `/plan/archive`.
+- DEVOPS env: single `local` env — the shipped `ChefkochRecipeSource` is the primary/sole source (no API key).
+- Dietary residual-leak measurement on Chefkoch over the first weeks is RECOMMENDED (not blocking); RUN-5's 0-leak proof holds on Chefkoch.
+- SPIKE bugs to regression-cover in DELIVER: refusal-sentinel (LLM path, if enabled) + `tokensOverlap`
+  word-boundary over-matcher (display-only; the `DietaryVerifier` is the safety gate).
+
+## Wave: DISTILL / [REF] Outcomes Registered
+
+4 typed contract surfaces recorded in `docs/product/outcomes/registry.yaml` (OUT-MPE-01 operation /
+OUT-MPE-02 specification / OUT-MPE-03 invariant / OUT-MPE-04 invariant). **`nwave-ai outcomes register`
+CLI is UNUSABLE in this environment** (bundled `schema.json` FileNotFoundError — packaging bug); the
+registry SSOT was written directly with a note. Re-validate via CLI once fixed.

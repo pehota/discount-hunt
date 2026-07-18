@@ -1,0 +1,157 @@
+# kpi-contracts.yaml — KPI + guardrail instrumentation SSOT
+# Wave: DEVOPS (Apex / nw-platform-architect) · Feature: meal-plan-engine · Date: 2026-07-17
+#
+# Design rule (single source of truth): the NUMERIC KPI value lives in a durable
+# SQLite table/column (see `source`). The structured Logger (src/shared/logger.ts —
+# `[LEVEL] event key=value`, dotted event names) carries the EVENT STREAM only; it
+# emits `capture_event` at plan-save carrying the SAME computed value so KPI capture
+# is greppable without minting a divergent number. Log-only instruments (dietary
+# alert, health probes) have no table — the log IS their record.
+#
+# Observability stack = custom-minimal (structured console logger + SQLite tables).
+# NO external vendor (decision 5). Baselines for KPI 1-4 are collected from the
+# first weeks post-release (feature-delta Handoff-to-DEVOPS).
+
+meta:
+  feature: meal-plan-engine
+  logger: src/shared/logger.ts            # shipped Logger interface + ConsoleLogger
+  event_naming: dotted                    # matches shipped health.* / scrape.* convention
+  numeric_ssot: sqlite-tables             # NOT the log stream (ephemeral)
+
+kpis:
+  - id: KPI-1
+    name: plan-spend-vs-all-regular-baseline
+    type: leading-north-star
+    who: Dimitar (household)
+    target: plan spend <= sum(regular_price) of the same deduped used products, every week
+    source:                               # numeric SSOT
+      table: meal_plans
+      derivation: totalSalePrice <= totalRegularPrice   # cents; over deduped used products
+    capture_event:
+      event: kpi.plan.spend
+      level: info
+      fields: { weekStart, totalSalePriceCents, totalRegularPriceCents, underBaseline }
+    baseline: none today (whole-basket savings, plan-service.ts:47-49); collect post-release
+
+  - id: KPI-2
+    name: meals-using-a-discount
+    type: leading
+    who: Dimitar (household)
+    target: ">=80% of plan meals use >=1 discounted product"
+    source:
+      table: meal_plans
+      derivation: count(meals where meal.discountItemIds not empty) / count(meals)  # meals JSON
+    capture_event:
+      event: kpi.plan.discount_meals
+      level: info
+      fields: { weekStart, mealsWithDiscount, totalMeals, pct }
+    baseline: uncontrolled round-robin coverage; collect post-release
+
+  - id: KPI-3
+    name: discount-breadth-coverage
+    type: secondary
+    who: Dimitar
+    target: ">=60% of selected deals appear in the plan (without over-buying, D7)"
+    source:
+      table: meal_plans
+      derivation: distinct(used discountItemIds) / count(itemIds selected)   # meals JSON vs item_ids
+    capture_event:
+      event: kpi.plan.deal_coverage
+      level: info
+      fields: { weekStart, usedDeals, selectedDeals, pct }
+    baseline: n/a (no cost objective today); collect post-release
+
+  - id: KPI-4
+    name: recipe-coverage
+    type: leading-activation
+    who: Dimitar
+    target: real recipe found for >=70% of plan slots
+    source:
+      table: meal_plans
+      derivation: count(meals with resolved recipeId) / count(meals)   # meals JSON
+    capture_event:
+      event: kpi.plan.recipe_coverage
+      level: info
+      fields: { weekStart, resolvedRecipes, totalMeals, pct }
+    baseline: 0% (meals are item names); collect post-release
+    note: SPIKE-proven on Chefkoch (71% found, >=1 anchor 100%); Chefkoch is the single source (ADR-008 reverted)
+
+  - id: KPI-5
+    name: monthly-spend-trend
+    type: lagging-impact
+    who: Dimitar (household)
+    target: supports persona 20-30% monthly grocery-spend reduction
+    source:
+      table: savings_log            # already indexed by week_start; TECH-MPE-06 archives meal_plans to preserve history
+      derivation: monthly rollup of savedAmount / totalRegularPrice over week_start
+    capture_event: none             # derived offline from savings_log; no per-plan event needed
+    baseline: untracked; collect post-release
+
+guardrails:                          # log-only instruments — the log IS the record; MUST NOT degrade
+  - id: GR-DIET
+    name: dietary-100pct-no-violation
+    job: JOB-003 (hard constraint)
+    threshold: ANY occurrence          # zero-tolerance; not a percentage
+    instrument:
+      event: guardrail.dietary.violation
+      level: error                     # Page tier (production-readiness alerting table)
+      fields: { plan_or_draft_id, restriction, recipeTitle, offendingKeyword, sourceUrl, lang }
+    emitted_when: any non-veg keyword surfaces to a vegetarian/vegan plan (fail-safe behind DietaryVerifier)
+    note: fail-safe if a German blocklist gap escapes the gold-test (upstream-changes UC-3). SPIKE RUN-5 0-leak proof holds (Chefkoch is the shipped source).
+
+  - id: GR-SAVINGS
+    name: deduped-savings-equals-shipped-tracker
+    threshold: ANY divergence          # deduped plan savings must equal shipped savings_log rows for same products
+    instrument:
+      event: guardrail.savings.divergence
+      level: error
+      fields: { planId, weekStart, dedupedSavingsCents, savingsLogSavedAmountCents, deltaCents }
+    emitted_when: deduped plan savings != savings_log.savedAmount for the same deduped used-product rows
+    note: guaranteed true by construction (single source = same regular-sale rows) — the event is the tripwire if it ever isn't
+
+# cse_quota: REMOVED (2026-07-18) — ADR-008 reverted to Chefkoch (no API key, no quota).
+
+health_probes:                        # reuse EXACT ADR-named events — do NOT invent a new namespace
+  - event: health.startup.refused
+    source: server.ts:153 (shipped convention); composition-root probe failure
+    level: error
+  - event: health.warmer.refused
+    source: ADR-006 warmer probe; repeated 429 backoff exhausted
+    level: warn
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DISTILL scenario links (meal-plan-engine, 2026-07-18) — @kpi-tagged acceptance
+# scenarios that verify each KPI's observable is PRODUCIBLE. These are @skip
+# (pending) until DELIVER; they assert the rendered/observable figure, not the
+# monitoring infra. `.feature` files are the scenario SSOT.
+distill_scenario_links:
+  KPI-1:   # spend <= all-regular baseline
+    feature: tests/acceptance/discount-hunt/meal-plan-engine/s03-cost-objective.feature
+    scenarios:
+      - "The plan footer shows spend against an all-regular-price baseline (@kpi)"
+    pure_pin: src/meal-planning/cost-objective.test.ts  # spend <= baseline (fast-check)
+  KPI-2:   # >=80% meals use a discount
+    feature: tests/acceptance/discount-hunt/meal-plan-engine/s03-cost-objective.feature
+    note: "meals-using-a-discount is derived over meals JSON; observable via plan render; covered indirectly by the cost scenarios"
+  KPI-3:   # >=60% deal-breadth coverage
+    feature: tests/acceptance/discount-hunt/meal-plan-engine/s03-cost-objective.feature
+    scenarios:
+      - "The plan does not over-buy deals to inflate the discount count"
+  KPI-4:   # >=70% recipe coverage
+    feature: tests/acceptance/discount-hunt/meal-plan-engine/s01b-real-recipe-generation.feature
+    scenarios:
+      - "Each drafted meal is a real recipe naming the discounted products it uses"
+    note: "coverage SPIKE-proven on Chefkoch (71% found, >=1 anchor 100%); single source (ADR-008 reverted)"
+  KPI-5:   # monthly trend — offline derive, no per-plan event
+    note: "lagging; derived from savings_log offline; no acceptance scenario (no per-plan observable)"
+  GR-DIET: # dietary 100% guardrail
+    feature: tests/acceptance/discount-hunt/meal-plan-engine/s01b-real-recipe-generation.feature
+    scenarios:
+      - "A recipe with a hidden meat ingredient never surfaces to a vegetarian plan"
+    pure_pin: src/recipe/dietary-verifier.test.ts  # German gold corpus + word-boundary
+    note: "SPIKE RUN-5 0-leak proof holds (Chefkoch); verifier is defense-in-depth; residual measured over first weeks (recommended, not blocking)"
+  GR-SAVINGS: # deduped == shipped tracker
+    feature: tests/acceptance/discount-hunt/meal-plan-engine/s03-cost-objective.feature
+    scenarios:
+      - "Spend and savings count a shared product only once and match the savings tracker (@kpi)"
+    pure_pin: src/meal-planning/cost-objective.test.ts

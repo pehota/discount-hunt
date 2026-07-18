@@ -1,0 +1,52 @@
+# environments.yaml — DEVOPS environment matrix (consumed by DISTILL Mandate 4)
+# Wave: DEVOPS (Apex / nw-platform-architect) · Feature: meal-plan-engine · Date: 2026-07-17
+#
+# App = pure business logic + one local Bun server + OS-cron one-shots (scrape, warmer).
+# Deployment target = local single-user host (ADR-001). No cloud, no containers, no CI system.
+# Lean by design: recipe source = Chefkoch (single, no API key — ADR-008 reverted). No env axis
+# changes recipe behaviour; the LLM_PROVIDER switch is the only optional-config axis (off by default).
+
+meta:
+  feature: meal-plan-engine
+  deployment_target: "local single-user host (ADR-001 modular monolith)"
+  run_command: "bun run src/server.ts"        # package.json "start"
+  observability: "custom-minimal (src/shared/logger.ts + SQLite tables)"
+
+target_environments:
+  - id: local-clean
+    description: "clean local host, default configuration"
+    llm: "off by default (LLM_PROVIDER unset -> rules-only)"
+    expected_recipe_source: "Chefkoch (single source, no API key — ADR-008 reverted)"
+    expected_health: "no recipe-source probe refusal; server serves normally"
+
+coexistence_matrix:                          # existing behaviours that MUST NOT break
+  - concern: "git hooks (.githooks)"
+    invariant: "pre-commit (git identity) + pre-push (bun run hook:push = typecheck+build+test) unchanged"
+    must_not_break: true
+  - concern: "OS cron scrape (Monday 06:00 CET, ADR-001)"
+    invariant: "existing scrape one-shot runs unchanged; warmer is SEQUENCED AFTER it (scrape -> warm)"
+    must_not_break: true
+  - concern: "shipped scraper + LLM catalogue path"
+    invariant: "LLM off-by-default path and V-Markt/Edeka/Aldi fetchers unchanged"
+    must_not_break: true
+  - concern: "shipped discount -> plan -> savings flow, /list, /savings"
+    invariant: "green acceptance suite + data-* assertions + 375px & desktop layouts unregressed"
+    must_not_break: true
+  - concern: "replace-on-save double-count guard (plan-service.ts:100-118)"
+    invariant: "savings_log one-row-per-week guard survives multi-product deduped savings"
+    must_not_break: true
+
+platform_coverage:
+  platforms:
+    - platform: "Linux host (detected — Arch, kernel 7.0.10)"
+      supported: true
+  os_cron: "OS-level crontab / systemd timer (ADR-001 D12) — scrape one-shot + NEW warmer one-shot"
+  ci: "none / hook-only"                       # no CI system; remote = self-hosted git (pehota, NOT GitHub)
+  containers: "none"                           # local Bun process; no Docker/K8s (ADR-001)
+
+deployment_assumptions:
+  - "idempotent cron: scrape and warmer one-shots are safe to re-run (warmer writes to 7-day recipes cache; re-run = refresh, no dup harm)"
+  - "no recipe-source secret: Chefkoch needs no API key (ADR-008 reverted from Google CSE). Only optional LLM_PROVIDER creds follow the .env/.env.example pattern"
+  - "warmer safe to re-run: bounded paced Chefkoch crawl (1 req/30-35s, 429 backoff, health.warmer.refused on push-back); cold-cache miss falls back to live-throttled Chefkoch fetch at generation time"
+  - "sequencing: warmer cron entry fires AFTER the Monday scrape completes (this-week deals known post-scrape)"
+  - "deployment strategy: recreate/direct (any push -> production); rollback = git revert + re-run (trunk-based, no feature branches)"

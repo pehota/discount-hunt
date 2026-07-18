@@ -1,0 +1,30 @@
+schema_version: "0.1"
+# NOTE (DISTILL meal-plan-engine, 2026-07-18): `nwave-ai outcomes register` is UNUSABLE in this
+# environment — the installed CLI (v3.21.0) crashes with FileNotFoundError on its bundled
+# schema.json (packaging bug, not a repo issue). The 4 new typed contract surfaces are recorded
+# here directly (the registry IS the SSOT). Re-run the CLI to re-validate once it is fixed.
+outcomes:
+  - id: OUT-MPE-01
+    kind: operation
+    feature: meal-plan-engine
+    input_shape: "basket:StoredDiscountItem[], restriction:DietaryRestriction, action:{generateDraft|regenerateDraft|saveDraft|discardDraft}"
+    output_shape: "PlanDraft | SavedPlan | void — draft is NOT persisted until saveDraft"
+    keywords: [meal-plan, draft, lifecycle, regenerate, save, discard]
+  - id: OUT-MPE-02
+    kind: specification
+    feature: meal-plan-engine
+    input_shape: "recipe:FetchedRecipe(ingredients[]+title), restriction:DietaryRestriction"
+    output_shape: "DietaryVerdict{safe,offendingKeyword,lang}; no parseable ingredients -> reject (never surface)"
+    keywords: [dietary, verifier, blocklist, word-boundary, de-en, job-003]
+  - id: OUT-MPE-03
+    kind: invariant
+    feature: meal-plan-engine
+    input_shape: "perMealProductIds:string[][], catalogue:UsedProduct[]"
+    output_shape: "deduped spend <= regular baseline; product used by N meals counts once; deduped == shipped savings tracker"
+    keywords: [cost-objective, dedup, savings, double-count-guard, kpi-1]
+  - id: OUT-MPE-04
+    kind: invariant
+    feature: meal-plan-engine
+    input_shape: "savedPlan replace-on-save event"
+    output_shape: "expired plan archived not deleted (mirrors offer_history); current-week view unchanged; one savings row/week"
+    keywords: [archive, offer-history, provenance, tech-mpe-06]
