@@ -113,6 +113,9 @@ export async function createServer(
       if (method === "POST" && url.pathname === "/plan/save") {
         return planHandler.handlePostSave(request);
       }
+      if (method === "POST" && url.pathname === "/plan/discard") {
+        return planHandler.handlePostDiscard(request);
+      }
       if (method === "GET" && url.pathname === "/plan") {
         return planHandler.handleGetPlan(request);
       }

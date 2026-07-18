@@ -145,7 +145,7 @@ describe("@driving_port — Saving a draft persists it and offers to add its dea
   });
 });
 
-describe.skip("@driving_port — Discarding a draft drops it and shows the last saved plan", () => {
+describe("@driving_port — Discarding a draft drops it and shows the last saved plan", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;

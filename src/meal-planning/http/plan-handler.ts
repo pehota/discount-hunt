@@ -21,6 +21,7 @@ import type { UserPreferencesRepository } from "../../preferences/ports/preferen
 import type { ShoppingListService } from "../../shopping-list/shopping-list-service.ts";
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
+import { currentWeekMonday } from "../../shared/week.ts";
 
 /** Per-meal store + sale price, resolved from the live feed; null when unavailable. */
 type MealSource = { store: string; salePrice: number } | null;
@@ -78,6 +79,17 @@ function renderNoDataHtml(plan: MealPlan, listCount: number): string {
   const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
   <p class="no-discounts-warning">No discounts available this week — please check back after the next catalogue update.</p>`;
   return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
+}
+
+/**
+ * Plan-free no-data empty state for the current week — used on the discard path when no plan is
+ * saved yet. Reuses renderNoDataHtml's copy over a synthesized empty current-week plan (there is
+ * no saved plan to read a weekStart from), so discarding into an empty week shows the same
+ * "check back after the next catalogue update" state a fresh GET /plan would.
+ */
+function renderNoDataForWeek(listCount: number): string {
+  const emptyWeekPlan = { weekStart: currentWeekMonday() } as MealPlan;
+  return renderNoDataHtml(emptyWeekPlan, listCount);
 }
 
 /**
@@ -328,6 +340,29 @@ export class PlanHandler {
   async handlePostSave(_request: Request): Promise<Response> {
     await this.planService.saveDraft();
     return new Response(renderSavePromptHtml(this.listCount()), {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  }
+
+  /**
+   * POST /plan/discard (S01a) — drop the current draft (SHELL use case clears the draft slot only,
+   * no meal_plans / savings_log write), then render the last SAVED plan for the week READ-ONLY.
+   *
+   * Deliberately does NOT redirect to /plan and does NOT call getOrGenerateCurrentWeekPlan: a
+   * discard must never persist. It reads the saved plan via getCurrentWeekPlan (no generate, no
+   * save) and, when none exists, renders the no-data empty state — so discarding a draft can never
+   * write a savings_log row nor resurrect a plan.
+   */
+  async handlePostDiscard(_request: Request): Promise<Response> {
+    this.planService.discardDraft();
+    const scopedSlots = this.preferencesRepository?.get().mealTypes ?? DEFAULT_MEAL_TYPES;
+    const itemsById = await this.planService.getCurrentWeekItemsById();
+    const saved = this.planService.getCurrentWeekPlan();
+    const html = saved === null
+      ? renderNoDataForWeek(this.listCount())
+      : renderPlanHtml(saved, scopedSlots, itemsById, this.listCount());
+    return new Response(html, {
       status: 200,
       headers: { "content-type": "text/html; charset=utf-8" },
     });

@@ -212,6 +212,16 @@ export class PlanService {
   }
 
   /**
+   * SHELL use case (D38): DROP the current draft (S01a Discard). Clears the draft slot ONLY —
+   * NEVER touches meal_plans / savings_log. After discard, GET /plan naturally falls back to the
+   * last SAVED plan (or the empty state when none exists), because the draft short-circuit is gone.
+   * Inert when no draft repo is injected (mirrors the other draft use cases).
+   */
+  discardDraft(): void {
+    this.planDraftRepository?.clearDraft();
+  }
+
+  /**
    * SHELL use case (D38): COMMIT the current draft to this week's saved plan (S01a Save).
    * Reads the draft slot, projects it into a full MealPlan, then delegates persistence to the
    * SHIPPED savePlan (replace-on-save; writes meal_plans + savings_log atomically with the
