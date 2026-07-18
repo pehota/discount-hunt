@@ -18,6 +18,7 @@ import type { DietaryRestriction } from "../../shared/types.ts";
 import type { RecipeSource, FetchedRecipe } from "../ports/recipe-source.ts";
 import type { RecipeCandidateProvider, VerifiedCandidate } from "../ports/recipe-candidate-provider.ts";
 import { verifyDietary } from "../dietary-verifier.ts";
+import { tokensOverlap } from "../ingredient-match.ts";
 import { buildRecipeQuery } from "../recipe-query.ts";
 import type { Logger } from "../../shared/logger.ts";
 
@@ -85,9 +86,8 @@ export class RecipeCandidateProviderAdapter implements RecipeCandidateProvider {
     recipe: FetchedRecipe,
     basket: readonly StoredDiscountItem[],
   ): string[] {
-    const haystack = recipe.ingredients.join(" ").toLowerCase();
     return basket
-      .filter((item) => haystack.includes(item.name.toLowerCase()))
+      .filter((item) => recipe.ingredients.some((line) => tokensOverlap(line, item.name)))
       .map((item) => item.id);
   }
 }
