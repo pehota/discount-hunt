@@ -20,7 +20,7 @@ import {
   WORD_BOUNDARY_SAFE,
 } from "../../tests/acceptance/support/meal-plan-domain.ts";
 
-describe.skip("DietaryVerifier — the RUN-4 known lies are rejected (DE gold corpus)", () => {
+describe("DietaryVerifier — the RUN-4 known lies are rejected (DE gold corpus)", () => {
   test("Brokkoli-Nudel-Gratin listing Schinken is rejected under vegetarian", () => {
     const verdict = verifyDietary(meatLieRecipe("Brokkoli-Nudel-Gratin", "200 g Schinken, gewürfelt"), "vegetarian");
     expect(verdict.safe).toBe(false);
@@ -33,7 +33,7 @@ describe.skip("DietaryVerifier — the RUN-4 known lies are rejected (DE gold co
   });
 });
 
-describe.skip("DietaryVerifier — every DE+EN non-veg family keyword is rejected", () => {
+describe("DietaryVerifier — every DE+EN non-veg family keyword is rejected", () => {
   const families = [...NON_VEG_GOLD_REJECT.de, ...NON_VEG_GOLD_REJECT.en];
 
   test("no non-veg keyword ever passes as vegetarian-safe", () => {
@@ -47,7 +47,7 @@ describe.skip("DietaryVerifier — every DE+EN non-veg family keyword is rejecte
   });
 });
 
-describe.skip("DietaryVerifier — word-boundary: vegetarian ingredients are NOT over-matched", () => {
+describe("DietaryVerifier — word-boundary: vegetarian ingredients are NOT over-matched", () => {
   test("Preiselbeeren / gehackt / chamomile / Reis are safe (no substring over-match)", () => {
     fc.assert(
       fc.property(fc.constantFrom(...WORD_BOUNDARY_SAFE), (safeIngredient) => {
@@ -59,14 +59,14 @@ describe.skip("DietaryVerifier — word-boundary: vegetarian ingredients are NOT
   });
 });
 
-describe.skip("DietaryVerifier — a recipe with no parseable ingredients cannot be verified and is rejected", () => {
+describe("DietaryVerifier — a recipe with no parseable ingredients cannot be verified and is rejected", () => {
   test("empty ingredient list is rejected (cannot verify -> never surface)", () => {
     const verdict = verifyDietary(vegRecipe("Mystery dish", []), "vegetarian");
     expect(verdict.safe).toBe(false);
   });
 });
 
-describe.skip("DietaryVerifier — a genuinely vegetarian recipe passes", () => {
+describe("DietaryVerifier — a genuinely vegetarian recipe passes", () => {
   test("Rote Linsen-Dal with only vegetarian ingredients is safe", () => {
     const verdict = verifyDietary(
       vegRecipe("Rote Linsen-Dal", ["200 g Rote Linsen", "2 Campari Tomaten", "Kokosmilch", "Currypaste"]),
