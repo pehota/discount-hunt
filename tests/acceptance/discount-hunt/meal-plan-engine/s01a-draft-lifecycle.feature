@@ -13,7 +13,7 @@ Feature: Meal-plan draft lifecycle — experiment before committing
   Scenario: Generating a draft does not save it — the existing saved plan is untouched
     Given a plan is already saved for this week
     When Dimitar generates a new draft and does not save it
-    Then the saved plan for the week is unchanged
+    Then Dimitar sees the draft marked as unsaved
     And no savings record is written for the draft
 
   @skip @driving_port @us-mpe-01 @real_io @contract-shape:unbounded-preservation

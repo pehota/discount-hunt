@@ -4,9 +4,12 @@
  * /plan/save, /plan/discard) do not exist yet -> 404; and generate currently auto-saves, so the
  * "saved plan untouched until Save" assertion fires on missing functionality.
  *
- * Layer 4 (real HTTP + real SQLite). The keystone scenario (generate does not save) uses the
- * Universe-bound state-delta port (Mandate 8) over the port-exposed observables (saved-plan
- * estimate + savings-tracker record count) — the seam this port earns its keep on.
+ * Layer 4 (real HTTP + real SQLite). The keystone scenario (generate does not save) asserts a
+ * positive draft observable (the "Unsaved draft" banner on GET /plan — the RED driver) and then
+ * uses the Universe-bound state-delta port (Mandate 8) over the savings-tracker record count — the
+ * reliable "not persisted" signal (the tracker reflects SAVED plans only, never drafts). The
+ * saved-plan estimate is deliberately OUT of the universe: once GET /plan renders the draft,
+ * data-estimated-savings reflects the draft, so "unchanged" would fire for the wrong reason.
  *
  * Setup fetches carry NO expect() (an unbuilt route 404s as a Response, it does not throw) so a
  * missing route never BREAKS the describe; every expect() lives in a test body -> failures are RED.
@@ -19,11 +22,6 @@ import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
 import { HAPPY_VEG_BASKET } from "../../support/meal-plan-domain.ts";
 import { assertStateDelta, setTo, unchanged } from "../../../common/state_delta.ts";
-
-async function planSavedEstimate(port: number): Promise<string | null> {
-  const html = await (await fetch(`http://localhost:${port}/plan`)).text();
-  return html.match(/data-estimated-savings="(\d+)"/)?.[1] ?? null;
-}
 
 async function savingsRecordCount(port: number): Promise<number> {
   const html = await (await fetch(`http://localhost:${port}/savings`)).text();
@@ -55,23 +53,24 @@ describe.skip("@driving_port — Generating a draft does not save it; the existi
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  test("the saved plan and the savings tracker are unchanged after generating an unsaved draft", async () => {
-    const before = {
-      "plan.savedEstimate": await planSavedEstimate(serverPort),
-      "savings.recordCount": await savingsRecordCount(serverPort),
-    };
+  test("a draft is shown and the savings tracker is unchanged after generating an unsaved draft", async () => {
+    const before = { "savings.recordCount": await savingsRecordCount(serverPort) };
 
     // Generate a new DRAFT (does not save) — the future draft route.
     await fetch(`http://localhost:${serverPort}/plan/generate?draft=true`, { method: "POST" });
 
-    const after = {
-      "plan.savedEstimate": await planSavedEstimate(serverPort),
-      "savings.recordCount": await savingsRecordCount(serverPort),
-    };
+    // POSITIVE observable FIRST (the RED driver): the plan view must now flag an
+    // unsaved draft. Asserted before preservation so a failure is unambiguously the
+    // missing banner, not the (vacuous-today) preservation half.
+    const planHtml = await (await fetch(`http://localhost:${serverPort}/plan`)).text();
+    expect(planHtml).toContain("Unsaved draft");
 
-    // Universe = port-exposed observables only. Both must be unchanged (fail-closed).
-    assertStateDelta(before, after, ["plan.savedEstimate", "savings.recordCount"], {
-      "plan.savedEstimate": unchanged(),
+    // Preservation: the savings tracker reflects SAVED plans only — a draft writes no
+    // row, so recordCount is unchanged and meaningful. (plan.savedEstimate is NOT in the
+    // universe: once GET /plan renders the DRAFT, data-estimated-savings reflects the
+    // draft, not the saved plan — asserting it "unchanged" would fail for the wrong reason.)
+    const after = { "savings.recordCount": await savingsRecordCount(serverPort) };
+    assertStateDelta(before, after, ["savings.recordCount"], {
       "savings.recordCount": unchanged(),
     });
   });
