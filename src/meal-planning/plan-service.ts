@@ -188,13 +188,37 @@ export class PlanService {
    * writes no savings row until the user explicitly Saves it (S01a). The pure generatePlan core
    * is reused verbatim to build the meals; only the draft slot is a bounded side effect.
    */
-  async generateDraft(): Promise<PlanDraft> {
+  /**
+   * S01a (D2): generate a THROWAWAY draft from the FEED. When selectedIds is provided and
+   * non-empty, the basket is built from ONLY those discounted products (rehydrated from the week's
+   * items, same idiom as generateDraftFromList) — the feed selection is honored. When absent/empty,
+   * the whole weekly feed is used (original behavior). The dietary restriction governs findCandidates.
+   */
+  async generateDraft(selectedIds?: readonly string[]): Promise<PlanDraft> {
     const weekStart = currentWeekMonday();
     const preferences = this.preferencesRepository?.get();
     const restriction = preferences?.dietaryRestriction ?? "none";
-    const items = await this.discountService.getWeeklyItems(weekStart, restriction);
+    const items = await this.resolveFeedBasket(weekStart, restriction, selectedIds);
 
     return this.assembleDraft(weekStart, items, restriction, "feed");
+  }
+
+  /**
+   * A non-empty selection restricts the basket to the SELECTED weekly items (rehydrated with
+   * restriction "none" so the selection itself is never silently trimmed — the restriction still
+   * governs findCandidates downstream). No selection → the whole restriction-filtered weekly feed.
+   */
+  private async resolveFeedBasket(
+    weekStart: WeekStart,
+    restriction: DietaryRestriction,
+    selectedIds?: readonly string[],
+  ): Promise<StoredDiscountItem[]> {
+    if (selectedIds && selectedIds.length > 0) {
+      const idSet = new Set(selectedIds);
+      const weeklyItems = await this.discountService.getWeeklyItems(weekStart, "none");
+      return weeklyItems.filter((item) => idSet.has(item.id));
+    }
+    return this.discountService.getWeeklyItems(weekStart, restriction);
   }
 
   /**

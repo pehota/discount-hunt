@@ -567,7 +567,7 @@ export class DiscountHandler {
     <h1>Weekly Discount Feed</h1>
   </header>
   ${filterBar}
-  <form class="selection-form" method="POST" action="/plan/generate">
+  <form class="selection-form" method="POST" action="/plan/generate?draft=true">
     <section id="discount-items">
       ${itemsHtml}
       <p class="no-match-state" hidden>No products match</p>

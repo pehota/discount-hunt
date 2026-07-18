@@ -125,8 +125,9 @@ describe("DiscountHandler.handleGet", () => {
     // Generate Meal Plan button always visible (US-01 AC)
     expect(html).toContain("Generate Meal Plan");
 
-    // Selection form wraps the feed and posts to the generate route.
-    expect(html).toMatch(/<form[^>]*action="\/plan\/generate"/);
+    // Selection form wraps the feed and posts to the generate route in DRAFT mode (D2):
+    // the "Generate Meal Plan" button produces a throwaway real-recipe draft, not an auto-save.
+    expect(html).toMatch(/<form[^>]*action="\/plan\/generate\?draft=true"/);
 
     // Each item card carries an UNCHECKED itemIds checkbox with an associated label:
     // nothing is preselected. Extract item ids from the discount_items DB rows to assert

@@ -189,3 +189,53 @@ describe("@driving_port — Discarding a draft drops it and shows the last saved
     expect(planHtml).not.toContain("Unsaved draft");
   });
 });
+
+// A TWO-recipe source: both Rote Linsen and Mozzarella resolve a candidate. This is what gives
+// the selection assertion teeth — a draft built from ALL items would surface BOTH recipes, so the
+// absence of the un-selected one proves generateDraft honored the feed selection (D2).
+function twoRecipeSource(): FakeRecipeSource {
+  const canned = new Map<string, FetchedRecipe | null>([
+    ["rote linsen", vegRecipe("Rote Linsen-Tomaten-Dal", ["200 g Rote Linsen", "Kokosmilch"], "https://example.test/dal")],
+    ["mozzarella", vegRecipe("Mozzarella-Tomaten-Salat", ["1 Mozzarella", "2 Campari Tomaten"], "https://example.test/salat")],
+  ]);
+  return new FakeRecipeSource(canned);
+}
+
+describe("@driving_port — A feed-sourced draft is built from the SELECTED items only (D2)", () => {
+  let tmpDir: string;
+  let dbPath: string;
+  let serverPort: number;
+  let server: { stop(): void } | null = null;
+
+  beforeAll(async () => {
+    tmpDir = mkdtempSync(join(tmpdir(), "mpe-s01a-selection-"));
+    dbPath = join(tmpDir, "s01a.db");
+    seedDiscounts(dbPath, HAPPY_VEG_BASKET);
+
+    const { createServer } = await import("../../../../src/server.ts");
+    const s = await createServer({ port: 0, dbPath, recipeSource: twoRecipeSource() });
+    server = s;
+    serverPort = s.port;
+  });
+
+  afterAll(() => {
+    server?.stop();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("submitting a SUBSET of the feed selection builds the draft from only those products", async () => {
+    // Select ONLY Rote Linsen (mpe-rote-linsen) — Mozzarella is left OUT of the selection.
+    const body = new URLSearchParams();
+    body.append("itemIds", "mpe-rote-linsen");
+    await fetch(`http://localhost:${serverPort}/plan/generate?draft=true`, { method: "POST", body });
+
+    const planHtml = await (await fetch(`http://localhost:${serverPort}/plan`)).text();
+
+    // The draft is a real, non-empty draft sourced from the selection.
+    expect(planHtml).toContain("Unsaved draft");
+    expect(planHtml).toContain("Rote Linsen-Tomaten-Dal");
+    // Teeth: Mozzarella was NOT selected, so its recipe must be absent. A draft built from ALL
+    // weekly items (the pre-D2 bug) would surface it — this assertion fails RED on that path.
+    expect(planHtml).not.toContain("Mozzarella-Tomaten-Salat");
+  });
+});

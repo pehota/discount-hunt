@@ -425,7 +425,11 @@ export class PlanHandler {
     // meal_plans / savings_log write) and redirects to /plan, which renders it with the
     // "Unsaved draft" banner. Short-circuits before any selection parsing / persistence.
     if (new URL(request.url).searchParams.get("draft") === "true") {
-      await this.planService.generateDraft();
+      // Honor the feed selection (D2): the draft's basket is the SELECTED items, or ALL
+      // weekly items when the form submits none. Parsing mirrors the non-draft path below;
+      // a bodyless POST makes formData() throw — treat that as an empty selection, never a crash.
+      const selectedIds = await this.parseSelectedItemIds(request);
+      await this.planService.generateDraft(selectedIds);
       return Response.redirect("/plan", 303);
     }
 
@@ -448,15 +452,8 @@ export class PlanHandler {
       return Response.redirect("/plan", 303);
     }
 
-    // Parse the feed's checkbox selection. A bodyless POST (or a non-form body)
-    // makes formData() throw — treat that as an empty selection, never a crash.
-    let selectedIds: string[] = [];
-    try {
-      const form = await request.formData();
-      selectedIds = form.getAll("itemIds").map(String);
-    } catch {
-      selectedIds = [];
-    }
+    // Parse the feed's checkbox selection (shared with the draft path above).
+    const selectedIds = await this.parseSelectedItemIds(request);
 
     // Empty selection: render an inline no-selection state and return 200. Crucially
     // this happens BEFORE any persistence — we must NOT touch savePlan (no delete, no
@@ -471,6 +468,20 @@ export class PlanHandler {
     }
 
     return Response.redirect("/plan", 303);
+  }
+
+  /**
+   * Parse the feed's checkbox selection (itemIds) from the POST body. A bodyless POST (or a
+   * non-form body) makes formData() throw — treat that as an empty selection, never a crash.
+   * SSOT for both the draft path and the generate-from-selection path.
+   */
+  private async parseSelectedItemIds(request: Request): Promise<string[]> {
+    try {
+      const form = await request.formData();
+      return form.getAll("itemIds").map(String);
+    } catch {
+      return [];
+    }
   }
 
   /**
