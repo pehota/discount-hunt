@@ -7,8 +7,6 @@
  * (Principle-12 driving-port split). Impl composes the shipped RecipeService + DietaryVerifier.
  */
 
-export const __SCAFFOLD__ = true;
-
 import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
 import type { DietaryRestriction } from "../../shared/types.ts";
 

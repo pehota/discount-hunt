@@ -38,7 +38,9 @@ import { PreferencesService } from "./preferences/preferences-service.ts";
 import { SettingsHandler } from "./preferences/http/settings-handler.ts";
 import { SQLiteRecipeRepository } from "./recipe/adapters/sqlite-recipe-repository.ts";
 import { ChefkochRecipeSource } from "./recipe/adapters/chefkoch-recipe-source.ts";
+import { RecipeCandidateProviderAdapter } from "./recipe/adapters/recipe-candidate-provider.ts";
 import { RecipeService } from "./recipe/recipe-service.ts";
+import { ConsoleLogger } from "./shared/logger.ts";
 import { RecipeHandler } from "./recipe/http/recipe-handler.ts";
 import type { RecipeSource } from "./recipe/ports/recipe-source.ts";
 import { SQLiteShoppingListRepository } from "./shopping-list/adapters/sqlite-shopping-list-repository.ts";
@@ -78,10 +80,13 @@ export async function createServer(
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
   const savingsService = new SavingsService(savingsRepo);
-  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo, planDraftRepo);
-  const preferencesService = new PreferencesService(preferencesRepo);
   // Recipe lookup: prod default hits Chefkoch; tests inject a FakeRecipeSource.
-  const recipeService = new RecipeService(recipeRepo, config.recipeSource ?? new ChefkochRecipeSource());
+  const recipeSource = config.recipeSource ?? new ChefkochRecipeSource();
+  // Real-recipe candidate provider (S01b): drives draft generation from dietary-verified recipes.
+  const recipeCandidateProvider = new RecipeCandidateProviderAdapter(recipeSource, new ConsoleLogger());
+  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo, planDraftRepo, recipeCandidateProvider);
+  const preferencesService = new PreferencesService(preferencesRepo);
+  const recipeService = new RecipeService(recipeRepo, recipeSource);
   const shoppingListService = new ShoppingListService(shoppingListRepo, discountService);
 
   // 4. Handlers

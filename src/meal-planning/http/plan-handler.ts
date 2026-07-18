@@ -98,12 +98,35 @@ function renderNoDataForWeek(listCount: number): string {
  * (slot ∈ prefs.mealTypes); otherwise the plain escaped name without an <a>.
  * data-meal-slot + every other marker are unchanged.
  */
-function renderMealNameCell(meal: MealPlan["meals"][number], scopedSlots: MealSlot[]): string {
+function renderMealNameCell(
+  meal: MealPlan["meals"][number],
+  scopedSlots: MealSlot[],
+  itemsById: Map<string, StoredDiscountItem>,
+): string {
   const escapedName = escapeHtml(meal.name);
+  // S01b real-recipe draft meal: the title links to the recipe's source page, and the cell names
+  // the discounted product(s) the recipe uses (resolved from the live feed by id).
+  if (meal.sourceUrl) {
+    const products = renderUsedProducts(meal.usedDiscountItemIds ?? [], itemsById);
+    return `<td data-label="Meal"><a href="${escapeHtml(meal.sourceUrl)}">${escapedName}</a>${products}</td>`;
+  }
   if (!scopedSlots.includes(meal.slot)) {
     return `<td data-label="Meal">${escapedName}</td>`;
   }
   return `<td data-label="Meal"><a href="/plan/${meal.day}-${meal.slot}">${escapedName}</a></td>`;
+}
+
+/** The discounted product name(s) a real-recipe draft meal uses, resolved from the live feed. */
+function renderUsedProducts(
+  usedIds: readonly string[],
+  itemsById: Map<string, StoredDiscountItem>,
+): string {
+  const names = usedIds
+    .map((id) => itemsById.get(id)?.name)
+    .filter((name): name is string => name !== undefined)
+    .map((name) => escapeHtml(name));
+  if (names.length === 0) return "";
+  return ` <span class="used-products">${names.join(", ")}</span>`;
 }
 
 /** Store cell — degrades to an em dash when the meal has no resolvable discount item. */
@@ -141,6 +164,17 @@ function renderSavingsHero(plan: MealPlan): string {
   </section>`;
 }
 
+/**
+ * Empty-with-reason draft state (S01b): the draft was generated but no dietary-safe real recipe
+ * could be built for the current selection. Renders the exact self-explaining message and
+ * fabricates NO meals (contrast with the no-data / restriction-filtered saved-plan states).
+ */
+function renderNoRecipesHtml(listCount: number): string {
+  const body = `<h1>Meal Plan</h1>
+  <p class="empty-plan-warning" data-no-recipes>Couldn't build meals from these — try a different selection</p>`;
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
+}
+
 /** Unsaved-draft banner (S01a) — rendered only when the plan view shows a throwaway draft. */
 function renderDraftBanner(): string {
   return `<p class="draft-banner" data-unsaved-draft>Unsaved draft — Save it to keep it, or Discard.</p>`;
@@ -165,7 +199,7 @@ function renderPlanHtml(
       return `<tr data-meal-slot="${meal.slot}">` +
         `<td data-label="Day">Day ${meal.day} (${DAY_LABELS[meal.day]})</td>` +
         `<td data-label="Slot"><span class="slot-badge">${capitalizeFirst(meal.slot)}</span></td>` +
-        renderMealNameCell(meal, scopedSlots) +
+        renderMealNameCell(meal, scopedSlots, itemsById) +
         renderStoreCell(source) +
         renderPriceCell(source) +
         `</tr>`;
@@ -291,6 +325,14 @@ export class PlanHandler {
     // — that path would generate + savePlan, writing a savings_log row for a mere draft.
     const draft = this.planService.getCurrentDraft();
     if (draft !== null) {
+      // Empty-with-reason (S01b): the draft was generated but no dietary-safe real recipe could
+      // be built for the selection. Render the exact self-explaining message; fabricate NOTHING.
+      if (draft.meals.length === 0) {
+        return new Response(renderNoRecipesHtml(this.listCount()), {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
       const draftPlan = draftAsPlan(draft, itemsById);
       const draftHtml = renderPlanHtml(draftPlan, scopedSlots, itemsById, this.listCount(), true);
       return new Response(draftHtml, {

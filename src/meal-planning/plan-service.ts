@@ -24,6 +24,7 @@ import type { SQLiteMealPlanRepository, MealPlan } from "./adapters/sqlite-meal-
 import type { SavingsService } from "../savings/savings-service.ts";
 import type { UserPreferencesRepository } from "../preferences/ports/preferences-repository.ts";
 import type { PlanDraft, PlanDraftRepository } from "./ports/plan-draft-repository.ts";
+import type { RecipeCandidateProvider, VerifiedCandidate } from "../recipe/ports/recipe-candidate-provider.ts";
 
 const MEAL_SLOTS: MealSlot[] = ['lunch', 'dinner'];
 const DAYS_PER_WEEK = 7;
@@ -40,6 +41,10 @@ export class PlanService {
     // always injects it; when absent, draft use cases are inert and the existing saved-plan
     // path is unchanged byte-for-byte (protects direct-construction tests).
     private readonly planDraftRepository?: PlanDraftRepository,
+    // Optional trailing param (same precedent): the recipe-candidate provider (S01b). Production
+    // injects it; when absent, generateDraft falls back to the pre-S01b round-robin meals (protects
+    // direct-construction tests that never wired a provider).
+    private readonly recipeCandidateProvider?: RecipeCandidateProvider,
   ) {}
 
   /** Pure computation — no DB writes (D37). Snapshots the restriction + budget cap onto the plan. */
@@ -189,10 +194,34 @@ export class PlanService {
     const restriction = preferences?.dietaryRestriction ?? "none";
     const budgetCapCents = preferences?.budgetCapCents ?? null;
     const items = await this.discountService.getWeeklyItems(weekStart, restriction);
+
+    // S01b: real-recipe draft — assemble meals from dietary-VERIFIED candidates the provider
+    // returns for the basket. Zero candidates → an empty-meals draft (the handler's
+    // empty-with-reason signal); we fabricate NO meals. Legacy round-robin only when no provider.
+    if (this.recipeCandidateProvider) {
+      const candidates = await this.recipeCandidateProvider.findCandidates(items, restriction);
+      const meals = this.mealsFromCandidates(candidates);
+      const draft: PlanDraft = { weekStart, meals, source: "feed" };
+      this.planDraftRepository?.saveDraft(draft);
+      return draft;
+    }
+
     const plan = this.generatePlan(weekStart, items, restriction, budgetCapCents);
     const draft: PlanDraft = { weekStart, meals: plan.meals, source: "feed" };
     this.planDraftRepository?.saveDraft(draft);
     return draft;
+  }
+
+  /** Pure: one draft meal per verified candidate, carrying its title, source URL, and used item ids. */
+  private mealsFromCandidates(candidates: VerifiedCandidate[]): Meal[] {
+    return candidates.map((candidate, index) => ({
+      day: Math.floor(index / MEAL_SLOTS.length) + 1,
+      slot: MEAL_SLOTS[index % MEAL_SLOTS.length]!,
+      name: candidate.title,
+      discountItemId: candidate.usedDiscountItemIds[0] ?? null,
+      sourceUrl: candidate.sourceUrl,
+      usedDiscountItemIds: candidate.usedDiscountItemIds,
+    }));
   }
 
   /**

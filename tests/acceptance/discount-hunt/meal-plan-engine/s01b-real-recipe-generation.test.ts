@@ -16,7 +16,7 @@ import { HAPPY_VEG_BASKET, ROTE_LINSEN, CAMPARI_TOMATEN } from "../../support/me
 import { FakeRecipeSource, vegRecipe, meatLieRecipe } from "../../support/fake-recipe-source.ts";
 import type { FetchedRecipe } from "../../../../src/recipe/ports/recipe-source.ts";
 
-describe.skip("@driving_port — Each drafted meal is a real recipe naming the discounted products it uses", () => {
+describe("@driving_port — Each drafted meal is a real recipe naming the discounted products it uses", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -55,7 +55,7 @@ describe.skip("@driving_port — Each drafted meal is a real recipe naming the d
   });
 });
 
-describe.skip("@driving_port — A recipe with a hidden meat ingredient never surfaces to a vegetarian plan", () => {
+describe("@driving_port — A recipe with a hidden meat ingredient never surfaces to a vegetarian plan", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -95,7 +95,7 @@ describe.skip("@driving_port — A recipe with a hidden meat ingredient never su
   });
 });
 
-describe.skip("@driving_port — When no real dietary-safe recipe can be built the draft explains itself", () => {
+describe("@driving_port — When no real dietary-safe recipe can be built the draft explains itself", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;

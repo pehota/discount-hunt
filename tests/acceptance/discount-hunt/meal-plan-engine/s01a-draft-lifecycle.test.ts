@@ -22,6 +22,17 @@ import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
 import { HAPPY_VEG_BASKET } from "../../support/meal-plan-domain.ts";
 import { assertStateDelta, setTo, unchanged } from "../../../common/state_delta.ts";
+import { FakeRecipeSource, vegRecipe } from "../../support/fake-recipe-source.ts";
+import type { FetchedRecipe } from "../../../../src/recipe/ports/recipe-source.ts";
+
+// The seeded HAPPY_VEG_BASKET includes Rote Linsen, so this key resolves a real
+// candidate — every draft is non-empty and the "Unsaved draft" banner renders.
+function cannedRecipeSource(): FakeRecipeSource {
+  const canned = new Map<string, FetchedRecipe | null>([
+    ["rote linsen", vegRecipe("Rote Linsen-Tomaten-Dal", ["200 g Rote Linsen", "2 Campari Tomaten", "Kokosmilch"], "https://example.test/dal")],
+  ]);
+  return new FakeRecipeSource(canned);
+}
 
 async function savingsRecordCount(port: number): Promise<number> {
   const html = await (await fetch(`http://localhost:${port}/savings`)).text();
@@ -40,7 +51,7 @@ describe("@driving_port — Generating a draft does not save it; the existing sa
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedRecipeSource() });
     server = s;
     serverPort = s.port;
 
@@ -88,7 +99,7 @@ describe("@driving_port — Regenerate rebuilds the whole draft without persisti
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedRecipeSource() });
     server = s;
     serverPort = s.port;
   });
@@ -119,7 +130,7 @@ describe("@driving_port — Saving a draft persists it and offers to add its dea
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedRecipeSource() });
     server = s;
     serverPort = s.port;
 
@@ -157,7 +168,7 @@ describe("@driving_port — Discarding a draft drops it and shows the last saved
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedRecipeSource() });
     server = s;
     serverPort = s.port;
 

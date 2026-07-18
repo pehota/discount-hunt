@@ -121,6 +121,14 @@ export interface Meal {
   slot: MealSlot;
   name: string;
   discountItemId: string | null;
+  /**
+   * Real-recipe draft fields (S01b), optional so every existing Meal producer/consumer
+   * compiles untouched. Present only on draft meals built from a VerifiedCandidate:
+   *   - sourceUrl: the recipe's source page the title links to
+   *   - usedDiscountItemIds: the discounted products whose names appear in the recipe
+   */
+  sourceUrl?: string;
+  usedDiscountItemIds?: readonly string[];
 }
 
 /** HTTP server configuration. */
