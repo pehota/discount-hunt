@@ -27,7 +27,7 @@ const productArb: fc.Arbitrary<UsedProduct> = fc
     salePriceCents: Math.max(1, regularPriceCents - delta),
   }));
 
-describe.skip("dedupedUsedProducts — a product used by N meals counts once", () => {
+describe("dedupedUsedProducts — a product used by N meals counts once", () => {
   test("the deduped set has no duplicate product ids", () => {
     fc.assert(
       fc.property(fc.array(productArb, { minLength: 1, maxLength: 8 }), (catalogue) => {
@@ -43,7 +43,7 @@ describe.skip("dedupedUsedProducts — a product used by N meals counts once", (
   });
 });
 
-describe.skip("planSpendCents / planRegularBaselineCents — spend never exceeds the regular baseline", () => {
+describe("planSpendCents / planRegularBaselineCents — spend never exceeds the regular baseline", () => {
   test("for any deduped used set, spend <= regular baseline (KPI-1)", () => {
     fc.assert(
       fc.property(fc.uniqueArray(productArb, { minLength: 1, maxLength: 8, selector: (p) => p.id }), (used) => {
