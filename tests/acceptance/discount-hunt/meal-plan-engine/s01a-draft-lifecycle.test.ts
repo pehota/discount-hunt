@@ -76,7 +76,7 @@ describe("@driving_port — Generating a draft does not save it; the existing sa
   });
 });
 
-describe.skip("@driving_port — Regenerate rebuilds the whole draft without persisting anything", () => {
+describe("@driving_port — Regenerate rebuilds the whole draft without persisting anything", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;

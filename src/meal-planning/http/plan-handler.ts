@@ -294,4 +294,14 @@ export class PlanHandler {
 
     return Response.redirect("/plan", 303);
   }
+
+  /**
+   * POST /plan/regenerate (S01a) — thin adapter: rebuild the WHOLE draft (draft slot only, no
+   * meal_plans / savings_log write) and redirect to /plan, which renders the rebuilt draft with
+   * the "Unsaved draft" banner. No business logic here — the SHELL use case owns the bounded change.
+   */
+  async handlePostRegenerate(_request: Request): Promise<Response> {
+    await this.planService.regenerateDraft();
+    return Response.redirect("/plan", 303);
+  }
 }

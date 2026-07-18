@@ -107,6 +107,9 @@ export async function createServer(
       if (method === "POST" && url.pathname === "/plan/generate") {
         return planHandler.handlePostGenerate(request);
       }
+      if (method === "POST" && url.pathname === "/plan/regenerate") {
+        return planHandler.handlePostRegenerate(request);
+      }
       if (method === "GET" && url.pathname === "/plan") {
         return planHandler.handleGetPlan(request);
       }

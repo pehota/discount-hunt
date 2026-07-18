@@ -195,6 +195,17 @@ export class PlanService {
     return draft;
   }
 
+  /**
+   * SHELL use case (D38): rebuild the WHOLE draft from scratch and overwrite the draft slot
+   * (bounded-change over the draft slot only). Like generateDraft, NEVER touches meal_plans /
+   * savings_log — regenerating persists nothing until the user Saves (S01a). Whole-draft rebuild
+   * only; per-meal lock (S05) is DEFERRED, out of v1 scope. Delegates to generateDraft: at v1 a
+   * regenerate IS a fresh whole-draft generate over the draft slot (single source of truth).
+   */
+  async regenerateDraft(): Promise<PlanDraft> {
+    return this.generateDraft();
+  }
+
   /** Read-only: the current unsaved draft, or null when none exists (no draft repo → null). */
   getCurrentDraft(): PlanDraft | null {
     return this.planDraftRepository?.getDraft() ?? null;
