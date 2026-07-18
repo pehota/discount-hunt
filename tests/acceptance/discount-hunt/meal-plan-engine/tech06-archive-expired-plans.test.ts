@@ -11,6 +11,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
 import { HAPPY_VEG_BASKET } from "../../support/meal-plan-domain.ts";
+import { FakeRecipeSource, vegRecipe } from "../../support/fake-recipe-source.ts";
+import type { FetchedRecipe } from "../../../../src/recipe/ports/recipe-source.ts";
+
+// The seeded HAPPY_VEG_BASKET includes Rote Linsen, so this key resolves a real
+// candidate — every draft is non-empty and the saved plans are meaningful.
+function cannedRecipeSource(): FakeRecipeSource {
+  const canned = new Map<string, FetchedRecipe | null>([
+    ["rote linsen", vegRecipe("Rote Linsen-Tomaten-Dal", ["200 g Rote Linsen", "2 Campari Tomaten", "Kokosmilch"], "https://example.test/dal")],
+  ]);
+  return new FakeRecipeSource(canned);
+}
+
+// 4 sequential real-HTTP round-trips over Bun.serve + SQLite in beforeAll can
+// exceed bun:test's default 5000ms under full-suite parallel load — hence the
+// generous per-hook / per-test timeout (test-infra robustness, not behavior).
+const TECH06_TIMEOUT_MS = 20000;
 
 describe("@driving_port — Replacing a saved plan archives the previous plan rather than deleting it", () => {
   let tmpDir: string;
@@ -24,7 +40,7 @@ describe("@driving_port — Replacing a saved plan archives the previous plan ra
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedRecipeSource() });
     server = s;
     serverPort = s.port;
 
@@ -33,7 +49,7 @@ describe("@driving_port — Replacing a saved plan archives the previous plan ra
     await fetch(`http://localhost:${serverPort}/plan/save`, { method: "POST" });
     await fetch(`http://localhost:${serverPort}/plan/generate?draft=true`, { method: "POST" });
     await fetch(`http://localhost:${serverPort}/plan/save`, { method: "POST" });
-  });
+  }, TECH06_TIMEOUT_MS);
 
   afterAll(() => {
     server?.stop();
@@ -44,10 +60,10 @@ describe("@driving_port — Replacing a saved plan archives the previous plan ra
     const archiveHtml = await (await fetch(`http://localhost:${serverPort}/plan/archive`)).text();
     const count = (archiveHtml.match(/data-archived-plan/g) ?? []).length;
     expect(count).toBeGreaterThanOrEqual(1);
-  });
+  }, TECH06_TIMEOUT_MS);
 });
 
-describe.skip("@driving_port — Archiving a plan does not disturb the savings double-count guard", () => {
+describe("@driving_port — Archiving a plan does not disturb the savings double-count guard", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -59,7 +75,7 @@ describe.skip("@driving_port — Archiving a plan does not disturb the savings d
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedRecipeSource() });
     server = s;
     serverPort = s.port;
 
@@ -67,7 +83,7 @@ describe.skip("@driving_port — Archiving a plan does not disturb the savings d
     await fetch(`http://localhost:${serverPort}/plan/save`, { method: "POST" });
     await fetch(`http://localhost:${serverPort}/plan/generate?draft=true`, { method: "POST" });
     await fetch(`http://localhost:${serverPort}/plan/save`, { method: "POST" });
-  });
+  }, TECH06_TIMEOUT_MS);
 
   afterAll(() => {
     server?.stop();
@@ -78,5 +94,5 @@ describe.skip("@driving_port — Archiving a plan does not disturb the savings d
     const savingsHtml = await (await fetch(`http://localhost:${serverPort}/savings`)).text();
     const records = (savingsHtml.match(/data-saved-amount="(\d+)"/g) ?? []).length;
     expect(records).toBe(1);
-  });
+  }, TECH06_TIMEOUT_MS);
 });
