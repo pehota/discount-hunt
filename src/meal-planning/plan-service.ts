@@ -268,11 +268,17 @@ export class PlanService {
     const draft = this.planDraftRepository?.getDraft();
     if (!draft) return null;
 
-    const referencedIds = new Set(
-      draft.meals
-        .map((meal) => meal.discountItemId)
-        .filter((id): id is string => id !== null),
-    );
+    // Union of EVERY discounted product the draft's meals use (S01b meals carry a multi-product
+    // `usedDiscountItemIds`), deduped — a product shared across meals is counted once (D44). The
+    // saved plan's estimatedSavings is thus computed over the same deduped set the cost-objective
+    // footer reports, so the shipped savings tracker never diverges from the footer figure.
+    const referencedIds = new Set<string>();
+    for (const meal of draft.meals) {
+      const used = meal.usedDiscountItemIds && meal.usedDiscountItemIds.length > 0
+        ? meal.usedDiscountItemIds
+        : (meal.discountItemId !== null ? [meal.discountItemId] : []);
+      for (const id of used) referencedIds.add(id);
+    }
     const items = await this.discountService.getWeeklyItems(draft.weekStart, "none");
     const subset = items.filter((item) => referencedIds.has(item.id));
 

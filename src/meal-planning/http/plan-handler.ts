@@ -23,6 +23,12 @@ import type { ShoppingListService } from "../../shopping-list/shopping-list-serv
 import { escapeHtml } from "../../shared/html.ts";
 import { renderPage } from "../../shared/layout.ts";
 import { currentWeekMonday } from "../../shared/week.ts";
+import {
+  dedupedUsedProducts,
+  planSpendCents,
+  planRegularBaselineCents,
+  type UsedProduct,
+} from "../cost-objective.ts";
 
 /** Per-meal store + sale price, resolved from the live feed; null when unavailable. */
 type MealSource = { store: string; salePrice: number } | null;
@@ -180,6 +186,40 @@ function renderDraftBanner(): string {
   return `<p class="draft-banner" data-unsaved-draft>Unsaved draft — Save it to keep it, or Discard.</p>`;
 }
 
+/** The discounted-product ids a meal uses: the S01b multi-product set, else its single item id. */
+function mealUsedProductIds(meal: MealPlan["meals"][number]): readonly string[] {
+  if (meal.usedDiscountItemIds && meal.usedDiscountItemIds.length > 0) {
+    return meal.usedDiscountItemIds;
+  }
+  return meal.discountItemId !== null ? [meal.discountItemId] : [];
+}
+
+/**
+ * Cost-objective footer (S03): reports the DEDUPED products the plan's meals actually use vs the
+ * discounted products the source basket selected, plus total sale spend against the all-regular
+ * baseline over that deduped set. A product shared by two meals counts ONCE (D44), so the footer
+ * saving (baseline − spend) matches the shipped savings tracker. Derived render-time from the
+ * live-feed catalogue; emitted only in the populated-plan branch.
+ */
+function renderCostObjectiveFooter(
+  plan: MealPlan,
+  itemsById: Map<string, StoredDiscountItem>,
+): string {
+  const catalogue: UsedProduct[] = [...itemsById.values()].map((item) => ({
+    id: item.id,
+    regularPriceCents: item.regularPrice,
+    salePriceCents: item.salePrice,
+  }));
+  const perMealProductIds = plan.meals.map(mealUsedProductIds);
+  const used = dedupedUsedProducts(perMealProductIds, catalogue);
+  const spend = planSpendCents(used);
+  const baseline = planRegularBaselineCents(used);
+  return `<section class="cost-objective-footer">
+    <p class="cost-used" data-used-products="${used.length}" data-selected-products="${itemsById.size}">Uses ${used.length} of ${itemsById.size} selected deals</p>
+    <p class="cost-spend" data-plan-spend="${spend}" data-regular-baseline="${baseline}">Spend ${formatEuros(spend)} vs regular ${formatEuros(baseline)}</p>
+  </section>`;
+}
+
 function renderPlanHtml(
   plan: MealPlan,
   scopedSlots: MealSlot[],
@@ -213,7 +253,8 @@ function renderPlanHtml(
   <table>
     <thead><tr><th>Day</th><th>Slot</th><th>Meal</th><th>Store</th><th>Price</th></tr></thead>
     <tbody>${mealRows}</tbody>
-  </table>`;
+  </table>
+  ${renderCostObjectiveFooter(plan, itemsById)}`;
   return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
 }
 
@@ -275,7 +316,7 @@ const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
  */
 function draftAsPlan(draft: PlanDraft, itemsById: Map<string, StoredDiscountItem>): MealPlan {
   const referencedIds = [...new Set(
-    draft.meals.map((meal) => meal.discountItemId).filter((id): id is string => id !== null),
+    draft.meals.flatMap((meal) => [...mealUsedProductIds(meal)]),
   )];
   let totalRegularPrice = 0;
   let totalSalePrice = 0;

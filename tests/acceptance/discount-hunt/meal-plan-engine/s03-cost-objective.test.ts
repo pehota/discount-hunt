@@ -12,8 +12,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
 import { HAPPY_VEG_BASKET, ROTE_LINSEN, CAMPARI_TOMATEN, MOZZARELLA, BASMATI_REIS } from "../../support/meal-plan-domain.ts";
+import { FakeRecipeSource, vegRecipe } from "../../support/fake-recipe-source.ts";
 
-describe.skip("@driving_port — The plan does not over-buy deals to inflate the discount count", () => {
+function cannedDal() {
+  return new FakeRecipeSource(
+    new Map([
+      [
+        "rote linsen",
+        vegRecipe(
+          "Rote Linsen-Tomaten-Dal",
+          ["200 g Rote Linsen", "2 Campari Tomaten", "Kokosmilch"],
+          "https://example.test/dal",
+        ),
+      ],
+    ]),
+  );
+}
+
+describe("@driving_port — The plan does not over-buy deals to inflate the discount count", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -26,7 +42,7 @@ describe.skip("@driving_port — The plan does not over-buy deals to inflate the
     seedDiscounts(dbPath, [ROTE_LINSEN, CAMPARI_TOMATEN, MOZZARELLA, BASMATI_REIS]);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedDal() });
     server = s;
     serverPort = s.port;
 
@@ -48,7 +64,7 @@ describe.skip("@driving_port — The plan does not over-buy deals to inflate the
   });
 });
 
-describe.skip("@driving_port @kpi — Spend and savings count a shared product only once and match the tracker", () => {
+describe("@driving_port @kpi — Spend and savings count a shared product only once and match the tracker", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -60,7 +76,7 @@ describe.skip("@driving_port @kpi — Spend and savings count a shared product o
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedDal() });
     server = s;
     serverPort = s.port;
 
@@ -83,7 +99,7 @@ describe.skip("@driving_port @kpi — Spend and savings count a shared product o
   });
 });
 
-describe.skip("@driving_port @kpi — The plan footer shows spend against an all-regular-price baseline", () => {
+describe("@driving_port @kpi — The plan footer shows spend against an all-regular-price baseline", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -95,7 +111,7 @@ describe.skip("@driving_port @kpi — The plan footer shows spend against an all
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: cannedDal() });
     server = s;
     serverPort = s.port;
 
