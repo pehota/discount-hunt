@@ -3,18 +3,18 @@
  * matching heuristic extracted from recipe-handler.ts (step 08-08, closes review
  * WARNING B13). Design §9.
  *
- * These tests document ACTUAL current behavior of the heuristic — they are NOT a
- * spec of desired behavior. Where the heuristic over-matches (a documented §9
- * failure mode), the test pins the real outcome and flags it `known limitation §9`.
- * Do NOT "fix" the heuristic to satisfy an intuition — the recipe-detail
- * highlighting ATs pin this exact behavior and must stay green.
+ * These tests document behavior of the heuristic. Genuine whole-token matches are
+ * the recipe-detail highlighting contract and must stay green. The former §9
+ * short-token substring over-match is now FIXED (SPIKE UC-2 word-boundary rule):
+ * a significant token that is merely a PROPER SUBSTRING of another no longer drives
+ * a match.
  *
- * Heuristic recap (design §9):
+ * Heuristic recap (design §9, post-UC-2):
  *   - case-insensitive; split on non-[a-zäöüß0-9] runs
  *   - drop unit stop-words and pure-digit tokens
  *   - keep only tokens of length ≥ 4 (MIN_TOKEN_LENGTH)
- *   - two strings overlap if any surviving token of one equals OR is a substring of
- *     a surviving token of the other (either direction)
+ *   - two strings overlap only if they share the SAME WHOLE surviving token
+ *     (word-boundary equality — substring containment does NOT count)
  *   - matchIngredient: FIRST week-item whose name overlaps the ingredient wins; else null
  */
 
@@ -44,12 +44,33 @@ describe("tokensOverlap — the pure §9 predicate", () => {
     expect(tokensOverlap("Ei", "Eis")).toBe(false);
   });
 
-  test("KNOWN LIMITATION §9: 'Reis' (len 4) is a substring of 'Preiselbeeren' → false-positive MATCH", () => {
+  test("SPIKE UC-2 FIX: 'Reis' (len 4) is only a SUBSTRING of 'Preiselbeeren' → NO match", () => {
     // significantTokens("Reis")          → ["reis"]           (len 4 ≥ 4, survives)
     // significantTokens("Preiselbeeren") → ["preiselbeeren"]
-    // "preiselbeeren".includes("reis") is TRUE (at index 1) → the heuristic OVER-matches.
-    // This is a documented §9 short-token-over-match failure mode. Characterized, NOT fixed.
-    expect(tokensOverlap("Reis", "Preiselbeeren")).toBe(true);
+    // word-boundary rule: "reis" !== "preiselbeeren" → no shared WHOLE token → no overlap.
+    expect(tokensOverlap("Reis", "Preiselbeeren")).toBe(false);
+  });
+
+  test("SPIKE UC-2 FIX: 'Hack' is only a SUBSTRING of 'gehackt' → NO match", () => {
+    // "gehackt".includes("hack") was TRUE under the old substring rule; the word-boundary
+    // rule requires the SAME whole token, so "hack" !== "gehackt" → no overlap.
+    expect(tokensOverlap("Hack", "gehackt")).toBe(false);
+  });
+
+  test("REGRESSION: a significant token being a PROPER SUBSTRING of another never drives a match", () => {
+    // Construct pairs where one whole token is a strict substring of the other whole
+    // token; word-boundary equality must reject every one of them.
+    const properSubstringPairs: Array<[string, string]> = [
+      ["reis", "preiselbeeren"],
+      ["hack", "gehackt"],
+      ["kern", "kerne"], // singular strictly inside plural — still no whole-token equality
+      ["lauch", "knoblauch"],
+    ];
+    for (const [shorter, longer] of properSubstringPairs) {
+      expect(longer.includes(shorter)).toBe(true); // precondition: it IS a proper substring
+      expect(shorter).not.toBe(longer);
+      expect(tokensOverlap(shorter, longer)).toBe(false); // yet it must NOT match
+    }
   });
 
   test("unit / quantity stop-words and pure-digit tokens do not drive matches", () => {
@@ -92,8 +113,8 @@ describe("matchIngredient — first-week-item-wins over the week feed", () => {
     expect(matchIngredient("Rote Linsen", reordered)).toEqual({ store: "Lidl", salePrice: 149 });
   });
 
-  test("KNOWN LIMITATION §9: 'Reis' matches 'Preiselbeeren' item (substring over-match)", () => {
+  test("SPIKE UC-2 FIX: 'Reis' does NOT match a 'Preiselbeeren' item (substring over-match removed)", () => {
     const found = matchIngredient("Reis", [item("Preiselbeeren", "Rewe", 199)]);
-    expect(found).toEqual({ store: "Rewe", salePrice: 199 });
+    expect(found).toBeNull();
   });
 });

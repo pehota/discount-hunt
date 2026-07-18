@@ -1,14 +1,15 @@
 /**
  * ingredient-match — the pure ingredient↔discount matching heuristic (design §9).
  *
- * Extracted verbatim from recipe-handler.ts (step 08-08, closes review WARNING B13)
- * so the heuristic is unit-testable in isolation. Behavior is IDENTICAL to the prior
- * in-handler implementation: case-insensitive, unit/quantity stop-words dropped,
- * length-≥4 token guard, substring-either-direction overlap, first-week-item-wins.
+ * Extracted from recipe-handler.ts (step 08-08, closes review WARNING B13) so the
+ * heuristic is unit-testable in isolation: case-insensitive, unit/quantity stop-words
+ * dropped, length-≥4 token guard, WHOLE-TOKEN (word-boundary) overlap, first-week-item-wins.
  *
- * Display-only heuristic — a miss (or a §9 over-match) is cosmetic and NEVER affects
- * savings math. Documented failure modes (plurals, compounds, short-token substring
- * over-match) are characterized in ingredient-match.test.ts, not "fixed" here.
+ * Display-only heuristic — a miss is cosmetic and NEVER affects savings math (the
+ * DietaryVerifier is the real safety gate). The §9 short-token substring over-match
+ * ("Reis" ⊂ "Preiselbeeren", "hack" ⊂ "gehackt") is FIXED via the word-boundary rule
+ * in tokensOverlap (SPIKE UC-2); remaining failure modes (plurals, compounds) stay
+ * characterized in ingredient-match.test.ts.
  */
 
 /** The subset of a week discount item the matcher reads (StoredDiscountItem is a superset). */
@@ -38,15 +39,20 @@ function significantTokens(value: string): string[] {
     .filter((token) => token.length >= MIN_TOKEN_LENGTH);
 }
 
-/** True when any significant token of a matches/contains a significant token of b (either direction). */
+/**
+ * True when a and b share a whole significant token (word-boundary equality).
+ *
+ * Word-boundary rule (SPIKE UC-2): two tokens overlap only if they are the SAME
+ * whole token after normalization/lowercasing — NOT if one is a substring of the
+ * other. This kills the §9 short-token substring over-match ("reis" ⊄ "preiselbeeren",
+ * "hack" ⊄ "gehackt") while preserving genuine whole-token matches ("Rote Linsen"
+ * vs "Linsen" still share the whole token "linsen").
+ */
 export function tokensOverlap(a: string, b: string): boolean {
-  const tokensA = significantTokens(a);
-  const tokensB = significantTokens(b);
-  for (const ta of tokensA) {
-    for (const tb of tokensB) {
-      if (ta === tb || ta.includes(tb) || tb.includes(ta)) {
-        return true;
-      }
+  const tokensA = new Set(significantTokens(a));
+  for (const tb of significantTokens(b)) {
+    if (tokensA.has(tb)) {
+      return true;
     }
   }
   return false;
