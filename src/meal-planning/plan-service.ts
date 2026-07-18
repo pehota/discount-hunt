@@ -211,6 +211,46 @@ export class PlanService {
     return this.planDraftRepository?.getDraft() ?? null;
   }
 
+  /**
+   * SHELL use case (D38): COMMIT the current draft to this week's saved plan (S01a Save).
+   * Reads the draft slot, projects it into a full MealPlan, then delegates persistence to the
+   * SHIPPED savePlan (replace-on-save; writes meal_plans + savings_log atomically with the
+   * double-count guard) — the savings/persistence logic is REUSED VERBATIM, never re-implemented.
+   * After persisting, clears the draft slot so GET /plan shows the saved plan, not the draft banner.
+   *
+   * The plan's savings math + id + snapshot (dietary filter, budget cap) come from the pure
+   * generatePlan core over the draft's referenced items; the meals are carried through from the
+   * draft verbatim ([...draft.meals]) so the SAVED plan is exactly the draft the user reviewed —
+   * faithful to "save persists IT", not a fresh regenerate.
+   *
+   * Returns the persisted MealPlan, or null WITHOUT any write when no draft exists (nothing to save).
+   */
+  async saveDraft(): Promise<MealPlan | null> {
+    const draft = this.planDraftRepository?.getDraft();
+    if (!draft) return null;
+
+    const referencedIds = new Set(
+      draft.meals
+        .map((meal) => meal.discountItemId)
+        .filter((id): id is string => id !== null),
+    );
+    const items = await this.discountService.getWeeklyItems(draft.weekStart, "none");
+    const subset = items.filter((item) => referencedIds.has(item.id));
+
+    const preferences = this.preferencesRepository?.get();
+    const restriction = preferences?.dietaryRestriction ?? "none";
+    const budgetCapCents = preferences?.budgetCapCents ?? null;
+
+    const generated = this.generatePlan(draft.weekStart, subset, restriction, budgetCapCents);
+    // Carry the draft's meals through verbatim: the SAVED plan is exactly what the user reviewed
+    // (faithful to "persists it"), while savings totals / id / snapshot come from generatePlan.
+    const plan: MealPlan = { ...generated, meals: [...draft.meals] };
+
+    await this.savePlan(plan); // SHIPPED replace-on-save + double-count guard, REUSED verbatim
+    this.planDraftRepository?.clearDraft();
+    return plan;
+  }
+
   async getOrGenerateCurrentWeekPlan(): Promise<MealPlan> {
     const weekStart = currentWeekMonday();
     const existing = this.mealPlanRepository.findByWeek(weekStart);

@@ -107,7 +107,7 @@ describe("@driving_port — Regenerate rebuilds the whole draft without persisti
   });
 });
 
-describe.skip("@driving_port — Saving a draft persists it and offers to add its deals to the list", () => {
+describe("@driving_port — Saving a draft persists it and offers to add its deals to the list", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;

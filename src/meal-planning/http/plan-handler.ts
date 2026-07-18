@@ -182,6 +182,18 @@ function renderNoSelectionHtml(listCount: number): string {
   return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
 }
 
+/**
+ * Add-to-list prompt (S01a D4) — rendered right after a draft is saved. Asks whether to add the
+ * saved plan's discounted items to the shopping list. The prompt copy carries a literal apostrophe
+ * (NOT html-escaped) so it reads naturally; the ACCEPT action is wired later (05-01).
+ */
+function renderSavePromptHtml(listCount: number): string {
+  const body = `<h1>Plan saved</h1>
+  <p class="save-add-to-list-prompt" data-add-to-list-prompt>Add this plan's discounted items to your shopping list?</p>
+  <p><a href="/plan">Back to your saved plan</a></p>`;
+  return renderPage({ title: "Plan saved", activeNav: "plan", body, listCount });
+}
+
 const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
 
 /**
@@ -303,5 +315,21 @@ export class PlanHandler {
   async handlePostRegenerate(_request: Request): Promise<Response> {
     await this.planService.regenerateDraft();
     return Response.redirect("/plan", 303);
+  }
+
+  /**
+   * POST /plan/save (S01a) — commit the current draft to this week's saved plan (SHELL use case
+   * owns replace-on-save + savings persistence + draft clear), then render the add-to-list prompt.
+   *
+   * Unlike generate/regenerate this does NOT redirect: the response itself carries the D4 prompt
+   * HTML (200) so the user is asked, right after saving, whether to add the plan's discounted items
+   * to their shopping list. The ACCEPT action is wired later (05-01); here we only render the offer.
+   */
+  async handlePostSave(_request: Request): Promise<Response> {
+    await this.planService.saveDraft();
+    return new Response(renderSavePromptHtml(this.listCount()), {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
   }
 }
