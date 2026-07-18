@@ -10,9 +10,25 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
+import { FakeRecipeSource, vegRecipe } from "../../support/fake-recipe-source.ts";
+import type { FetchedRecipe } from "../../../../src/recipe/ports/recipe-source.ts";
 import { HAPPY_VEG_BASKET, ROTE_LINSEN, CAMPARI_TOMATEN, MOZZARELLA } from "../../support/meal-plan-domain.ts";
 
-describe.skip("@driving_port — Accepting the prompt adds the plan's deals to the shopping list", () => {
+/**
+ * Canned recipes whose ingredients collectively name all three HAPPY_VEG_BASKET products, so the
+ * saved plan's deduped used-products = {Rote Linsen, Campari Tomaten, Mozzarella}. Dal covers
+ * Rote Linsen + Campari; Caprese covers Mozzarella. NO network, NO Chefkoch.
+ */
+function happyVegRecipeSource(): FakeRecipeSource {
+  return new FakeRecipeSource(
+    new Map<string, FetchedRecipe | null>([
+      ["rote linsen", vegRecipe("Rote Linsen-Tomaten-Dal", ["200 g Rote Linsen", "2 Campari Tomaten"], "https://example.test/dal")],
+      ["mozzarella", vegRecipe("Caprese", ["Mozzarella", "1 Campari Tomate", "Basilikum"], "https://example.test/caprese")],
+    ]),
+  );
+}
+
+describe("@driving_port — Accepting the prompt adds the plan's deals to the shopping list", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -24,7 +40,7 @@ describe.skip("@driving_port — Accepting the prompt adds the plan's deals to t
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: happyVegRecipeSource() });
     server = s;
     serverPort = s.port;
 
@@ -47,7 +63,7 @@ describe.skip("@driving_port — Accepting the prompt adds the plan's deals to t
   });
 });
 
-describe.skip("@driving_port — Declining the prompt saves the plan and leaves the list unchanged", () => {
+describe("@driving_port — Declining the prompt saves the plan and leaves the list unchanged", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -59,7 +75,7 @@ describe.skip("@driving_port — Declining the prompt saves the plan and leaves 
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: happyVegRecipeSource() });
     server = s;
     serverPort = s.port;
 
@@ -79,7 +95,7 @@ describe.skip("@driving_port — Declining the prompt saves the plan and leaves 
   });
 });
 
-describe.skip("@driving_port — A product already on the list is not duplicated when the prompt is accepted", () => {
+describe("@driving_port — A product already on the list is not duplicated when the prompt is accepted", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -91,7 +107,7 @@ describe.skip("@driving_port — A product already on the list is not duplicated
     seedDiscounts(dbPath, HAPPY_VEG_BASKET);
 
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: happyVegRecipeSource() });
     server = s;
     serverPort = s.port;
 

@@ -118,6 +118,9 @@ export async function createServer(
       if (method === "POST" && url.pathname === "/plan/save") {
         return planHandler.handlePostSave(request);
       }
+      if (method === "POST" && url.pathname === "/plan/add-to-list") {
+        return planHandler.handlePostAddToList(request);
+      }
       if (method === "POST" && url.pathname === "/plan/discard") {
         return planHandler.handlePostDiscard(request);
       }

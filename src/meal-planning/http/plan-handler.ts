@@ -500,6 +500,23 @@ export class PlanHandler {
   }
 
   /**
+   * POST /plan/add-to-list (S04, D4) — the ACCEPT action of the save prompt: add THIS week's saved
+   * plan's discounted products to the shopping list. Reads the saved plan (no generate, no save),
+   * collects the DEDUPED product ids its meals use (a product shared across meals counts once), and
+   * routes them through the SHIPPED ShoppingListService.addFromDiscountSelection — the exact path as
+   * POST /list/add, so the repo's already-shipped dedup (a product already on the list is not
+   * duplicated) applies verbatim. No saved plan is a no-op. Decline is simply never calling this.
+   */
+  async handlePostAddToList(_request: Request): Promise<Response> {
+    const plan = this.planService.getCurrentWeekPlan();
+    if (plan !== null) {
+      const productIds = [...new Set(plan.meals.flatMap((meal) => [...mealUsedProductIds(meal)]))];
+      await this.shoppingListService?.addFromDiscountSelection(productIds);
+    }
+    return Response.redirect("/plan", 303);
+  }
+
+  /**
    * POST /plan/discard (S01a) — drop the current draft (SHELL use case clears the draft slot only,
    * no meal_plans / savings_log write), then render the last SAVED plan for the week READ-ONLY.
    *
