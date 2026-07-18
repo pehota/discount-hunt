@@ -11,8 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { seedDiscounts } from "../../support/seed-discounts.ts";
 import { ROTE_LINSEN, CAMPARI_TOMATEN, BASMATI_REIS } from "../../support/meal-plan-domain.ts";
+import { FakeRecipeSource, vegRecipe } from "../../support/fake-recipe-source.ts";
+import type { FetchedRecipe } from "../../../../src/recipe/ports/recipe-source.ts";
 
-describe.skip("@driving_port — Generating from the shopping list uses the list's items as the source", () => {
+describe("@driving_port — Generating from the shopping list uses the list's items as the source", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;
@@ -23,8 +25,22 @@ describe.skip("@driving_port — Generating from the shopping list uses the list
     dbPath = join(tmpDir, "s02.db");
     seedDiscounts(dbPath, [ROTE_LINSEN, CAMPARI_TOMATEN, BASMATI_REIS]);
 
+    // A canned recipe that uses Basmati Reis + Rote Linsen, so the list-sourced draft is non-empty
+    // and its used-products footer renders BASMATI_REIS.name — proving the plan was built FROM the
+    // list. Keyed on the Rote-Linsen anchor query (FakeRecipeSource matches by substring).
+    const canned = new Map<string, FetchedRecipe | null>([
+      [
+        "rote linsen",
+        vegRecipe(
+          "Linsen-Reis-Curry",
+          ["200 g Rote Linsen", "250 g Basmati Reis", "Currypaste"],
+          "https://example.test/curry",
+        ),
+      ],
+    ]);
+
     const { createServer } = await import("../../../../src/server.ts");
-    const s = await createServer({ port: 0, dbPath });
+    const s = await createServer({ port: 0, dbPath, recipeSource: new FakeRecipeSource(canned) });
     server = s;
     serverPort = s.port;
 
@@ -50,7 +66,7 @@ describe.skip("@driving_port — Generating from the shopping list uses the list
   });
 });
 
-describe.skip("@driving_port — Generating from an empty list is explained, not fabricated", () => {
+describe("@driving_port — Generating from an empty list is explained, not fabricated", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;

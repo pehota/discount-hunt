@@ -271,6 +271,18 @@ function renderNoSelectionHtml(listCount: number): string {
 }
 
 /**
+ * Empty-list state (S02 D2): generating "from=list" against a list with no discounted items.
+ * A DISTINCT message from the S01b no-recipe state — the list is empty, not the recipe search —
+ * so the user is steered to add items rather than change a selection. No draft is produced.
+ */
+function renderEmptyListHtml(listCount: number): string {
+  const body = `<h1>Meal Plan</h1>
+  <p class="empty-plan-warning" data-empty-list>Your list is empty — add items first</p>
+  <p><a href="/list">Back to your shopping list</a></p>`;
+  return renderPage({ title: "Meal Plan", activeNav: "plan", body, listCount });
+}
+
+/**
  * Add-to-list prompt (S01a D4) — rendered right after a draft is saved. Asks whether to add the
  * saved plan's discounted items to the shopping list. The prompt copy carries a literal apostrophe
  * (NOT html-escaped) so it reads naturally; the ACCEPT action is wired later (05-01).
@@ -414,6 +426,25 @@ export class PlanHandler {
     // "Unsaved draft" banner. Short-circuits before any selection parsing / persistence.
     if (new URL(request.url).searchParams.get("draft") === "true") {
       await this.planService.generateDraft();
+      return Response.redirect("/plan", 303);
+    }
+
+    // List path (S02 D2): ?from=list generates a THROWAWAY draft sourced from the shopping list
+    // rather than the feed selection. The list is the source: resolve its discounted-item ids and
+    // hand them to the plan service's S01b assembly. An empty list (no discounted items) is
+    // EXPLAINED, not fabricated — short-circuit BEFORE assembly with a distinct message, no draft.
+    if (new URL(request.url).searchParams.get("from") === "list") {
+      const list = this.shoppingListService?.getCurrentList();
+      const discountItemIds = (list?.items ?? [])
+        .map((item) => item.discountItemId)
+        .filter((id): id is string => id !== null);
+      if (discountItemIds.length === 0) {
+        return new Response(renderEmptyListHtml(this.listCount()), {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+      await this.planService.generateDraftFromList(discountItemIds);
       return Response.redirect("/plan", 303);
     }
 

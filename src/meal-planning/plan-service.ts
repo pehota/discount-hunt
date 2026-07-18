@@ -195,19 +195,53 @@ export class PlanService {
     const budgetCapCents = preferences?.budgetCapCents ?? null;
     const items = await this.discountService.getWeeklyItems(weekStart, restriction);
 
-    // S01b: real-recipe draft — assemble meals from dietary-VERIFIED candidates the provider
-    // returns for the basket. Zero candidates → an empty-meals draft (the handler's
-    // empty-with-reason signal); we fabricate NO meals. Legacy round-robin only when no provider.
+    return this.assembleDraft(weekStart, items, restriction, budgetCapCents, "feed");
+  }
+
+  /**
+   * S02 (D2): generate a THROWAWAY draft whose SOURCE is the shopping list, not the feed selection.
+   * The handler resolves the list's discounted-item ids (getCurrentList) and passes them here; we
+   * rehydrate them into the week's StoredDiscountItems and run the SAME S01b verified-candidate
+   * assembly (single source of truth — no parallel logic). Resolution uses restriction "none" so a
+   * dietary filter can't silently drop a product the user already committed to the list; the user's
+   * restriction still governs findCandidates (defense in depth). Empty basket is handled upstream.
+   */
+  async generateDraftFromList(discountItemIds: readonly string[]): Promise<PlanDraft> {
+    const weekStart = currentWeekMonday();
+    const preferences = this.preferencesRepository?.get();
+    const restriction = preferences?.dietaryRestriction ?? "none";
+    const budgetCapCents = preferences?.budgetCapCents ?? null;
+
+    const idSet = new Set(discountItemIds);
+    const weeklyItems = await this.discountService.getWeeklyItems(weekStart, "none");
+    const items = weeklyItems.filter((item) => idSet.has(item.id));
+
+    return this.assembleDraft(weekStart, items, restriction, budgetCapCents, "list");
+  }
+
+  /**
+   * S01b assembly (REUSED by feed + list sources): build the draft's meals from dietary-VERIFIED
+   * candidates the provider returns for the basket, then store it in the draft slot ONLY. Zero
+   * candidates → an empty-meals draft (the handler's empty-with-reason signal); we fabricate NO
+   * meals. Legacy round-robin only when no provider is wired.
+   */
+  private async assembleDraft(
+    weekStart: WeekStart,
+    items: StoredDiscountItem[],
+    restriction: DietaryRestriction,
+    budgetCapCents: number | null,
+    source: PlanDraft["source"],
+  ): Promise<PlanDraft> {
     if (this.recipeCandidateProvider) {
       const candidates = await this.recipeCandidateProvider.findCandidates(items, restriction);
       const meals = this.mealsFromCandidates(candidates);
-      const draft: PlanDraft = { weekStart, meals, source: "feed" };
+      const draft: PlanDraft = { weekStart, meals, source };
       this.planDraftRepository?.saveDraft(draft);
       return draft;
     }
 
     const plan = this.generatePlan(weekStart, items, restriction, budgetCapCents);
-    const draft: PlanDraft = { weekStart, meals: plan.meals, source: "feed" };
+    const draft: PlanDraft = { weekStart, meals: plan.meals, source };
     this.planDraftRepository?.saveDraft(draft);
     return draft;
   }
