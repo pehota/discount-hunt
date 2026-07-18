@@ -13,6 +13,7 @@
  */
 
 import type { PlanService } from "../plan-service.ts";
+import type { PlanDraft } from "../ports/plan-draft-repository.ts";
 import type { MealPlan } from "../adapters/sqlite-meal-plan-repository.ts";
 import type { MealSlot } from "../../shared/types.ts";
 import type { StoredDiscountItem } from "../../discount/adapters/sqlite-discount-item-repository.ts";
@@ -127,11 +128,17 @@ function renderSavingsHero(plan: MealPlan): string {
   </section>`;
 }
 
+/** Unsaved-draft banner (S01a) — rendered only when the plan view shows a throwaway draft. */
+function renderDraftBanner(): string {
+  return `<p class="draft-banner" data-unsaved-draft>Unsaved draft — Save it to keep it, or Discard.</p>`;
+}
+
 function renderPlanHtml(
   plan: MealPlan,
   scopedSlots: MealSlot[],
   itemsById: Map<string, StoredDiscountItem>,
   listCount: number,
+  isDraft = false,
 ): string {
   if (hasNoCompatibleItems(plan)) {
     // Discriminate no-data (dietaryFilter "none") from restriction-filtered.
@@ -153,6 +160,7 @@ function renderPlanHtml(
     .join("");
 
   const body = `<h1>Meal Plan — Week of ${plan.weekStart}</h1>
+  ${isDraft ? renderDraftBanner() : ""}
   ${renderOverBudgetBanner(plan)}
   ${renderSavingsHero(plan)}
   <table>
@@ -176,6 +184,39 @@ function renderNoSelectionHtml(listCount: number): string {
 
 const DEFAULT_MEAL_TYPES: MealSlot[] = ["lunch", "dinner"];
 
+/**
+ * Project a throwaway draft into a MealPlan shape so the existing renderPlanHtml can render it
+ * (DRY — no parallel draft renderer). Savings totals are derived from the live-feed item map
+ * over the DISTINCT items the draft references, so the savings hero reflects the draft, not a
+ * stale saved plan. dietaryFilter is left "none" — the draft only reaches this projection when
+ * it has compatible meals (an empty draft renders the no-data state, not the banner path).
+ */
+function draftAsPlan(draft: PlanDraft, itemsById: Map<string, StoredDiscountItem>): MealPlan {
+  const referencedIds = [...new Set(
+    draft.meals.map((meal) => meal.discountItemId).filter((id): id is string => id !== null),
+  )];
+  let totalRegularPrice = 0;
+  let totalSalePrice = 0;
+  for (const id of referencedIds) {
+    const item = itemsById.get(id);
+    if (!item) continue;
+    totalRegularPrice += item.regularPrice;
+    totalSalePrice += item.salePrice;
+  }
+  return {
+    id: "draft",
+    weekStart: draft.weekStart,
+    itemIds: referencedIds,
+    meals: [...draft.meals],
+    dietaryFilter: "none",
+    budgetCapCents: null,
+    totalRegularPrice,
+    totalSalePrice,
+    estimatedSavings: totalRegularPrice - totalSalePrice,
+    createdAt: Date.now(),
+  };
+}
+
 export class PlanHandler {
   constructor(
     private readonly planService: PlanService,
@@ -188,12 +229,26 @@ export class PlanHandler {
   ) {}
 
   async handleGetPlan(request: Request): Promise<Response> {
-    const plan = await this.planService.getOrGenerateCurrentWeekPlan();
     // Read the in-scope meal types LIVE (render-time), never from the plan snapshot.
     const scopedSlots = this.preferencesRepository?.get().mealTypes ?? DEFAULT_MEAL_TYPES;
     // Live-feed lookup to surface the store + sale price behind each meal (degrades
     // gracefully per meal when a discount item is missing from the current feed).
     const itemsById = await this.planService.getCurrentWeekItemsById();
+
+    // Draft short-circuit (S01a): when an unsaved draft exists, render IT (with the
+    // "Unsaved draft" banner) from draft state and DO NOT call getOrGenerateCurrentWeekPlan
+    // — that path would generate + savePlan, writing a savings_log row for a mere draft.
+    const draft = this.planService.getCurrentDraft();
+    if (draft !== null) {
+      const draftPlan = draftAsPlan(draft, itemsById);
+      const draftHtml = renderPlanHtml(draftPlan, scopedSlots, itemsById, this.listCount(), true);
+      return new Response(draftHtml, {
+        status: 200,
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    }
+
+    const plan = await this.planService.getOrGenerateCurrentWeekPlan();
     const html = renderPlanHtml(plan, scopedSlots, itemsById, this.listCount());
     return new Response(html, {
       status: 200,
@@ -207,6 +262,14 @@ export class PlanHandler {
   }
 
   async handlePostGenerate(request: Request): Promise<Response> {
+    // Draft path (S01a): ?draft=true generates a THROWAWAY draft (draft slot only, no
+    // meal_plans / savings_log write) and redirects to /plan, which renders it with the
+    // "Unsaved draft" banner. Short-circuits before any selection parsing / persistence.
+    if (new URL(request.url).searchParams.get("draft") === "true") {
+      await this.planService.generateDraft();
+      return Response.redirect("/plan", 303);
+    }
+
     // Parse the feed's checkbox selection. A bodyless POST (or a non-form body)
     // makes formData() throw — treat that as an empty selection, never a crash.
     let selectedIds: string[] = [];

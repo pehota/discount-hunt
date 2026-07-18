@@ -7,8 +7,6 @@
  * v2 (S05) extends the draft Meal with per-meal `accepted`; v1 does not.
  */
 
-export const __SCAFFOLD__ = true;
-
 import type { Meal } from "../../shared/types.ts";
 
 /** The throwaway draft aggregate (one per user; overwritten on regenerate; dropped on discard). */

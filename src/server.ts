@@ -27,6 +27,7 @@ import { DiscountService } from "./discount/discount-service.ts";
 import { DiscountHandler } from "./discount/http/discount-handler.ts";
 import { SQLiteScrapeJobRepository } from "./scraping/adapters/sqlite-scrape-job-repository.ts";
 import { SQLiteMealPlanRepository } from "./meal-planning/adapters/sqlite-meal-plan-repository.ts";
+import { SQLitePlanDraftRepository } from "./meal-planning/adapters/sqlite-plan-draft-repository.ts";
 import { PlanService } from "./meal-planning/plan-service.ts";
 import { PlanHandler } from "./meal-planning/http/plan-handler.ts";
 import { SQLiteSavingsRepository } from "./savings/adapters/sqlite-savings-repository.ts";
@@ -67,6 +68,7 @@ export async function createServer(
   // 2. Repositories
   const discountItemRepo = new SQLiteDiscountItemRepository(db);
   const mealPlanRepo = new SQLiteMealPlanRepository(db);
+  const planDraftRepo = new SQLitePlanDraftRepository(db);
   const savingsRepo = new SQLiteSavingsRepository(db);
   const scrapeJobRepo = new SQLiteScrapeJobRepository(db);
   const preferencesRepo = new SQLiteUserPreferencesRepository(db);
@@ -76,7 +78,7 @@ export async function createServer(
   // 3. Services
   const discountService = new DiscountService(discountItemRepo);
   const savingsService = new SavingsService(savingsRepo);
-  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo);
+  const planService = new PlanService(discountService, mealPlanRepo, savingsService, db, preferencesRepo, planDraftRepo);
   const preferencesService = new PreferencesService(preferencesRepo);
   // Recipe lookup: prod default hits Chefkoch; tests inject a FakeRecipeSource.
   const recipeService = new RecipeService(recipeRepo, config.recipeSource ?? new ChefkochRecipeSource());

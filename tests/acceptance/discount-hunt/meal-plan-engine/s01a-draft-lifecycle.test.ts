@@ -28,7 +28,7 @@ async function savingsRecordCount(port: number): Promise<number> {
   return (html.match(/data-saved-amount="(\d+)"/g) ?? []).length;
 }
 
-describe.skip("@driving_port — Generating a draft does not save it; the existing saved plan is untouched", () => {
+describe("@driving_port — Generating a draft does not save it; the existing saved plan is untouched", () => {
   let tmpDir: string;
   let dbPath: string;
   let serverPort: number;

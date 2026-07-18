@@ -23,6 +23,7 @@ import type { StoredDiscountItem } from "../discount/adapters/sqlite-discount-it
 import type { SQLiteMealPlanRepository, MealPlan } from "./adapters/sqlite-meal-plan-repository.ts";
 import type { SavingsService } from "../savings/savings-service.ts";
 import type { UserPreferencesRepository } from "../preferences/ports/preferences-repository.ts";
+import type { PlanDraft, PlanDraftRepository } from "./ports/plan-draft-repository.ts";
 
 const MEAL_SLOTS: MealSlot[] = ['lunch', 'dinner'];
 const DAYS_PER_WEEK = 7;
@@ -35,6 +36,10 @@ export class PlanService {
     private readonly savingsService: SavingsService,
     private readonly db: DbClient,
     private readonly preferencesRepository?: UserPreferencesRepository,
+    // Optional trailing param (PlanService/PlanHandler precedent): production (server.ts)
+    // always injects it; when absent, draft use cases are inert and the existing saved-plan
+    // path is unchanged byte-for-byte (protects direct-construction tests).
+    private readonly planDraftRepository?: PlanDraftRepository,
   ) {}
 
   /** Pure computation — no DB writes (D37). Snapshots the restriction + budget cap onto the plan. */
@@ -170,6 +175,29 @@ export class PlanService {
     const plan = this.generatePlan(weekStart, subset, restriction, budgetCapCents);
     await this.savePlan(plan);
     return plan;
+  }
+
+  /**
+   * SHELL use case (D38): generate a THROWAWAY draft for this week and store it ONLY in the
+   * draft slot (PlanDraftRepository). NEVER touches meal_plans / savings_log — a generated draft
+   * writes no savings row until the user explicitly Saves it (S01a). The pure generatePlan core
+   * is reused verbatim to build the meals; only the draft slot is a bounded side effect.
+   */
+  async generateDraft(): Promise<PlanDraft> {
+    const weekStart = currentWeekMonday();
+    const preferences = this.preferencesRepository?.get();
+    const restriction = preferences?.dietaryRestriction ?? "none";
+    const budgetCapCents = preferences?.budgetCapCents ?? null;
+    const items = await this.discountService.getWeeklyItems(weekStart, restriction);
+    const plan = this.generatePlan(weekStart, items, restriction, budgetCapCents);
+    const draft: PlanDraft = { weekStart, meals: plan.meals, source: "feed" };
+    this.planDraftRepository?.saveDraft(draft);
+    return draft;
+  }
+
+  /** Read-only: the current unsaved draft, or null when none exists (no draft repo → null). */
+  getCurrentDraft(): PlanDraft | null {
+    return this.planDraftRepository?.getDraft() ?? null;
   }
 
   async getOrGenerateCurrentWeekPlan(): Promise<MealPlan> {

@@ -91,6 +91,14 @@ export const userSettings = sqliteTable("user_settings", {
   updatedAt: integer("updated_at").notNull(), // ms since epoch
 });
 
+export const planDrafts = sqliteTable("plan_drafts", {
+  userId: text("user_id").primaryKey().default("dimitar"), // single-user draft singleton (ADR-007, mirrors user_settings D9)
+  weekStart: text("week_start").notNull(), // ISO Monday of the draft
+  meals: text("meals").notNull().default("[]"), // JSON array of Meal — throwaway until saveDraft
+  source: text("source").notNull().default("feed"), // 'feed' | 'list'
+  updatedAt: integer("updated_at").notNull(), // ms since epoch
+});
+
 export const recipes = sqliteTable("recipes", {
   id: text("id").primaryKey(),
   queryKey: text("query_key").notNull().unique(), // normalized meal/ingredient name; cache-by-query
